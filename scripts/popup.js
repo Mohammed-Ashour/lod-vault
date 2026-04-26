@@ -227,7 +227,7 @@ function renderSummary(entries) {
 const LIST_LIMIT = 10;
 
 function formatSearchStatus(filteredCount, totalCount) {
-  if (!state.searchQuery) return `${totalCount} saved word${totalCount === 1 ? "" : "s"}`;
+  if (!state.searchQuery) return `${totalCount} saved word${totalCount === 1 ? "" : "s"} · type to search`;
   return `${filteredCount} match${filteredCount === 1 ? "" : "es"} · ${totalCount} total`;
 }
 
@@ -295,17 +295,14 @@ function renderList() {
 
   elements.searchStatus.textContent = formatSearchStatus(visibleEntries.length, entries.length);
 
-  // no query — hide list, show hint
+  // no query — hide list
   if (!hasQuery) {
     elements.savedList.innerHTML = "";
-    elements.emptyState.classList.add("is-hidden");
+    elements.preSearch.classList.add("is-hidden");
+    elements.emptyState.classList.toggle("is-hidden", entries.length > 0);
     elements.noResults.classList.add("is-hidden");
-    elements.preSearch.classList.toggle("is-hidden", entries.length === 0);
-    if (entries.length === 0) elements.emptyState.classList.remove("is-hidden");
     return;
   }
-
-  elements.preSearch.classList.add("is-hidden");
 
   if (!visibleEntries.length) {
     elements.savedList.innerHTML = "";
