@@ -8,6 +8,7 @@
 </head>
 <body>
   <main class="app">
+
     <header class="header">
       <div class="header-title">
         <p class="eyebrow">LODVault</p>
@@ -17,69 +18,72 @@
         </div>
       </div>
       <div class="header-actions">
-        <button id="open-flashcards" class="secondary-button secondary-button-light">Flashcards</button>
-        <button id="open-preview" class="secondary-button secondary-button-light">Preview</button>
-        <button id="export-html" class="secondary-button">HTML</button>
+        <button id="open-flashcards" class="btn-ghost">Flashcards</button>
+        <button id="open-preview" class="btn-ghost">Preview</button>
+        <button id="export-html" class="btn-ghost">HTML</button>
       </div>
     </header>
 
-    <section class="card auto-mode-card">
-      <div class="auto-mode-copy">
+    <section class="auto-row auto-mode-card">
+      <div class="auto-row__copy">
         <p class="section-label">Auto mode</p>
-        <h2 id="auto-mode-title">Auto mode is off</h2>
-        <p id="auto-mode-meta" class="muted">Turn on to automatically record every LOD word page you visit into Study and History.</p>
+        <h2 id="auto-mode-title">Off</h2>
+        <p id="auto-mode-meta" class="muted">Saves every visited word to Study and History.</p>
       </div>
-      <button id="toggle-auto-mode" class="auto-mode-toggle">Turn on</button>
+      <button id="toggle-auto-mode" class="auto-toggle">Turn on</button>
     </section>
 
-    <section id="current-page-card" class="card current-page">
-      <p class="section-label">Save current word</p>
-      <h2 id="current-word">Open a LOD word page</h2>
-      <p id="current-meta" class="muted">Go to a page like <code>lod.lu/artikel/…</code> to save it.</p>
-      <div class="actions">
-        <button id="current-favorite" class="pill-button" disabled>☆ Favorite</button>
-        <button id="current-study" class="pill-button" disabled>+ Study list</button>
+    <section id="current-page-card" class="current-section">
+      <p class="section-label">Current word</p>
+      <h2 id="current-word">—</h2>
+      <p id="current-meta" class="muted">Open a word on <code>lod.lu/artikel/…</code></p>
+      <div class="word-actions">
+        <button id="current-favorite" class="action-btn" disabled>☆ Favorite</button>
+        <button id="current-study" class="action-btn" disabled>+ Study</button>
       </div>
     </section>
 
-    <section class="summary-row">
-      <div class="summary-card">
-        <span class="summary-label">Favorites</span>
+    <div class="stats-row">
+      <div class="stat">
         <strong id="favorite-count">0</strong>
+        <span class="stat-label">Favorites</span>
       </div>
-      <div class="summary-card">
-        <span class="summary-label">Study</span>
+      <div class="stat-sep"></div>
+      <div class="stat">
         <strong id="study-count">0</strong>
+        <span class="stat-label">Study</span>
       </div>
-      <div class="summary-card">
-        <span class="summary-label">History</span>
+      <div class="stat-sep"></div>
+      <div class="stat">
         <strong id="history-count">0</strong>
+        <span class="stat-label">History</span>
       </div>
-      <div class="summary-card">
-        <span class="summary-label">Total</span>
+      <div class="stat-sep"></div>
+      <div class="stat">
         <strong id="total-count">0</strong>
+        <span class="stat-label">Total</span>
       </div>
-    </section>
+    </div>
 
-    <section class="card tools-card">
+    <div class="search-section">
       <input id="search-input" class="search-input" type="search" placeholder="Search words, type, translation, note…" autocomplete="off">
       <div class="tools-row">
-        <button id="export-json" class="tool-button">Export JSON</button>
-        <button id="import-json" class="tool-button">Import JSON</button>
+        <button id="export-json" class="btn-tool">Export JSON</button>
+        <button id="import-json" class="btn-tool">Import JSON</button>
       </div>
-      <p id="search-status" class="helper-text">0 saved words</p>
+      <p id="search-status" class="helper-text muted">0 saved words</p>
       <input id="import-json-file" type="file" accept="application/json,.json" hidden>
-    </section>
+    </div>
 
-    <section class="list-section">
-      <div id="saved-list" class="saved-list"></div>
-      <div id="empty-state" class="empty-state is-hidden">
-        No saved words yet. Open a word on lod.lu and save it.
-      </div>
-      <div id="no-results" class="empty-state is-hidden">
-        No words match your search.
-      </div>
-    </section>
+    <div id="saved-list" class="saved-list"></div>
+
+    <div id="empty-state" class="empty-state is-hidden">
+      No saved words yet. Open a word on lod.lu and save it.
+    </div>
+    <div id="no-results" class="empty-state is-hidden">
+      No words match your search.
+    </div>
+
   </main>
 
   <script src="../scripts/shared.js"></script>

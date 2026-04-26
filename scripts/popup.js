@@ -96,11 +96,8 @@ function renderAutoMode() {
     : "Turn on to automatically record every LOD word page you visit into Study and History.";
   elements.autoModeToggle.textContent = state.autoMode ? "Turn off" : "Turn on";
   elements.autoModeToggle.classList.toggle("is-active", state.autoMode);
-
-  // header live badge
+  elements.autoModeTitle.textContent = state.autoMode ? "On" : "Off";
   elements.autoModeBadge.classList.toggle("is-hidden", !state.autoMode);
-
-  // card teal wash
   elements.autoModeCard.classList.toggle("is-auto-on", state.autoMode);
 }
 
@@ -122,7 +119,7 @@ function renderCurrentPageCard(savedEntry) {
 
   elements.currentWord.textContent = state.currentEntry.word;
   elements.currentMeta.textContent = metaParts.join(" · ") || (state.autoMode
-    ? "Auto mode will add this word to Study and History while you browse."
+    ? "Auto mode is recording this word."
     : "Save this word for later.");
   elements.currentFavorite.disabled = false;
   elements.currentStudy.disabled = false;
