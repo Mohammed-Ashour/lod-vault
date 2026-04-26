@@ -10,10 +10,10 @@
   ],
   "action": {
     "default_title": "LODVault",
-    "default_popup": "popup.html"
+    "default_popup": "pages/popup.html"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "scripts/background.js"
   },
   "content_scripts": [
     {
@@ -21,8 +21,8 @@
         "https://lod.lu/artikel/*",
         "https://www.lod.lu/artikel/*"
       ],
-      "js": ["shared.js", "content.js"],
-      "css": ["content.css"]
+      "js": ["scripts/shared.js", "scripts/content.js"],
+      "css": ["styles/content.css"]
     }
   ]
 }

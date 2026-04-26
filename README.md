@@ -10,6 +10,12 @@ LODVault is a lightweight browser extension for [lod.lu](https://lod.lu/).
 - Preview and export as HTML
 - Import and export as JSON
 
+## Structure
+- `manifest.json` — extension manifest
+- `pages/` — popup, preview, and flashcards pages
+- `scripts/` — extension logic
+- `styles/` — page and content styles
+
 ## Install
 1. Open `chrome://extensions`
 2. Enable **Developer mode**
