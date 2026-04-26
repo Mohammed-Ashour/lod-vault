@@ -109,6 +109,34 @@ h1 {
   border-color: var(--blue-hover);
 }
 
+.lang-select {
+  padding: 9px 12px;
+  border: 1px solid #2d5f80;
+  border-radius: 8px;
+  background: #1b3250;
+  color: var(--teal-light);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23a8dadc' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+}
+
+.lang-select:hover {
+  border-color: var(--teal);
+  color: #fff;
+}
+
+.lang-select:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+
 /* ── preview frame ───────────────────────────────── */
 .preview-shell { flex: 1; min-height: 0; }
 

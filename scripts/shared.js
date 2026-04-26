@@ -460,7 +460,7 @@
 
     for (const [key, label] of translationPairs) {
       if (entry.translations?.[key]) {
-        chips.push(`<span class="chip">${label}: ${escapeHtml(entry.translations[key])}</span>`);
+        chips.push(`<span class="chip" data-lang="${key}">${label}: ${escapeHtml(entry.translations[key])}</span>`);
       }
     }
 

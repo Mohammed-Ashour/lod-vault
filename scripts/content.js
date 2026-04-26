@@ -5,6 +5,7 @@ let domObserver = null;
 let locationHooksInstalled = false;
 let lastRenderKey = "";
 let lastAutoRecordKey = "";
+let currentAutoMode = false;
 
 function cleanWord(value) {
   return (value || "")
@@ -206,7 +207,10 @@ function ensureBanner() {
     banner.innerHTML = `
       <div class="lodw-banner__main">
         <div class="lodw-banner__copy">
-          <div class="lodw-banner__eyebrow">LODVault</div>
+          <div class="lodw-banner__eyebrow">
+            LODVault
+            <span class="lodw-auto-badge is-hidden">Auto</span>
+          </div>
           <div class="lodw-banner__status"></div>
           <div class="lodw-banner__info"></div>
         </div>
@@ -276,7 +280,8 @@ function buildRenderKey(entry, savedEntry) {
     study: Boolean(savedEntry?.study),
     history: Boolean(savedEntry?.history),
     visitCount: Number(savedEntry?.visitCount || 0),
-    lastVisitedAt: savedEntry?.lastVisitedAt || ""
+    lastVisitedAt: savedEntry?.lastVisitedAt || "",
+    autoMode: currentAutoMode
   });
 }
 
@@ -299,6 +304,9 @@ function applyState(savedEntry, sourceEntry = extractCurrentEntry()) {
   banner.classList.remove("is-warning");
   banner.querySelector(".lodw-banner__status").textContent = statusText(savedEntry);
   banner.querySelector(".lodw-banner__info").textContent = infoText(entry) || "Save this word to your personal lists.";
+
+  const autoBadge = banner.querySelector(".lodw-auto-badge");
+  if (autoBadge) autoBadge.classList.toggle("is-hidden", !currentAutoMode);
 
   for (const button of banner.querySelectorAll("button[data-list]")) {
     const isFavorite = button.dataset.list === "favorite";
@@ -335,6 +343,7 @@ async function refreshUI() {
     }
 
     let savedEntry = await LodWrapperStore.getEntry(entry.id);
+    currentAutoMode = await LodWrapperStore.getAutoMode();
     savedEntry = await maybeAutoRecord(entry, savedEntry);
     applyState(savedEntry, entry);
   } catch (error) {

@@ -4,11 +4,63 @@ const refreshButton = document.getElementById("refresh-preview");
 const downloadButton = document.getElementById("download-html");
 let currentPreviewUrl = "";
 let currentSearchQuery = "";
+let currentLang = "";
+
+const langNames = { en: "English", fr: "Français", de: "Deutsch", pt: "Português", nl: "Nederlands" };
+const langOrder = ["en", "fr", "de", "pt", "nl"];
 
 refreshButton.addEventListener("click", renderPreview);
 downloadButton.addEventListener("click", downloadHtml);
+document.getElementById("lang-filter").addEventListener("change", (e) => {
+  currentLang = e.target.value;
+  applyLangFilter();
+});
 
 document.addEventListener("DOMContentLoaded", renderPreview);
+
+/* ── language filter ─────────────────────────────── */
+
+function applyLangFilter() {
+  const doc = frame.contentDocument;
+  if (!doc) return;
+
+  let style = doc.getElementById("lodvault-lang-style");
+  if (!style) {
+    style = doc.createElement("style");
+    style.id = "lodvault-lang-style";
+    doc.head.appendChild(style);
+  }
+
+  style.textContent = currentLang
+    ? `.chip[data-lang]:not([data-lang="${currentLang}"]) { display: none !important; }`
+    : "";
+}
+
+function populateLangSelect(entries) {
+  const present = new Set();
+  for (const entry of entries) {
+    for (const lang of Object.keys(entry.translations || {})) {
+      if (langNames[lang]) present.add(lang);
+    }
+  }
+
+  const select = document.getElementById("lang-filter");
+  const previous = select.value;
+
+  select.innerHTML = "<option value=\"\">All languages</option>";
+  for (const lang of langOrder) {
+    if (!present.has(lang)) continue;
+    const opt = document.createElement("option");
+    opt.value = lang;
+    opt.textContent = langNames[lang];
+    select.appendChild(opt);
+  }
+
+  select.value = present.has(previous) ? previous : "";
+  currentLang = select.value;
+}
+
+/* ── preview styles ──────────────────────────────── */
 
 function injectPreviewStyles(doc) {
   if (doc.getElementById("lod-wrapper-preview-style")) return;
@@ -43,6 +95,8 @@ function injectPreviewStyles(doc) {
   doc.head.appendChild(style);
 }
 
+/* ── search ──────────────────────────────────────── */
+
 function attachPreviewSearch() {
   const doc = frame.contentDocument;
   if (!doc) return;
@@ -75,8 +129,11 @@ function attachPreviewSearch() {
   input.value = currentSearchQuery;
   input.addEventListener("input", applySearch);
   attachRemoveButtons(doc);
+  applyLangFilter();
   applySearch();
 }
+
+/* ── remove buttons ──────────────────────────────── */
 
 function previewRemoveLabel(listName) {
   if (listName === "favorite") return "Remove from favorites";
@@ -123,8 +180,12 @@ function attachRemoveButtons(doc) {
   }
 }
 
+/* ── render ──────────────────────────────────────── */
+
 async function renderPreview() {
   const entries = await LodWrapperStore.getEntries();
+  populateLangSelect(entries);
+
   const html = LodWrapperStore.buildExportHtml(entries, { includeInlineScript: false });
   const count = `${entries.length} saved word${entries.length === 1 ? "" : "s"}`;
   const blob = new Blob([html], { type: "text/html" });
