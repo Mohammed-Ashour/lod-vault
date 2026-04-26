@@ -224,6 +224,8 @@ function renderSummary(entries) {
   elements.totalCount.textContent = String(entries.length);
 }
 
+const LIST_LIMIT = 10;
+
 function formatSearchStatus(filteredCount, totalCount) {
   if (!state.searchQuery) return `${totalCount} saved word${totalCount === 1 ? "" : "s"}`;
   return `${filteredCount} match${filteredCount === 1 ? "" : "es"} · ${totalCount} total`;
@@ -314,7 +316,11 @@ function renderList() {
 
   elements.emptyState.classList.add("is-hidden");
   elements.noResults.classList.add("is-hidden");
-  elements.savedList.innerHTML = visibleEntries.map(buildSavedItemMarkup).join("");
+  const capped = visibleEntries.slice(0, LIST_LIMIT);
+  elements.savedList.innerHTML = capped.map(buildSavedItemMarkup).join("");
+  if (visibleEntries.length > LIST_LIMIT) {
+    elements.savedList.innerHTML += `<p class="list-overflow">Showing ${LIST_LIMIT} of ${visibleEntries.length} matches. Refine your search to narrow down.</p>`;
+  }
 }
 
 async function syncCurrentCardState() {
