@@ -3,23 +3,24 @@ const state = {
   currentEntry: null,
   savedEntries: [],
   searchQuery: "",
-  autoMode: false
+  autoMode: false,
+  currentPageRequestId: 0
 };
 
 const elements = {};
 
-function handleActiveTabChange() {
-  refreshCurrentPage();
-  renderSavedList();
+async function handleActiveTabChange() {
+  await refreshCurrentPage();
+  await renderSavedList();
 }
 
-function handleTabUpdated(tabId, changeInfo, tab) {
+async function handleTabUpdated(tabId, changeInfo, tab) {
   if (!changeInfo.url && changeInfo.status !== "complete") return;
   if (!tab?.active) return;
   if (state.currentTabId && tabId !== state.currentTabId && !changeInfo.url) return;
 
-  refreshCurrentPage();
-  renderSavedList();
+  await refreshCurrentPage();
+  await renderSavedList();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -150,7 +151,11 @@ function renderCurrentPageCard(savedEntry) {
 }
 
 async function refreshCurrentPage() {
+  const requestId = ++state.currentPageRequestId;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+  if (requestId !== state.currentPageRequestId) return;
+
   state.currentTabId = tab?.id || null;
 
   if (!tab?.id || !/https:\/\/(www\.)?lod\.lu\/artikel\//i.test(tab.url || "")) {
@@ -161,8 +166,10 @@ async function refreshCurrentPage() {
 
   try {
     const response = await chrome.tabs.sendMessage(tab.id, { type: "lod-wrapper:get-current-entry" });
+    if (requestId !== state.currentPageRequestId) return;
     state.currentEntry = response?.entry || null;
   } catch {
+    if (requestId !== state.currentPageRequestId) return;
     state.currentEntry = null;
   }
 
@@ -172,6 +179,7 @@ async function refreshCurrentPage() {
   }
 
   const savedEntry = await LodWrapperStore.getEntry(state.currentEntry.id);
+  if (requestId !== state.currentPageRequestId) return;
   renderCurrentPageCard(savedEntry);
 }
 
