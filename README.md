@@ -97,19 +97,6 @@ The **LODVault** icon will appear in your browser toolbar.
 
 ---
 
-## Structure
-
-```
-lod-vault/
-├── manifest.json       # Extension manifest (MV3)
-├── pages/              # HTML pages: popup, preview, flashcards
-├── scripts/            # JavaScript: shared store, content, popup, flashcards, preview, background
-├── styles/             # CSS: popup, content banner, preview, flashcards
-└── icons/              # Extension icons (PNG + SVG source)
-```
-
----
-
 ## Privacy
 
 - LODVault does **not** collect, transmit, or share any data
