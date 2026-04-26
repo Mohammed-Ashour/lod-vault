@@ -92,8 +92,8 @@ function renderAutoMode() {
 
   elements.autoModeTitle.textContent = state.autoMode ? "Auto mode is on" : "Auto mode is off";
   elements.autoModeMeta.textContent = state.autoMode
-    ? `Every LOD word page you visit is added to Study and History. ${historyCount} word${historyCount === 1 ? "" : "s"} in history.`
-    : "Turn on to automatically record every LOD word page you visit into Study and History.";
+    ? `Saving visited words to Study & History · ${historyCount} in history`
+    : "Saves every visited word to Study and History.";
   elements.autoModeToggle.textContent = state.autoMode ? "Turn off" : "Turn on";
   elements.autoModeToggle.classList.toggle("is-active", state.autoMode);
   elements.autoModeTitle.textContent = state.autoMode ? "On" : "Off";
@@ -103,10 +103,10 @@ function renderAutoMode() {
 
 function renderCurrentPageCard(savedEntry) {
   if (!state.currentEntry) {
-    elements.currentWord.textContent = "Open a LOD word page";
+    elements.currentWord.textContent = "—";
     elements.currentMeta.textContent = state.autoMode
-      ? "Auto mode is on. Open a page like https://lod.lu/artikel/SOZIALIST1 and it will be added to Study and History automatically."
-      : "This works on pages like https://lod.lu/artikel/SOZIALIST1. You can also use the save banner shown directly under the word title.";
+      ? "Words are saved automatically while you browse."
+      : "Open a word on lod.lu to save it.";
     elements.currentFavorite.disabled = true;
     elements.currentStudy.disabled = true;
     setCurrentButtonState(elements.currentFavorite, false, "favorite");
@@ -283,15 +283,20 @@ async function renderSavedList() {
   state.savedEntries = entries;
   renderSummary(entries);
   renderAutoMode();
+  renderList();
+  await syncCurrentCardState();
+}
 
+function renderList() {
+  const entries = state.savedEntries;
   const visibleEntries = filteredEntries(entries);
+
   elements.searchStatus.textContent = formatSearchStatus(visibleEntries.length, entries.length);
 
   if (!entries.length) {
     elements.savedList.innerHTML = "";
     elements.emptyState.classList.remove("is-hidden");
     elements.noResults.classList.add("is-hidden");
-    await syncCurrentCardState();
     return;
   }
 
@@ -300,13 +305,11 @@ async function renderSavedList() {
   if (!visibleEntries.length) {
     elements.savedList.innerHTML = "";
     elements.noResults.classList.remove("is-hidden");
-    await syncCurrentCardState();
     return;
   }
 
   elements.noResults.classList.add("is-hidden");
   elements.savedList.innerHTML = visibleEntries.map(buildSavedItemMarkup).join("");
-  await syncCurrentCardState();
 }
 
 async function syncCurrentCardState() {
@@ -369,7 +372,7 @@ async function onSavedListChange(event) {
 
 function onSearchInput(event) {
   state.searchQuery = event.target.value || "";
-  renderSavedList();
+  renderList();
 }
 
 function openFlashcards() {
