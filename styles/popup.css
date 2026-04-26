@@ -22,10 +22,7 @@
 
 body {
   width: 420px;
-  height: 620px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  min-height: 480px;
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -35,29 +32,7 @@ body {
 }
 
 /* ── app shell ──────────────────────────────────── */
-.app {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* ── scrollable list area ────────────────────────── */
-.list-area {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-solid) transparent;
-}
-
-.list-area::-webkit-scrollbar { width: 4px; }
-.list-area::-webkit-scrollbar-track { background: transparent; }
-.list-area::-webkit-scrollbar-thumb {
-  background: var(--border-solid);
-  border-radius: 4px;
-}
+.app { padding-bottom: 20px; }
 
 /* ── shared ──────────────────────────────────────── */
 .is-hidden  { display: none !important; }
