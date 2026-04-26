@@ -1,7 +1,14 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect x="32" y="32" width="448" height="448" rx="112" fill="#081A2D"/>
-  <path d="M168 232C168 183.399 207.399 144 256 144C304.601 144 344 183.399 344 232V360H168V232Z" stroke="white" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M212 320V236C212 211.699 231.699 192 256 192C280.301 192 300 211.699 300 236V320" stroke="#42B4D6" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="256" cy="276" r="14" fill="#42B4D6"/>
-  <path d="M256 290V326" stroke="#42B4D6" stroke-width="20" stroke-linecap="round"/>
+  <defs>
+    <clipPath id="clip">
+      <rect x="32" y="32" width="448" height="448" rx="112" />
+    </clipPath>
+  </defs>
+  <g clip-path="url(#clip)">
+    <rect x="32" y="32" width="448" height="149.333" fill="#EF3340"/>
+    <rect x="32" y="181.333" width="448" height="149.333" fill="#FFFFFF"/>
+    <rect x="32" y="330.666" width="448" height="149.334" fill="#00A3E0"/>
+  </g>
+  <path d="M196 132H286V290H378V380H196V132Z" fill="#08213A"/>
+  <path d="M214 150H268V308H360V362H214V150Z" fill="#FFFFFF"/>
 </svg>
