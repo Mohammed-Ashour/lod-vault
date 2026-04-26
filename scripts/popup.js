@@ -28,6 +28,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.searchInput = document.getElementById("search-input");
   elements.searchStatus = document.getElementById("search-status");
   elements.savedList = document.getElementById("saved-list");
+  elements.preSearch = document.getElementById("pre-search");
   elements.emptyState = document.getElementById("empty-state");
   elements.noResults = document.getElementById("no-results");
   elements.favoriteCount = document.getElementById("favorite-count");
@@ -224,9 +225,7 @@ function renderSummary(entries) {
 }
 
 function formatSearchStatus(filteredCount, totalCount) {
-  if (!state.searchQuery) {
-    return `${totalCount} saved word${totalCount === 1 ? "" : "s"}`;
-  }
+  if (!state.searchQuery) return `${totalCount} saved word${totalCount === 1 ? "" : "s"}`;
   return `${filteredCount} match${filteredCount === 1 ? "" : "es"} · ${totalCount} total`;
 }
 
@@ -290,24 +289,30 @@ async function renderSavedList() {
 function renderList() {
   const entries = state.savedEntries;
   const visibleEntries = filteredEntries(entries);
+  const hasQuery = state.searchQuery.trim().length > 0;
 
   elements.searchStatus.textContent = formatSearchStatus(visibleEntries.length, entries.length);
 
-  if (!entries.length) {
+  // no query — hide list, show hint
+  if (!hasQuery) {
     elements.savedList.innerHTML = "";
-    elements.emptyState.classList.remove("is-hidden");
+    elements.emptyState.classList.add("is-hidden");
     elements.noResults.classList.add("is-hidden");
+    elements.preSearch.classList.toggle("is-hidden", entries.length === 0);
+    if (entries.length === 0) elements.emptyState.classList.remove("is-hidden");
     return;
   }
 
-  elements.emptyState.classList.add("is-hidden");
+  elements.preSearch.classList.add("is-hidden");
 
   if (!visibleEntries.length) {
     elements.savedList.innerHTML = "";
+    elements.emptyState.classList.add("is-hidden");
     elements.noResults.classList.remove("is-hidden");
     return;
   }
 
+  elements.emptyState.classList.add("is-hidden");
   elements.noResults.classList.add("is-hidden");
   elements.savedList.innerHTML = visibleEntries.map(buildSavedItemMarkup).join("");
 }

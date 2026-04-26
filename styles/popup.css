@@ -487,7 +487,14 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
   border-color: var(--danger);
 }
 
-/* ── empty states ────────────────────────────────── */
+/* ── pre-search + empty states ──────────────────── */
+.pre-search {
+  padding: 20px 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .empty-state {
   padding: 24px 16px;
   text-align: center;
