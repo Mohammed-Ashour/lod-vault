@@ -1,0 +1,263 @@
+:root {
+  color-scheme: light;
+  --bg: #eef3fb;
+  --card: #ffffff;
+  --text: #132238;
+  --muted: #667588;
+  --border: #d7dfeb;
+  --accent: #2153ff;
+  --accent-soft: #edf2ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: radial-gradient(circle at top, #f8fbff 0%, var(--bg) 52%);
+  color: var(--text);
+}
+
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 28px 16px 40px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.eyebrow,
+.face-label {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6683d8;
+}
+
+h1 {
+  margin: 6px 0 4px;
+  font-size: 2rem;
+}
+
+.muted,
+.hint,
+.answer p {
+  color: var(--muted);
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+select,
+.secondary-button {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+}
+
+select {
+  min-width: 150px;
+  padding: 10px 12px;
+}
+
+.secondary-button {
+  padding: 11px 14px;
+  background: var(--accent-soft);
+  border-color: #cbd8ff;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.secondary-button-light {
+  background: #fff;
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.empty-state,
+.card-shell {
+  margin-top: 22px;
+}
+
+.empty-state {
+  background: var(--card);
+  border: 1px dashed var(--border);
+  border-radius: 18px;
+  padding: 24px;
+  color: var(--muted);
+}
+
+.progress {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.flashcard {
+  width: 100%;
+  min-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: var(--card);
+  box-shadow: 0 18px 45px rgba(17, 24, 39, 0.08);
+  padding: 28px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.card-face {
+  min-height: 320px;
+}
+
+.card-back {
+  display: none;
+}
+
+.flashcard.is-revealed .card-front {
+  display: none;
+}
+
+.flashcard.is-revealed .card-back {
+  display: block;
+}
+
+#card-word {
+  margin: 16px 0 10px;
+  font-size: clamp(2rem, 6vw, 3.6rem);
+  line-height: 1.05;
+}
+
+.answer h3 {
+  margin: 0 0 10px;
+  font-size: 1.5rem;
+}
+
+.answer .chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0 14px;
+}
+
+.answer .chip {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.meaning-panel {
+  margin: 16px 0 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: #fbfdff;
+}
+
+.meaning-panel h4 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+
+.meaning-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid #edf2f7;
+}
+
+.meaning-row:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.meaning-label {
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.meaning-value {
+  color: var(--text);
+}
+
+.answer blockquote,
+.answer .note {
+  margin: 12px 0 0;
+  background: #f8fbff;
+  border-radius: 14px;
+  padding: 14px 16px;
+  border-left: 4px solid var(--accent);
+}
+
+.answer .note {
+  border-left-color: #7c3aed;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.nav-button {
+  width: 100%;
+}
+
+.is-hidden {
+  display: none;
+}
+
+button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .flashcard {
+    min-height: 360px;
+    padding: 22px;
+  }
+
+  .meaning-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .actions {
+    grid-template-columns: 1fr;
+  }
+}

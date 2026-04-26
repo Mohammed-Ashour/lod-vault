@@ -1,0 +1,104 @@
+#lod-wrapper-banner {
+  margin: 16px 0 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: inherit;
+}
+
+#lod-wrapper-banner * {
+  box-sizing: border-box;
+}
+
+#lod-wrapper-banner .lodw-banner__main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+#lod-wrapper-banner .lodw-banner__copy {
+  min-width: 240px;
+  flex: 1;
+}
+
+#lod-wrapper-banner .lodw-banner__eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9edaf0;
+  margin-bottom: 4px;
+}
+
+#lod-wrapper-banner .lodw-banner__status {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+#lod-wrapper-banner .lodw-banner__info {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+#lod-wrapper-banner .lodw-banner__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#lod-wrapper-banner button {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.92);
+  color: #18314d;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+#lod-wrapper-banner button:hover {
+  background: #ffffff;
+}
+
+#lod-wrapper-banner button.is-active {
+  background: #3ea8c7;
+  border-color: #3ea8c7;
+  color: #ffffff;
+}
+
+#lod-wrapper-banner button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+#lod-wrapper-banner.is-warning {
+  background: rgba(178, 60, 60, 0.18);
+  border-color: rgba(255, 171, 171, 0.35);
+}
+
+#lod-wrapper-banner.is-warning .lodw-banner__eyebrow {
+  color: #ffd2d2;
+}
+
+@media (max-width: 720px) {
+  #lod-wrapper-banner .lodw-banner__main {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #lod-wrapper-banner .lodw-banner__actions {
+    width: 100%;
+  }
+
+  #lod-wrapper-banner button {
+    flex: 1;
+  }
+}

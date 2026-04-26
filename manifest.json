@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "LODVault",
+  "version": "0.2.3",
+  "description": "Save, study, and revisit Luxembourgish words directly from lod.lu.",
+  "permissions": ["storage", "activeTab", "tabs"],
+  "host_permissions": [
+    "https://lod.lu/*",
+    "https://www.lod.lu/*"
+  ],
+  "action": {
+    "default_title": "LODVault",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://lod.lu/artikel/*",
+        "https://www.lod.lu/artikel/*"
+      ],
+      "js": ["shared.js", "content.js"],
+      "css": ["content.css"]
+    }
+  ]
+}
