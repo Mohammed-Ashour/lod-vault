@@ -17,6 +17,10 @@
 
 ---
 
+![LODVault screenshot](lodvault-screenshot.png)
+
+---
+
 ## What is LODVault?
 
 [LOD — Lëtzebuerger Online Dictionnaire](https://lod.lu) is the official Luxembourgish dictionary. It is well-designed and comprehensive, but it has no way to save words, track vocabulary, or study what you have looked up.
