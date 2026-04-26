@@ -65,6 +65,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   chrome.tabs.onActivated.addListener(handleActiveTabChange);
   chrome.tabs.onUpdated.addListener(handleTabUpdated);
+  chrome.runtime.onMessage.addListener(handlePageStateMessage);
 
   state.autoMode = await LodWrapperStore.getAutoMode();
   renderAutoMode();
@@ -75,7 +76,24 @@ document.addEventListener("DOMContentLoaded", async () => {
 window.addEventListener("unload", () => {
   chrome.tabs.onActivated.removeListener(handleActiveTabChange);
   chrome.tabs.onUpdated.removeListener(handleTabUpdated);
+  chrome.runtime.onMessage.removeListener(handlePageStateMessage);
 });
+
+async function handlePageStateMessage(message, sender) {
+  if (message?.type !== "lod-wrapper:page-state-changed") return;
+  if (state.currentTabId && sender?.tab?.id && sender.tab.id !== state.currentTabId) return;
+
+  state.currentEntry = message.entry || null;
+
+  if (!state.currentEntry) {
+    renderCurrentPageCard(null);
+  } else {
+    const savedEntry = message.savedEntry || (await LodWrapperStore.getEntry(state.currentEntry.id));
+    renderCurrentPageCard(savedEntry);
+  }
+
+  await renderSavedList();
+}
 
 function setCurrentButtonState(button, active, kind) {
   if (kind === "favorite") {

@@ -285,6 +285,18 @@ function buildRenderKey(entry, savedEntry) {
   });
 }
 
+function notifyPopup(entry, savedEntry) {
+  try {
+    chrome.runtime.sendMessage({
+      type: "lod-wrapper:page-state-changed",
+      entry: entry || null,
+      savedEntry: savedEntry || null
+    });
+  } catch {
+    // Ignore when no extension page is listening.
+  }
+}
+
 function applyState(savedEntry, sourceEntry = extractCurrentEntry()) {
   const entry = sourceEntry || savedEntry;
   const banner = ensureBanner();
@@ -346,6 +358,7 @@ async function refreshUI() {
     currentAutoMode = await LodWrapperStore.getAutoMode();
     savedEntry = await maybeAutoRecord(entry, savedEntry);
     applyState(savedEntry, entry);
+    notifyPopup(entry, savedEntry);
   } catch (error) {
     if (isExtensionContextInvalidated(error)) {
       handleInvalidatedContext();
@@ -376,6 +389,7 @@ async function handleListToggle(listName) {
     const savedEntry = await LodWrapperStore.toggleList(entry, listName);
     lastRenderKey = "";
     applyState(savedEntry, entry);
+    notifyPopup(entry, savedEntry);
   } catch (error) {
     if (isExtensionContextInvalidated(error)) {
       handleInvalidatedContext();
@@ -466,6 +480,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .then((savedEntry) => {
         lastRenderKey = "";
         applyState(savedEntry, entry);
+        notifyPopup(entry, savedEntry);
         sendResponse({ entry: savedEntry, sourceEntry: entry });
       })
       .catch((error) => {
