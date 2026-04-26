@@ -8,9 +8,10 @@
     <rect x="32" y="32" width="448" height="149.333" fill="#EF3340"/>
     <rect x="32" y="181.333" width="448" height="149.333" fill="#FFFFFF"/>
     <rect x="32" y="330.666" width="448" height="149.334" fill="#00A3E0"/>
-    <rect x="32" y="32" width="448" height="448" rx="112" fill="#081A2D" fill-opacity="0.12"/>
+    <rect x="32" y="32" width="448" height="448" rx="112" fill="#081A2D" fill-opacity="0.14"/>
   </g>
-  <path d="M206 152V330H344" stroke="#08213A" stroke-opacity="0.22" stroke-width="102" stroke-linecap="round" stroke-linejoin="round" transform="translate(12 12)"/>
-  <path d="M206 152V330H344" stroke="#FFFFFF" stroke-width="86" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="344" cy="330" r="16" fill="#00A3E0"/>
+  <path d="M180 136H282V292H370V376H180V136Z" fill="#08213A" fill-opacity="0.22" transform="translate(10 10)"/>
+  <path d="M180 136H282V292H370V376H180V136Z" fill="#FFFFFF"/>
+  <rect x="180" y="292" width="190" height="84" rx="20" fill="#FFFFFF"/>
+  <rect x="180" y="136" width="102" height="240" rx="20" fill="#FFFFFF"/>
 </svg>
