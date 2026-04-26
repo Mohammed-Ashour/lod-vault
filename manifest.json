@@ -5,8 +5,8 @@
   "description": "Save, study, and revisit Luxembourgish words directly from lod.lu.",
   "permissions": ["storage", "tabs"],
   "host_permissions": [
-    "https://lod.lu/*",
-    "https://www.lod.lu/*"
+    "https://lod.lu/artikel/*",
+    "https://www.lod.lu/artikel/*"
   ],
   "action": {
     "default_title": "LODVault",

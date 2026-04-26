@@ -1,4 +1,4 @@
-const LOD_URL_PATTERNS = ["https://lod.lu/*", "https://www.lod.lu/*"];
+const LOD_URL_PATTERNS = ["https://lod.lu/artikel/*", "https://www.lod.lu/artikel/*"];
 
 async function reloadLodTabs() {
   try {
