@@ -71,24 +71,28 @@ function injectPreviewStyles(doc) {
     .preview-entry-actions {
       margin-top: 12px;
       display: flex;
-      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
     }
     .preview-remove-button {
-      border: 1px solid #ffd2d2;
-      background: #fff5f5;
-      color: #c33636;
-      border-radius: 10px;
-      padding: 8px 12px;
+      border: 1px solid rgba(230,57,70,0.25);
+      background: rgba(230,57,70,0.08);
+      color: #f08088;
+      border-radius: 7px;
+      padding: 6px 12px;
       font: inherit;
-      font-size: 0.9rem;
-      font-weight: 700;
+      font-size: 12px;
+      font-weight: 600;
       cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
     }
     .preview-remove-button:hover {
-      background: #ffeaea;
+      background: rgba(230,57,70,0.18);
+      border-color: rgba(230,57,70,0.5);
+      color: #ff8890;
     }
     .preview-remove-button:disabled {
-      opacity: 0.7;
+      opacity: 0.5;
       cursor: wait;
     }
   `;
@@ -154,28 +158,35 @@ async function handlePreviewRemove(id, listName) {
 }
 
 function attachRemoveButtons(doc) {
-  for (const entryElement of doc.querySelectorAll(".entry[data-id][data-list]")) {
+  for (const entryElement of doc.querySelectorAll(".entry[data-id][data-lists]")) {
     if (entryElement.querySelector(".preview-entry-actions")) continue;
 
-    const listName = entryElement.dataset.list;
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.className = "preview-remove-button";
-    button.textContent = previewRemoveLabel(listName);
-
-    button.addEventListener("click", async () => {
-      button.disabled = true;
-      try {
-        await handlePreviewRemove(entryElement.dataset.id, listName);
-        await renderPreview();
-      } finally {
-        button.disabled = false;
-      }
-    });
+    const lists = (entryElement.dataset.lists || "").split(",").filter(Boolean);
+    if (!lists.length) continue;
 
     const actions = doc.createElement("div");
     actions.className = "preview-entry-actions";
-    actions.appendChild(button);
+
+    for (const listName of lists) {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.className = "preview-remove-button";
+      button.textContent = previewRemoveLabel(listName);
+      button.dataset.list = listName;
+
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        try {
+          await handlePreviewRemove(entryElement.dataset.id, listName);
+          await renderPreview();
+        } finally {
+          button.disabled = false;
+        }
+      });
+
+      actions.appendChild(button);
+    }
+
     entryElement.appendChild(actions);
   }
 }

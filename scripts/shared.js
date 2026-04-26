@@ -432,31 +432,24 @@
     return parts.join(" · ");
   }
 
-  function buildEntryMarkup(entry, listName = "") {
+  function buildEntryMarkup(entry) {
     const chips = [];
+    const activeLists = [];
+    if (entry.favorite) activeLists.push("favorite");
+    if (entry.study)    activeLists.push("study");
+    if (entry.history)  activeLists.push("history");
+
     const translationPairs = [
-      ["en", "EN"],
-      ["fr", "FR"],
-      ["de", "DE"],
-      ["pt", "PT"],
-      ["nl", "NL"]
+      ["en", "EN"], ["fr", "FR"], ["de", "DE"], ["pt", "PT"], ["nl", "NL"]
     ];
 
     if (entry.pos) {
-      chips.push(`<span class="chip chip-type">Type: ${escapeHtml(entry.pos)}</span>`);
+      chips.push(`<span class="chip chip-type">${escapeHtml(entry.pos)}</span>`);
     }
 
-    if (entry.favorite) {
-      chips.push('<span class="chip chip-list chip-list-favorite">Favorite</span>');
-    }
-
-    if (entry.study) {
-      chips.push('<span class="chip chip-list chip-list-study">Study</span>');
-    }
-
-    if (entry.history) {
-      chips.push('<span class="chip chip-list chip-list-history">History</span>');
-    }
+    if (entry.favorite) chips.push('<span class="chip chip-list-favorite">Favorite</span>');
+    if (entry.study)    chips.push('<span class="chip chip-list-study">Study</span>');
+    if (entry.history)  chips.push('<span class="chip chip-list-history">History</span>');
 
     for (const [key, label] of translationPairs) {
       if (entry.translations?.[key]) {
@@ -465,14 +458,14 @@
     }
 
     return `
-      <article class="entry" data-id="${escapeHtml(entry.id)}" data-list="${escapeHtml(listName)}" data-search="${escapeHtml(buildSearchText(entry))}">
+      <article class="entry" data-id="${escapeHtml(entry.id)}" data-lists="${escapeHtml(activeLists.join(","))}" data-search="${escapeHtml(buildSearchText(entry))}">
         <div class="entry-top">
           <h3><a href="${escapeHtml(entry.url)}" target="_blank" rel="noreferrer">${escapeHtml(entry.word)}</a></h3>
           <span class="timestamp">${escapeHtml(formatWhen(entry.updatedAt || entry.lastVisitedAt || entry.createdAt))}</span>
         </div>
         ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
-        ${buildVisitMeta(entry) ? `<p><strong>History:</strong> ${escapeHtml(buildVisitMeta(entry))}</p>` : ""}
-        ${entry.inflection ? `<p><strong>Inflection:</strong> ${escapeHtml(entry.inflection)}</p>` : ""}
+        ${buildVisitMeta(entry) ? `<p class="visit-meta">${escapeHtml(buildVisitMeta(entry))}</p>` : ""}
+        ${entry.inflection ? `<p class="detail"><strong>Inflection:</strong> ${escapeHtml(entry.inflection)}</p>` : ""}
         ${entry.example ? `<blockquote>${escapeHtml(entry.example)}</blockquote>` : ""}
         ${entry.note ? `<p class="note"><strong>Note:</strong> ${escapeHtml(entry.note)}</p>` : ""}
       </article>
@@ -510,9 +503,6 @@
 
   function buildExportHtml(entries, options = {}) {
     const { includeInlineScript = true } = options;
-    const favorites = entries.filter((entry) => entry.favorite);
-    const study = entries.filter((entry) => entry.study);
-    const history = entries.filter((entry) => entry.history);
     const exportedAt = formatWhen(nowIso());
 
     return `<!doctype html>
@@ -523,143 +513,90 @@
   <title>LODVault Export</title>
   <style>
     :root {
-      --bg:         #f0f5f5;
-      --surface:    #ffffff;
-      --surface-2:  #f8fafb;
-      --navy:       #1d3557;
-      --blue:       #457b9d;
-      --blue-hover: #3c6b89;
-      --teal:       #39a7c4;
-      --teal-light: #a8dadc;
-      --teal-pale:  #c9e5e5;
-      --teal-bg:    #edf7f8;
-      --muted:      #5a7a94;
-      --border:     #c9e5e5;
+      color-scheme: dark;
+      --bg:      #0d1c2e;
+      --surface: #132333;
+      --border:  #1e3348;
+      --text:    #ddeef5;
+      --muted:   #5f8fa8;
+      --teal:    #39a7c4;
+      --teal-lt: #a8dadc;
+      --blue:    #457b9d;
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      margin: 0;
+      background: var(--bg); color: var(--text);
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: var(--bg);
-      color: var(--navy);
-      line-height: 1.55;
-      padding: 32px 16px 56px;
+      line-height: 1.55; padding: 32px 20px 56px;
     }
-    main { max-width: 960px; margin: 0 auto; }
-    header { margin-bottom: 24px; }
-    h1 { margin: 0 0 4px; font-size: 2rem; color: var(--navy); }
-    h2 { margin: 0 0 14px; font-size: 1.15rem; color: var(--navy); }
-    p.meta { color: var(--muted); margin: 0; font-size: 14px; }
-    .search-panel {
-      margin-top: 18px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px;
-    }
+    main { max-width: 760px; margin: 0 auto; }
+    .page-header { margin-bottom: 24px; }
+    h1 { font-size: 1.5rem; font-weight: 700; color: #fff; margin-bottom: 3px; }
+    .meta { color: var(--muted); font-size: 13.5px; }
     .search-input {
-      width: 100%;
-      padding: 10px 14px;
-      border: 1px solid var(--teal-pale);
-      border-radius: 8px;
-      font: inherit;
-      font-size: 14px;
-      color: var(--navy);
-      background: var(--surface-2);
+      display: block; width: 100%; margin-top: 14px;
+      padding: 10px 14px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 7px;
+      color: var(--text); font: inherit; font-size: 14px;
     }
-    .search-input:focus { outline: none; border-color: var(--teal); background: #fff; }
-    .search-status { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
-    section { margin-top: 28px; }
+    .search-input::placeholder { color: var(--muted); }
+    .search-input:focus { outline: none; border-color: var(--teal); }
+    .search-status { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .section-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--teal); margin: 24px 0 12px;
+    }
     .entry {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 10px;
+      padding: 14px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;
     }
     .entry[hidden] { display: none; }
     .entry-top {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: baseline;
-      flex-wrap: wrap;
+      display: flex; justify-content: space-between;
+      align-items: flex-start; gap: 12px; flex-wrap: wrap;
     }
-    .entry-top h3 { margin: 0; font-size: 1.05rem; color: var(--navy); }
-    .entry-top a { color: var(--blue); text-decoration: none; }
+    .entry-top h3 { font-size: 1rem; font-weight: 700; color: #fff; }
+    .entry-top a { color: var(--teal-lt); text-decoration: none; }
     .entry-top a:hover { text-decoration: underline; }
-    .timestamp { color: var(--muted); font-size: 12px; }
-    .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
+    .timestamp { color: var(--muted); font-size: 11.5px; white-space: nowrap; flex-shrink: 0; }
+    .chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
     .chip {
-      background: var(--teal-bg);
-      color: var(--blue);
-      border: 1px solid var(--teal-pale);
-      border-radius: 999px;
-      padding: 3px 10px;
-      font-size: 12px;
-      font-weight: 700;
+      padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700;
+      background: rgba(57,167,196,0.12); color: var(--teal-lt); border: 1px solid rgba(57,167,196,0.22);
     }
-    .chip-type { background: #edf7f0; color: #2a6040; border-color: #b2dfc5; }
-    .chip-list-favorite { background: #fef5e0; color: #7a4800; border-color: #f5d68a; }
-    .chip-list-study { background: var(--teal-bg); color: var(--blue); border-color: var(--teal-pale); }
-    .chip-list-history { background: #eef3ff; color: #465da8; border-color: #cfd9ff; }
+    .chip-type         { background: rgba(100,200,140,0.10); color: #7dd4a8;        border-color: rgba(100,200,140,0.20); }
+    .chip-list-favorite{ background: rgba(253,215,120,0.10); color: #e6c560;        border-color: rgba(253,215,120,0.20); }
+    .chip-list-study   { background: rgba(57,167,196,0.12);  color: var(--teal-lt); border-color: rgba(57,167,196,0.22); }
+    .chip-list-history { background: rgba(121,134,203,0.10); color: #9ba8d8;        border-color: rgba(121,134,203,0.20); }
+    .visit-meta, .detail { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
     blockquote {
-      margin: 12px 0 0;
-      padding: 11px 14px;
-      border-left: 3px solid var(--teal);
-      background: var(--teal-bg);
-      border-radius: 8px;
-      color: var(--navy);
-      font-size: 13.5px;
+      margin-top: 10px; padding: 10px 14px;
+      border-left: 3px solid var(--teal); background: rgba(57,167,196,0.07);
+      border-radius: 6px; color: var(--teal-lt); font-size: 13.5px;
     }
     .note {
-      margin: 12px 0 0;
-      padding: 10px 14px;
-      border-left: 3px solid #7986cb;
-      background: #f4f5ff;
-      border-radius: 8px;
-      color: var(--navy);
-      font-size: 13.5px;
+      margin-top: 10px; padding: 10px 14px;
+      border-left: 3px solid #7986cb; background: rgba(121,134,203,0.07);
+      border-radius: 6px; font-size: 13.5px;
     }
-    .empty {
-      background: var(--surface-2);
-      border: 1px dashed var(--border);
-      border-radius: 12px;
-      padding: 18px;
-      color: var(--muted);
-      font-size: 13.5px;
-    }
+    .empty { color: var(--muted); font-size: 13.5px; padding: 16px 0; }
     #search-empty[hidden] { display: none; }
     @media (max-width: 640px) { body { padding: 20px 12px 40px; } }
   </style>
 </head>
 <body>
   <main>
-    <header>
-      <h1>LODVault Export</h1>
-      <p class="meta">Exported ${escapeHtml(exportedAt)} · ${entries.length} saved word${entries.length === 1 ? "" : "s"}</p>
-      <div class="search-panel">
-        <input id="search-input" class="search-input" type="search" placeholder="Search words, type, translation, example, note..." autocomplete="off">
-        <p id="search-status" class="search-status">${entries.length} saved word${entries.length === 1 ? "" : "s"}</p>
-      </div>
-    </header>
+    <div class="page-header">
+      <h1>LODVault</h1>
+      <p class="meta">Exported ${escapeHtml(exportedAt)} &middot; ${entries.length} saved word${entries.length === 1 ? "" : "s"}</p>
+      <input id="search-input" class="search-input" type="search" placeholder="Search words, type, translation, note&hellip;" autocomplete="off">
+      <p id="search-status" class="search-status">${entries.length} saved word${entries.length === 1 ? "" : "s"}</p>
+    </div>
 
-    <div id="search-empty" class="empty" hidden>No matching words found.</div>
+    <p id="search-empty" class="empty" hidden>No words match your search.</p>
 
-    <section>
-      <h2>Favorites (${favorites.length})</h2>
-      ${favorites.length ? favorites.map((entry) => buildEntryMarkup(entry, "favorite")).join("") : '<div class="empty">No favorite words yet.</div>'}
-    </section>
-
-    <section>
-      <h2>Study List (${study.length})</h2>
-      ${study.length ? study.map((entry) => buildEntryMarkup(entry, "study")).join("") : '<div class="empty">No study words yet.</div>'}
-    </section>
-
-    <section>
-      <h2>History (${history.length})</h2>
-      ${history.length ? history.map((entry) => buildEntryMarkup(entry, "history")).join("") : '<div class="empty">No history words yet.</div>'}
-    </section>
+    <p class="section-label">Saved words (${entries.length})</p>
+    ${entries.length ? entries.map((entry) => buildEntryMarkup(entry)).join("") : '<p class="empty">No saved words yet.</p>'}
   </main>
   ${includeInlineScript ? buildExportSearchScriptTag() : ""}
 </body>

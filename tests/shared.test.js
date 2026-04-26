@@ -333,9 +333,9 @@ test("buildExportHtml renders both sections and can skip the inline search scrip
     }
   ], { includeInlineScript: false });
 
-  assert.match(html, /Favorites \(1\)/);
-  assert.match(html, /Study List \(1\)/);
-  assert.match(html, /History \(0\)/);
+  assert.match(html, /Saved words \(2\)/);
   assert.match(html, /HAUS1/);
+  assert.match(html, /chip-list-favorite/);
+  assert.match(html, /chip-list-study/);
   assert.doesNotMatch(html, /input.addEventListener\('input', applySearch\)/);
 });
