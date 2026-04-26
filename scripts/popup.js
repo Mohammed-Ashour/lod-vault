@@ -8,6 +8,20 @@ const state = {
 
 const elements = {};
 
+function handleActiveTabChange() {
+  refreshCurrentPage();
+  renderSavedList();
+}
+
+function handleTabUpdated(tabId, changeInfo, tab) {
+  if (!changeInfo.url && changeInfo.status !== "complete") return;
+  if (!tab?.active) return;
+  if (state.currentTabId && tabId !== state.currentTabId && !changeInfo.url) return;
+
+  refreshCurrentPage();
+  renderSavedList();
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   elements.currentPageCard = document.getElementById("current-page-card");
   elements.currentWord = document.getElementById("current-word");
@@ -49,10 +63,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.savedList.addEventListener("click", onSavedListClick);
   elements.savedList.addEventListener("change", onSavedListChange);
 
+  chrome.tabs.onActivated.addListener(handleActiveTabChange);
+  chrome.tabs.onUpdated.addListener(handleTabUpdated);
+
   state.autoMode = await LodWrapperStore.getAutoMode();
   renderAutoMode();
   await refreshCurrentPage();
   await renderSavedList();
+});
+
+window.addEventListener("unload", () => {
+  chrome.tabs.onActivated.removeListener(handleActiveTabChange);
+  chrome.tabs.onUpdated.removeListener(handleTabUpdated);
 });
 
 function setCurrentButtonState(button, active, kind) {
