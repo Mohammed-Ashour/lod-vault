@@ -42,7 +42,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.searchInput = document.getElementById("search-input");
   elements.searchStatus = document.getElementById("search-status");
   elements.savedList = document.getElementById("saved-list");
-  elements.preSearch = document.getElementById("pre-search");
   elements.emptyState = document.getElementById("empty-state");
   elements.noResults = document.getElementById("no-results");
   elements.favoriteCount = document.getElementById("favorite-count");
@@ -320,7 +319,6 @@ function renderList() {
   // no query — hide list
   if (!hasQuery) {
     elements.savedList.innerHTML = "";
-    elements.preSearch.classList.add("is-hidden");
     elements.emptyState.classList.toggle("is-hidden", entries.length > 0);
     elements.noResults.classList.add("is-hidden");
     return;
