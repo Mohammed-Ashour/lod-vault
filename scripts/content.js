@@ -51,7 +51,21 @@ function getBanner() {
   return document.getElementById(BANNER_ID);
 }
 
+function wordFromUrl() {
+  try {
+    const params = new URLSearchParams(location.search);
+    return cleanWord(params.get("lemma"));
+  } catch {
+    return "";
+  }
+}
+
 function extractWord() {
+  // The URL's ?lemma= param is always in sync with the URL itself,
+  // so it is safe during SPA navigation when DOM hasn't updated yet.
+  const lemma = wordFromUrl();
+  if (lemma) return lemma;
+
   const ogTitle = cleanWord(document.querySelector('meta[property="og:title"], meta[name="og:title"]')?.content);
   if (ogTitle) {
     return cleanWord(ogTitle.replace(/[„”"]/g, "").replace(/\s*-\s*LOD$/i, ""));
@@ -66,6 +80,16 @@ function extractWord() {
   if (heading) return heading;
 
   return sanitizeHeading(collectText(getHeadingElement()));
+}
+
+function wordMatchesUrlId(word, id) {
+  if (!word || !id) return false;
+  const normalize = (value) => String(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u00df/g, "ss");
+  return normalize(id).startsWith(normalize(word));
 }
 
 function addTranslationValue(translations, lang, value) {
@@ -157,6 +181,12 @@ function extractCurrentEntry() {
   const id = LodWrapperStore.getIdFromUrl(location.href);
   const word = extractWord();
   if (!id || !word) return null;
+
+  // Defend against SPA navigation race: URL has updated but DOM hasn't.
+  // If the URL id and the extracted word disagree, the data is stale —
+  // skip this round and wait for the next refresh.
+  const lemma = wordFromUrl();
+  if (!lemma && !wordMatchesUrlId(word, id)) return null;
 
   return {
     id,
@@ -440,6 +470,7 @@ function installLocationHooks() {
   window.addEventListener("hashchange", notifyLocationChange);
   window.addEventListener("lod-wrapper:locationchange", () => {
     lastRenderKey = "";
+    lastAutoRecordKey = "";
     scheduleRefresh(0);
   });
 }
