@@ -9,9 +9,12 @@
 <body>
   <main class="app">
     <header class="header">
-      <div>
+      <div class="header-title">
         <p class="eyebrow">LODVault</p>
-        <h1>Saved words</h1>
+        <div class="title-row">
+          <h1>Saved words</h1>
+          <span id="auto-mode-badge" class="auto-badge is-hidden">Auto</span>
+        </div>
       </div>
       <div class="header-actions">
         <button id="open-flashcards" class="secondary-button secondary-button-light">Flashcards</button>
@@ -24,15 +27,15 @@
       <div class="auto-mode-copy">
         <p class="section-label">Auto mode</p>
         <h2 id="auto-mode-title">Auto mode is off</h2>
-        <p id="auto-mode-meta" class="muted">Turn this on to automatically record every LOD word page you open into Study and History.</p>
+        <p id="auto-mode-meta" class="muted">Turn on to automatically record every LOD word page you visit into Study and History.</p>
       </div>
-      <button id="toggle-auto-mode" class="pill-button auto-mode-toggle">Turn on auto mode</button>
+      <button id="toggle-auto-mode" class="auto-mode-toggle">Turn on</button>
     </section>
 
     <section id="current-page-card" class="card current-page">
       <p class="section-label">Save current word</p>
       <h2 id="current-word">Open a LOD word page</h2>
-      <p id="current-meta" class="muted">Go to a page like <code>lod.lu/artikel/...</code> to save it as a favorite or study word.</p>
+      <p id="current-meta" class="muted">Go to a page like <code>lod.lu/artikel/…</code> to save it.</p>
       <div class="actions">
         <button id="current-favorite" class="pill-button" disabled>☆ Favorite</button>
         <button id="current-study" class="pill-button" disabled>+ Study list</button>
@@ -59,7 +62,7 @@
     </section>
 
     <section class="card tools-card">
-      <input id="search-input" class="search-input" type="search" placeholder="Search saved words, type, translation, note..." autocomplete="off">
+      <input id="search-input" class="search-input" type="search" placeholder="Search words, type, translation, note…" autocomplete="off">
       <div class="tools-row">
         <button id="export-json" class="tool-button">Export JSON</button>
         <button id="import-json" class="tool-button">Import JSON</button>

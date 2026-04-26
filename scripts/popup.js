@@ -14,6 +14,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.currentMeta = document.getElementById("current-meta");
   elements.currentFavorite = document.getElementById("current-favorite");
   elements.currentStudy = document.getElementById("current-study");
+  elements.autoModeBadge = document.getElementById("auto-mode-badge");
+  elements.autoModeCard = document.querySelector(".auto-mode-card");
   elements.autoModeTitle = document.getElementById("auto-mode-title");
   elements.autoModeMeta = document.getElementById("auto-mode-meta");
   elements.autoModeToggle = document.getElementById("toggle-auto-mode");
@@ -90,10 +92,16 @@ function renderAutoMode() {
 
   elements.autoModeTitle.textContent = state.autoMode ? "Auto mode is on" : "Auto mode is off";
   elements.autoModeMeta.textContent = state.autoMode
-    ? `Visited LOD words are added to Study and History automatically. ${historyCount} word${historyCount === 1 ? "" : "s"} in history.`
-    : "Turn this on to automatically record every LOD word page you open into Study and History.";
-  elements.autoModeToggle.textContent = state.autoMode ? "Turn off auto mode" : "Turn on auto mode";
+    ? `Every LOD word page you visit is added to Study and History. ${historyCount} word${historyCount === 1 ? "" : "s"} in history.`
+    : "Turn on to automatically record every LOD word page you visit into Study and History.";
+  elements.autoModeToggle.textContent = state.autoMode ? "Turn off" : "Turn on";
   elements.autoModeToggle.classList.toggle("is-active", state.autoMode);
+
+  // header live badge
+  elements.autoModeBadge.classList.toggle("is-hidden", !state.autoMode);
+
+  // card teal wash
+  elements.autoModeCard.classList.toggle("is-auto-on", state.autoMode);
 }
 
 function renderCurrentPageCard(savedEntry) {
