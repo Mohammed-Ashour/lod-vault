@@ -78,6 +78,24 @@ function attachPreviewSearch() {
   applySearch();
 }
 
+function previewRemoveLabel(listName) {
+  if (listName === "favorite") return "Remove from favorites";
+  if (listName === "study") return "Remove from study list";
+  return "Remove from history";
+}
+
+async function handlePreviewRemove(id, listName) {
+  const savedEntry = await LodWrapperStore.getEntry(id);
+  if (!savedEntry) return;
+
+  if (listName === "history") {
+    await LodWrapperStore.removeFromHistory(id);
+    return;
+  }
+
+  await LodWrapperStore.toggleList(savedEntry, listName);
+}
+
 function attachRemoveButtons(doc) {
   for (const entryElement of doc.querySelectorAll(".entry[data-id][data-list]")) {
     if (entryElement.querySelector(".preview-entry-actions")) continue;
@@ -86,14 +104,12 @@ function attachRemoveButtons(doc) {
     const button = doc.createElement("button");
     button.type = "button";
     button.className = "preview-remove-button";
-    button.textContent = listName === "favorite" ? "Remove from favorites" : "Remove from study list";
+    button.textContent = previewRemoveLabel(listName);
 
     button.addEventListener("click", async () => {
       button.disabled = true;
       try {
-        const savedEntry = await LodWrapperStore.getEntry(entryElement.dataset.id);
-        if (!savedEntry) return;
-        await LodWrapperStore.toggleList(savedEntry, listName);
+        await handlePreviewRemove(entryElement.dataset.id, listName);
         await renderPreview();
       } finally {
         button.disabled = false;

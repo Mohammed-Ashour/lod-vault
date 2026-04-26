@@ -4,6 +4,7 @@ let refreshDebounce = null;
 let domObserver = null;
 let locationHooksInstalled = false;
 let lastRenderKey = "";
+let lastAutoRecordKey = "";
 
 function cleanWord(value) {
   return (value || "")
@@ -173,10 +174,16 @@ function isExtensionContextInvalidated(error) {
 
 function statusText(savedEntry) {
   if (!savedEntry) return "Not saved yet";
-  if (savedEntry.favorite && savedEntry.study) return "Saved in Favorites and Study";
-  if (savedEntry.favorite) return "Saved in Favorites";
-  if (savedEntry.study) return "Saved in Study";
-  return "Not saved yet";
+
+  const labels = [];
+  if (savedEntry.favorite) labels.push("Favorites");
+  if (savedEntry.study) labels.push("Study");
+  if (savedEntry.history) labels.push("History");
+
+  if (!labels.length) return "Not saved yet";
+  if (labels.length === 1) return `Saved in ${labels[0]}`;
+  if (labels.length === 2) return `Saved in ${labels[0]} and ${labels[1]}`;
+  return `Saved in ${labels[0]}, ${labels[1]}, and ${labels[2]}`;
 }
 
 function infoText(entry) {
@@ -266,7 +273,10 @@ function buildRenderKey(entry, savedEntry) {
   return JSON.stringify({
     entry,
     favorite: Boolean(savedEntry?.favorite),
-    study: Boolean(savedEntry?.study)
+    study: Boolean(savedEntry?.study),
+    history: Boolean(savedEntry?.history),
+    visitCount: Number(savedEntry?.visitCount || 0),
+    lastVisitedAt: savedEntry?.lastVisitedAt || ""
   });
 }
 
@@ -298,6 +308,22 @@ function applyState(savedEntry, sourceEntry = extractCurrentEntry()) {
   }
 }
 
+async function maybeAutoRecord(entry, savedEntry) {
+  const autoMode = await LodWrapperStore.getAutoMode();
+  if (!autoMode) {
+    lastAutoRecordKey = "";
+    return savedEntry;
+  }
+
+  const autoRecordKey = `${entry.id}|${entry.url}`;
+  if (autoRecordKey === lastAutoRecordKey) {
+    return savedEntry;
+  }
+
+  lastAutoRecordKey = autoRecordKey;
+  return LodWrapperStore.recordAutoVisit(entry);
+}
+
 async function refreshUI() {
   if (contextInvalidated) return;
 
@@ -308,7 +334,8 @@ async function refreshUI() {
       return;
     }
 
-    const savedEntry = await LodWrapperStore.getEntry(entry.id);
+    let savedEntry = await LodWrapperStore.getEntry(entry.id);
+    savedEntry = await maybeAutoRecord(entry, savedEntry);
     applyState(savedEntry, entry);
   } catch (error) {
     if (isExtensionContextInvalidated(error)) {
@@ -403,6 +430,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "lod-wrapper:sync-state") {
     lastRenderKey = "";
     applyState(message.entry || null, extractCurrentEntry());
+    sendResponse({ ok: true });
+    return;
+  }
+
+  if (message?.type === "lod-wrapper:refresh-ui") {
+    lastRenderKey = "";
+    if (typeof message.autoRecordKey === "string") {
+      lastAutoRecordKey = message.autoRecordKey;
+    } else if (message.resetAutoCapture) {
+      lastAutoRecordKey = "";
+    }
+    scheduleRefresh(0);
     sendResponse({ ok: true });
     return;
   }

@@ -113,6 +113,7 @@ body {
 .card { padding: 14px; }
 .empty-state { padding: 18px; }
 
+.auto-mode-card,
 .current-page,
 .summary-row,
 .tools-card {
@@ -134,10 +135,35 @@ body {
   font-size: 11.5px;
 }
 
+/* ── auto mode ───────────────────────────────────── */
+.auto-mode-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.auto-mode-copy {
+  min-width: 210px;
+  flex: 1;
+}
+
+.auto-mode-copy h2 {
+  margin: 4px 0 0;
+  font-size: 1.05rem;
+  color: var(--navy);
+}
+
+.auto-mode-toggle {
+  min-width: 148px;
+  flex: 0 0 auto;
+}
+
 /* ── summary row ─────────────────────────────────── */
 .summary-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 
@@ -335,6 +361,12 @@ body {
   border: 1px solid rgba(57, 167, 196, 0.3);
 }
 
+.badge-history {
+  background: rgba(121, 134, 203, 0.14);
+  color: #4253a0;
+  border: 1px solid rgba(121, 134, 203, 0.28);
+}
+
 /* ── meaning chips ───────────────────────────────── */
 .item-meta,
 .item-example,
@@ -388,4 +420,10 @@ textarea:disabled,
 input:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+@media (max-width: 460px) {
+  .summary-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }

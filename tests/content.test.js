@@ -74,6 +74,13 @@ test("applyState injects the banner under the heading and updates button state",
   assert.equal(studyButton.classList.contains("is-active"), false);
 });
 
+test("statusText includes history when a word was auto-recorded", () => {
+  const { api } = loadContentScript({ html: samplePageHtml() });
+
+  assert.equal(api.statusText({ study: true, history: true }), "Saved in Study and History");
+  assert.equal(api.statusText({ favorite: true, study: true, history: true }), "Saved in Favorites, Study, and History");
+});
+
 test("message listener returns the extracted entry for popup requests", () => {
   const { getMessageListener } = loadContentScript({ html: samplePageHtml() });
   const listener = getMessageListener();

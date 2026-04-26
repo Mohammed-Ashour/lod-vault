@@ -108,6 +108,8 @@ function loadContentScript({
       return match ? decodeURIComponent(match[1]) : "";
     },
     getEntry: async () => null,
+    getAutoMode: async () => false,
+    recordAutoVisit: async (entry) => ({ ...entry, study: true, history: true, visitCount: 1 }),
     toggleList: async (entry, listName) => ({ ...entry, [listName]: true }),
     ...storeOverrides
   };

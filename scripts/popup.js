@@ -2,7 +2,8 @@ const state = {
   currentTabId: null,
   currentEntry: null,
   savedEntries: [],
-  searchQuery: ""
+  searchQuery: "",
+  autoMode: false
 };
 
 const elements = {};
@@ -13,6 +14,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.currentMeta = document.getElementById("current-meta");
   elements.currentFavorite = document.getElementById("current-favorite");
   elements.currentStudy = document.getElementById("current-study");
+  elements.autoModeTitle = document.getElementById("auto-mode-title");
+  elements.autoModeMeta = document.getElementById("auto-mode-meta");
+  elements.autoModeToggle = document.getElementById("toggle-auto-mode");
   elements.openFlashcards = document.getElementById("open-flashcards");
   elements.openPreview = document.getElementById("open-preview");
   elements.exportHtml = document.getElementById("export-html");
@@ -26,10 +30,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.noResults = document.getElementById("no-results");
   elements.favoriteCount = document.getElementById("favorite-count");
   elements.studyCount = document.getElementById("study-count");
+  elements.historyCount = document.getElementById("history-count");
   elements.totalCount = document.getElementById("total-count");
 
   elements.currentFavorite.addEventListener("click", () => toggleCurrentPage("favorite"));
   elements.currentStudy.addEventListener("click", () => toggleCurrentPage("study"));
+  elements.autoModeToggle.addEventListener("click", toggleAutoMode);
   elements.openFlashcards.addEventListener("click", openFlashcards);
   elements.openPreview.addEventListener("click", openPreview);
   elements.exportHtml.addEventListener("click", exportHtml);
@@ -40,6 +46,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.savedList.addEventListener("click", onSavedListClick);
   elements.savedList.addEventListener("change", onSavedListChange);
 
+  state.autoMode = await LodWrapperStore.getAutoMode();
+  renderAutoMode();
   await refreshCurrentPage();
   await renderSavedList();
 });
@@ -77,10 +85,23 @@ function meaningMarkup(entry) {
   return parts.map((part) => `<span class="meaning-chip">${LodWrapperStore.escapeHtml(part)}</span>`).join("");
 }
 
+function renderAutoMode() {
+  const historyCount = state.savedEntries.filter((entry) => entry.history).length;
+
+  elements.autoModeTitle.textContent = state.autoMode ? "Auto mode is on" : "Auto mode is off";
+  elements.autoModeMeta.textContent = state.autoMode
+    ? `Visited LOD words are added to Study and History automatically. ${historyCount} word${historyCount === 1 ? "" : "s"} in history.`
+    : "Turn this on to automatically record every LOD word page you open into Study and History.";
+  elements.autoModeToggle.textContent = state.autoMode ? "Turn off auto mode" : "Turn on auto mode";
+  elements.autoModeToggle.classList.toggle("is-active", state.autoMode);
+}
+
 function renderCurrentPageCard(savedEntry) {
   if (!state.currentEntry) {
     elements.currentWord.textContent = "Open a LOD word page";
-    elements.currentMeta.textContent = "This works on pages like https://lod.lu/artikel/SOZIALIST1. You can also use the save banner shown directly under the word title.";
+    elements.currentMeta.textContent = state.autoMode
+      ? "Auto mode is on. Open a page like https://lod.lu/artikel/SOZIALIST1 and it will be added to Study and History automatically."
+      : "This works on pages like https://lod.lu/artikel/SOZIALIST1. You can also use the save banner shown directly under the word title.";
     elements.currentFavorite.disabled = true;
     elements.currentStudy.disabled = true;
     setCurrentButtonState(elements.currentFavorite, false, "favorite");
@@ -92,7 +113,9 @@ function renderCurrentPageCard(savedEntry) {
   const metaParts = [entry.pos, meaningText(entry)].filter(Boolean);
 
   elements.currentWord.textContent = state.currentEntry.word;
-  elements.currentMeta.textContent = metaParts.join(" · ") || "Save this word for later.";
+  elements.currentMeta.textContent = metaParts.join(" · ") || (state.autoMode
+    ? "Auto mode will add this word to Study and History while you browse."
+    : "Save this word for later.");
   elements.currentFavorite.disabled = false;
   elements.currentStudy.disabled = false;
   setCurrentButtonState(elements.currentFavorite, Boolean(savedEntry?.favorite), "favorite");
@@ -125,6 +148,42 @@ async function refreshCurrentPage() {
   renderCurrentPageCard(savedEntry);
 }
 
+async function notifyCurrentTabAboutAutoModeChange(options = {}) {
+  if (!state.currentTabId) return;
+
+  try {
+    await chrome.tabs.sendMessage(state.currentTabId, {
+      type: "lod-wrapper:refresh-ui",
+      ...options
+    });
+  } catch {
+    // Ignore if there is no content script on the current tab.
+  }
+}
+
+async function toggleAutoMode() {
+  elements.autoModeToggle.disabled = true;
+
+  try {
+    state.autoMode = await LodWrapperStore.setAutoMode(!state.autoMode);
+    renderAutoMode();
+
+    if (state.autoMode && state.currentEntry?.id && state.currentEntry?.word) {
+      await LodWrapperStore.recordAutoVisit(state.currentEntry);
+      await notifyCurrentTabAboutAutoModeChange({
+        autoRecordKey: `${state.currentEntry.id}|${state.currentEntry.url}`
+      });
+    } else {
+      await notifyCurrentTabAboutAutoModeChange({ resetAutoCapture: true });
+    }
+
+    await refreshCurrentPage();
+    await renderSavedList();
+  } finally {
+    elements.autoModeToggle.disabled = false;
+  }
+}
+
 async function toggleCurrentPage(listName) {
   if (!state.currentTabId || !state.currentEntry) return;
 
@@ -151,9 +210,11 @@ async function toggleCurrentPage(listName) {
 function renderSummary(entries) {
   const favoriteCount = entries.filter((entry) => entry.favorite).length;
   const studyCount = entries.filter((entry) => entry.study).length;
+  const historyCount = entries.filter((entry) => entry.history).length;
 
   elements.favoriteCount.textContent = String(favoriteCount);
   elements.studyCount.textContent = String(studyCount);
+  elements.historyCount.textContent = String(historyCount);
   elements.totalCount.textContent = String(entries.length);
 }
 
@@ -165,7 +226,13 @@ function formatSearchStatus(filteredCount, totalCount) {
 }
 
 function entrySubline(entry) {
-  return entry.pos ? LodWrapperStore.escapeHtml(entry.pos) : "";
+  const parts = [];
+  if (entry.pos) parts.push(entry.pos);
+  if (entry.history) {
+    const count = entry.visitCount || 1;
+    parts.push(`Visited ${count} time${count === 1 ? "" : "s"}`);
+  }
+  return parts.length ? LodWrapperStore.escapeHtml(parts.join(" · ")) : "";
 }
 
 function filteredEntries(entries) {
@@ -175,6 +242,10 @@ function filteredEntries(entries) {
 }
 
 function buildSavedItemMarkup(entry) {
+  const lastVisitedText = entry.history && entry.lastVisitedAt
+    ? `<p class="item-meta">Last visited ${LodWrapperStore.escapeHtml(LodWrapperStore.formatWhen(entry.lastVisitedAt))}</p>`
+    : "";
+
   return `
     <article class="saved-item" data-id="${LodWrapperStore.escapeHtml(entry.id)}">
       <div class="saved-item-top">
@@ -182,9 +253,11 @@ function buildSavedItemMarkup(entry) {
         <div class="badges">
           ${entry.favorite ? '<span class="badge badge-favorite">Favorite</span>' : ""}
           ${entry.study ? '<span class="badge badge-study">Study</span>' : ""}
+          ${entry.history ? '<span class="badge badge-history">History</span>' : ""}
         </div>
       </div>
       ${entrySubline(entry) ? `<p class="item-meta">${entrySubline(entry)}</p>` : ""}
+      ${lastVisitedText}
       ${meaningMarkup(entry) ? `<div class="item-meanings">${meaningMarkup(entry)}</div>` : ""}
       ${entry.example ? `<p class="item-example">${LodWrapperStore.escapeHtml(entry.example)}</p>` : ""}
       <div class="note-section">
@@ -204,6 +277,7 @@ async function renderSavedList() {
   const entries = await LodWrapperStore.getEntries();
   state.savedEntries = entries;
   renderSummary(entries);
+  renderAutoMode();
 
   const visibleEntries = filteredEntries(entries);
   elements.searchStatus.textContent = formatSearchStatus(visibleEntries.length, entries.length);
@@ -324,7 +398,7 @@ async function importJsonFile(event) {
     await LodWrapperStore.importJson(text);
     await renderSavedList();
     await refreshCurrentPage();
-  } catch (error) {
+  } catch {
     elements.searchStatus.textContent = "Could not import that JSON file.";
   } finally {
     event.target.value = "";

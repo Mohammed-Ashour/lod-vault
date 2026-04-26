@@ -30,6 +30,7 @@
 | | |
 |---|---|
 | 📌 **Save words** | Favorite or add to Study directly from any LOD article page |
+| 🤖 **Auto mode** | Automatically record every visited LOD article into Study and History |
 | 📝 **Notes** | Write your own note for each saved word |
 | 🔍 **Search** | Filter your saved words in the popup |
 | 🃏 **Flashcards** | Review your saved words with a simple flashcard mode |
@@ -82,6 +83,7 @@ The **LODVault** icon will appear in your browser toolbar.
 
 ### Manage your words
 - Click the **LODVault icon** in your browser toolbar to open the popup
+- Turn **Auto mode** on if you want every visited LOD article to be added to **Study** and **History** automatically
 - Search, add notes, toggle lists, or delete words from there
 
 ### Study with flashcards

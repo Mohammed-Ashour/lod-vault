@@ -1,6 +1,10 @@
 (() => {
   const STORAGE_KEY = "lodVault.entries";
   const LEGACY_STORAGE_KEY = "lodWrapper.entries";
+  const SETTINGS_KEY = "lodVault.settings";
+  const DEFAULT_SETTINGS = {
+    autoMode: false
+  };
 
   function nowIso() {
     return new Date().toISOString();
@@ -32,6 +36,11 @@
     return result;
   }
 
+  function normalizeVisitCount(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
+  }
+
   function isExtensionContextInvalidated(error) {
     return String(error || "").includes("Extension context invalidated");
   }
@@ -53,9 +62,16 @@
       translations: cleanTranslations(entry.translations),
       favorite: Boolean(entry.favorite),
       study: Boolean(entry.study),
+      history: Boolean(entry.history),
+      visitCount: normalizeVisitCount(entry.visitCount),
+      lastVisitedAt: cleanText(entry.lastVisitedAt),
       createdAt: cleanText(entry.createdAt),
       updatedAt: cleanText(entry.updatedAt)
     };
+  }
+
+  function shouldKeepEntry(entry) {
+    return Boolean(entry?.favorite || entry?.study || entry?.history);
   }
 
   function mergeEntry(existing, incoming) {
@@ -75,6 +91,9 @@
       },
       favorite: Boolean(current.favorite),
       study: Boolean(current.study),
+      history: Boolean(current.history),
+      visitCount: normalizeVisitCount(current.visitCount || next.visitCount),
+      lastVisitedAt: current.lastVisitedAt || next.lastVisitedAt,
       createdAt: current.createdAt || next.createdAt || nowIso(),
       updatedAt: nowIso()
     };
@@ -83,7 +102,21 @@
       delete merged.translations;
     }
 
+    if (!merged.visitCount) {
+      delete merged.visitCount;
+    }
+
+    if (!merged.lastVisitedAt) {
+      delete merged.lastVisitedAt;
+    }
+
     return merged;
+  }
+
+  function countStoredEntries(entryMap) {
+    return Object.values(entryMap || {})
+      .map(normalizeEntry)
+      .filter((entry) => entry.id && entry.word && shouldKeepEntry(entry)).length;
   }
 
   async function getEntryMap() {
@@ -120,14 +153,52 @@
     }
   }
 
+  async function getSettings() {
+    try {
+      const data = await chrome.storage.local.get([SETTINGS_KEY]);
+      return {
+        ...DEFAULT_SETTINGS,
+        ...(data[SETTINGS_KEY] || {})
+      };
+    } catch (error) {
+      if (isExtensionContextInvalidated(error)) {
+        return { ...DEFAULT_SETTINGS };
+      }
+      throw error;
+    }
+  }
+
+  async function getAutoMode() {
+    const settings = await getSettings();
+    return Boolean(settings.autoMode);
+  }
+
+  async function setAutoMode(enabled) {
+    const nextSettings = {
+      ...(await getSettings()),
+      autoMode: Boolean(enabled)
+    };
+
+    try {
+      await chrome.storage.local.set({ [SETTINGS_KEY]: nextSettings });
+    } catch (error) {
+      if (isExtensionContextInvalidated(error)) {
+        throw createRefreshPageError();
+      }
+      throw error;
+    }
+
+    return nextSettings.autoMode;
+  }
+
   async function getEntries() {
     const entryMap = await getEntryMap();
     return Object.values(entryMap)
       .map(normalizeEntry)
-      .filter((entry) => entry.id && entry.word)
+      .filter((entry) => entry.id && entry.word && shouldKeepEntry(entry))
       .sort((a, b) => {
-        const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
-        const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        const aTime = new Date(a.updatedAt || a.lastVisitedAt || a.createdAt || 0).getTime();
+        const bTime = new Date(b.updatedAt || b.lastVisitedAt || b.createdAt || 0).getTime();
         return bTime - aTime;
       });
   }
@@ -135,7 +206,8 @@
   async function getEntry(id) {
     if (!id) return null;
     const entryMap = await getEntryMap();
-    return entryMap[id] ? normalizeEntry(entryMap[id]) : null;
+    const entry = entryMap[id] ? normalizeEntry(entryMap[id]) : null;
+    return entry && shouldKeepEntry(entry) ? entry : null;
   }
 
   async function toggleList(entry, listName) {
@@ -154,15 +226,67 @@
 
     merged.favorite = Boolean(existing?.favorite);
     merged.study = Boolean(existing?.study);
+    merged.history = Boolean(existing?.history);
+    merged.visitCount = normalizeVisitCount(existing?.visitCount);
+    merged.lastVisitedAt = cleanText(existing?.lastVisitedAt);
     merged[listName] = !merged[listName];
 
-    if (!merged.favorite && !merged.study) {
+    if (!shouldKeepEntry(merged)) {
       delete entryMap[normalized.id];
       await saveEntryMap(entryMap);
       return null;
     }
 
     entryMap[normalized.id] = merged;
+    await saveEntryMap(entryMap);
+    return normalizeEntry(merged);
+  }
+
+  async function recordAutoVisit(entry) {
+    const normalized = normalizeEntry(entry);
+    if (!normalized.id || !normalized.word) {
+      throw new Error("Cannot save an empty entry.");
+    }
+
+    const entryMap = await getEntryMap();
+    const existing = entryMap[normalized.id];
+    const merged = mergeEntry(existing, normalized);
+    const visitedAt = nowIso();
+
+    merged.favorite = Boolean(existing?.favorite);
+    merged.study = true;
+    merged.history = true;
+    merged.visitCount = normalizeVisitCount(existing?.visitCount) + 1;
+    merged.lastVisitedAt = visitedAt;
+    merged.updatedAt = visitedAt;
+    merged.createdAt = merged.createdAt || visitedAt;
+
+    entryMap[normalized.id] = merged;
+    await saveEntryMap(entryMap);
+    return normalizeEntry(merged);
+  }
+
+  async function removeFromHistory(id) {
+    if (!id) return null;
+
+    const entryMap = await getEntryMap();
+    const existing = entryMap[id];
+    if (!existing) return null;
+
+    const merged = mergeEntry(existing, existing);
+    merged.favorite = Boolean(existing.favorite);
+    merged.study = Boolean(existing.study);
+    merged.history = false;
+    delete merged.visitCount;
+    delete merged.lastVisitedAt;
+
+    if (!shouldKeepEntry(merged)) {
+      delete entryMap[id];
+      await saveEntryMap(entryMap);
+      return null;
+    }
+
+    entryMap[id] = merged;
     await saveEntryMap(entryMap);
     return normalizeEntry(merged);
   }
@@ -179,6 +303,9 @@
     merged.note = cleanText(note);
     merged.favorite = Boolean(existing.favorite);
     merged.study = Boolean(existing.study);
+    merged.history = Boolean(existing.history);
+    merged.visitCount = normalizeVisitCount(existing.visitCount);
+    merged.lastVisitedAt = cleanText(existing.lastVisitedAt);
     entryMap[id] = merged;
     await saveEntryMap(entryMap);
     return normalizeEntry(merged);
@@ -231,19 +358,32 @@
     for (const rawEntry of incomingEntries) {
       const incoming = normalizeEntry(rawEntry);
       if (!incoming.id || !incoming.word) continue;
-      if (!incoming.favorite && !incoming.study) continue;
+      if (!shouldKeepEntry(incoming)) continue;
 
       const existing = entryMap[incoming.id];
       const merged = mergeEntry(existing, incoming);
       merged.favorite = Boolean(existing?.favorite) || Boolean(incoming.favorite);
       merged.study = Boolean(existing?.study) || Boolean(incoming.study);
+      merged.history = Boolean(existing?.history) || Boolean(incoming.history);
+      merged.visitCount = merged.history
+        ? Math.max(normalizeVisitCount(existing?.visitCount), normalizeVisitCount(incoming.visitCount), 1)
+        : 0;
+      merged.lastVisitedAt = incoming.lastVisitedAt || cleanText(existing?.lastVisitedAt);
       merged.note = incoming.note || merged.note;
+
+      if (!merged.visitCount) {
+        delete merged.visitCount;
+      }
+      if (!merged.lastVisitedAt) {
+        delete merged.lastVisitedAt;
+      }
+
       entryMap[incoming.id] = merged;
       imported += 1;
     }
 
     await saveEntryMap(entryMap);
-    return { imported, total: Object.keys(entryMap).length };
+    return { imported, total: countStoredEntries(entryMap) };
   }
 
   function downloadTextFile(filename, content, mimeType = "text/plain") {
@@ -279,6 +419,19 @@
     }
   }
 
+  function buildVisitMeta(entry) {
+    if (!entry.history) return "";
+
+    const parts = [];
+    const visitCount = normalizeVisitCount(entry.visitCount) || 1;
+    parts.push(`Visited ${visitCount} time${visitCount === 1 ? "" : "s"}`);
+    if (entry.lastVisitedAt) {
+      parts.push(`Last visited ${formatWhen(entry.lastVisitedAt)}`);
+    }
+
+    return parts.join(" · ");
+  }
+
   function buildEntryMarkup(entry, listName = "") {
     const chips = [];
     const translationPairs = [
@@ -301,6 +454,10 @@
       chips.push('<span class="chip chip-list chip-list-study">Study</span>');
     }
 
+    if (entry.history) {
+      chips.push('<span class="chip chip-list chip-list-history">History</span>');
+    }
+
     for (const [key, label] of translationPairs) {
       if (entry.translations?.[key]) {
         chips.push(`<span class="chip">${label}: ${escapeHtml(entry.translations[key])}</span>`);
@@ -311,9 +468,10 @@
       <article class="entry" data-id="${escapeHtml(entry.id)}" data-list="${escapeHtml(listName)}" data-search="${escapeHtml(buildSearchText(entry))}">
         <div class="entry-top">
           <h3><a href="${escapeHtml(entry.url)}" target="_blank" rel="noreferrer">${escapeHtml(entry.word)}</a></h3>
-          <span class="timestamp">${escapeHtml(formatWhen(entry.updatedAt || entry.createdAt))}</span>
+          <span class="timestamp">${escapeHtml(formatWhen(entry.updatedAt || entry.lastVisitedAt || entry.createdAt))}</span>
         </div>
         ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
+        ${buildVisitMeta(entry) ? `<p><strong>History:</strong> ${escapeHtml(buildVisitMeta(entry))}</p>` : ""}
         ${entry.inflection ? `<p><strong>Inflection:</strong> ${escapeHtml(entry.inflection)}</p>` : ""}
         ${entry.example ? `<blockquote>${escapeHtml(entry.example)}</blockquote>` : ""}
         ${entry.note ? `<p class="note"><strong>Note:</strong> ${escapeHtml(entry.note)}</p>` : ""}
@@ -354,6 +512,7 @@
     const { includeInlineScript = true } = options;
     const favorites = entries.filter((entry) => entry.favorite);
     const study = entries.filter((entry) => entry.study);
+    const history = entries.filter((entry) => entry.history);
     const exportedAt = formatWhen(nowIso());
 
     return `<!doctype html>
@@ -443,6 +602,7 @@
     .chip-type { background: #edf7f0; color: #2a6040; border-color: #b2dfc5; }
     .chip-list-favorite { background: #fef5e0; color: #7a4800; border-color: #f5d68a; }
     .chip-list-study { background: var(--teal-bg); color: var(--blue); border-color: var(--teal-pale); }
+    .chip-list-history { background: #eef3ff; color: #465da8; border-color: #cfd9ff; }
     blockquote {
       margin: 12px 0 0;
       padding: 11px 14px;
@@ -495,6 +655,11 @@
       <h2>Study List (${study.length})</h2>
       ${study.length ? study.map((entry) => buildEntryMarkup(entry, "study")).join("") : '<div class="empty">No study words yet.</div>'}
     </section>
+
+    <section>
+      <h2>History (${history.length})</h2>
+      ${history.length ? history.map((entry) => buildEntryMarkup(entry, "history")).join("") : '<div class="empty">No history words yet.</div>'}
+    </section>
   </main>
   ${includeInlineScript ? buildExportSearchScriptTag() : ""}
 </body>
@@ -503,11 +668,18 @@
 
   globalThis.LodWrapperStore = {
     STORAGE_KEY,
+    LEGACY_STORAGE_KEY,
+    SETTINGS_KEY,
     getIdFromUrl,
     normalizeEntry,
+    getSettings,
+    getAutoMode,
+    setAutoMode,
     getEntries,
     getEntry,
     toggleList,
+    recordAutoVisit,
+    removeFromHistory,
     saveNote,
     removeEntry,
     buildSearchText,

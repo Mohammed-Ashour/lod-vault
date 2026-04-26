@@ -35,6 +35,17 @@ test("normalizeEntry trims values and derives id from the url", () => {
   assert.deepEqual({ ...entry.translations }, { en: "house", de: "Haus" });
   assert.equal(entry.favorite, true);
   assert.equal(entry.study, false);
+  assert.equal(entry.history, false);
+});
+
+
+test("auto mode setting defaults to off and can be toggled on", async () => {
+  const { store, storageData } = loadSharedStore();
+
+  assert.equal(await store.getAutoMode(), false);
+  assert.equal(await store.setAutoMode(true), true);
+  assert.equal(await store.getAutoMode(), true);
+  assert.equal(storageData[store.SETTINGS_KEY].autoMode, true);
 });
 
 test("toggleList saves a new entry and removes it when the last active list is toggled off", async () => {
@@ -83,6 +94,57 @@ test("toggleList preserves existing list membership when adding another list", a
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.study, true);
 });
 
+test("recordAutoVisit adds the word to study and history and increments visits", async () => {
+  const { store, storageData } = loadSharedStore();
+
+  const first = await store.recordAutoVisit({
+    id: "HAUS1",
+    word: "Haus",
+    url: "https://lod.lu/artikel/HAUS1",
+    translations: { en: "house" }
+  });
+
+  const second = await store.recordAutoVisit({
+    id: "HAUS1",
+    word: "Haus",
+    url: "https://lod.lu/artikel/HAUS1"
+  });
+
+  assert.equal(first.study, true);
+  assert.equal(first.history, true);
+  assert.equal(second.visitCount, 2);
+  assert.equal(storageData[store.STORAGE_KEY].HAUS1.history, true);
+  assert.equal(storageData[store.STORAGE_KEY].HAUS1.study, true);
+});
+
+test("toggleList keeps history entries when study is turned off", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        study: true,
+        history: true,
+        visitCount: 3,
+        lastVisitedAt: "2025-01-03T00:00:00.000Z"
+      }
+    }
+  });
+
+  const updated = await store.toggleList({
+    id: "HAUS1",
+    word: "Haus",
+    url: "https://lod.lu/artikel/HAUS1"
+  }, "study");
+
+  assert.equal(updated.study, false);
+  assert.equal(updated.history, true);
+  assert.equal(updated.visitCount, 3);
+  assert.equal(storageData[store.STORAGE_KEY].HAUS1.history, true);
+});
+
+
 test("getEntries migrates legacy storage automatically", async () => {
   const { store, storageData } = loadSharedStore({
     ["lodWrapper.entries"]: {
@@ -124,6 +186,38 @@ test("saveNote updates the note and removeEntry deletes the item", async () => {
   assert.deepEqual(storageData[store.STORAGE_KEY], {});
 });
 
+test("removeFromHistory clears history and deletes orphaned history-only entries", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        history: true,
+        visitCount: 2,
+        lastVisitedAt: "2025-01-01T00:00:00.000Z"
+      },
+      BEEM1: {
+        id: "BEEM1",
+        word: "Beem",
+        url: "https://lod.lu/artikel/BEEM1",
+        study: true,
+        history: true,
+        visitCount: 1
+      }
+    }
+  });
+
+  const deleted = await store.removeFromHistory("HAUS1");
+  const kept = await store.removeFromHistory("BEEM1");
+
+  assert.equal(deleted, null);
+  assert.equal(storageData[store.STORAGE_KEY].HAUS1, undefined);
+  assert.equal(kept.history, false);
+  assert.equal(kept.study, true);
+  assert.equal(storageData[store.STORAGE_KEY].BEEM1.history, false);
+});
+
 test("importJson merges flags, keeps valid entries only, and prefers the imported note", async () => {
   const { store, storageData } = loadSharedStore({
     ["lodVault.entries"]: {
@@ -162,6 +256,13 @@ test("importJson merges flags, keeps valid entries only, and prefers the importe
         study: false
       },
       {
+        id: "GANG1",
+        word: "Gang",
+        url: "https://lod.lu/artikel/GANG1",
+        history: true,
+        visitCount: 4
+      },
+      {
         id: "",
         word: "No id",
         favorite: true
@@ -169,11 +270,13 @@ test("importJson merges flags, keeps valid entries only, and prefers the importe
     ]
   }));
 
-  assert.deepEqual({ ...result }, { imported: 2, total: 2 });
+  assert.deepEqual({ ...result }, { imported: 3, total: 3 });
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.favorite, true);
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.study, true);
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.note, "new note");
   assert.equal(storageData[store.STORAGE_KEY].BEEM1.word, "Beem");
+  assert.equal(storageData[store.STORAGE_KEY].GANG1.history, true);
+  assert.equal(storageData[store.STORAGE_KEY].GANG1.visitCount, 4);
   assert.equal(storageData[store.STORAGE_KEY].INVALID1, undefined);
 });
 
@@ -232,6 +335,7 @@ test("buildExportHtml renders both sections and can skip the inline search scrip
 
   assert.match(html, /Favorites \(1\)/);
   assert.match(html, /Study List \(1\)/);
+  assert.match(html, /History \(0\)/);
   assert.match(html, /HAUS1/);
   assert.doesNotMatch(html, /input.addEventListener\('input', applySearch\)/);
 });

@@ -20,6 +20,15 @@
       </div>
     </header>
 
+    <section class="card auto-mode-card">
+      <div class="auto-mode-copy">
+        <p class="section-label">Auto mode</p>
+        <h2 id="auto-mode-title">Auto mode is off</h2>
+        <p id="auto-mode-meta" class="muted">Turn this on to automatically record every LOD word page you open into Study and History.</p>
+      </div>
+      <button id="toggle-auto-mode" class="pill-button auto-mode-toggle">Turn on auto mode</button>
+    </section>
+
     <section id="current-page-card" class="card current-page">
       <p class="section-label">Save current word</p>
       <h2 id="current-word">Open a LOD word page</h2>
@@ -38,6 +47,10 @@
       <div class="summary-card">
         <span class="summary-label">Study</span>
         <strong id="study-count">0</strong>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">History</span>
+        <strong id="history-count">0</strong>
       </div>
       <div class="summary-card">
         <span class="summary-label">Total</span>
