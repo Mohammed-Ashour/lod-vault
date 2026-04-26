@@ -1,0 +1,13 @@
+{
+  "name": "lod-vault",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tests and development tooling for the LODVault browser extension.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "^26.0.0"
+  }
+}

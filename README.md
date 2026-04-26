@@ -97,6 +97,27 @@ The **LODVault** icon will appear in your browser toolbar.
 
 ---
 
+## Testing
+
+LODVault includes a small automated test suite to keep the core behavior stable.
+
+### Run the tests
+
+```bash
+npm install
+npm test
+```
+
+### What is covered
+- shared storage and migration logic
+- save / remove / note flows
+- JSON import / export behavior
+- export HTML generation
+- content-script extraction from LOD article pages
+- injected banner rendering and messaging
+
+---
+
 ## Privacy
 
 - LODVault does **not** collect, transmit, or share any data
