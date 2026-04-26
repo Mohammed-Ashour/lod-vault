@@ -1,13 +1,19 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <clipPath id="clip">
-      <rect x="32" y="32" width="448" height="448" rx="112" />
+      <rect x="32" y="32" width="448" height="448" rx="112"/>
     </clipPath>
+    <linearGradient id="flag" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#EF3340"/>
+      <stop offset="50%"  stop-color="#DCF0F8"/>
+      <stop offset="100%" stop-color="#00A3E0"/>
+    </linearGradient>
   </defs>
   <g clip-path="url(#clip)">
-    <rect x="32" y="32" width="448" height="149.333" fill="#EF3340"/>
-    <rect x="32" y="181.333" width="448" height="149.333" fill="#FFFFFF"/>
-    <rect x="32" y="330.666" width="448" height="149.334" fill="#00A3E0"/>
+    <rect x="32" y="32" width="448" height="448" fill="url(#flag)"/>
+    <rect x="32" y="32" width="448" height="448" rx="112"
+          fill="black" fill-opacity="0.05"/>
   </g>
-  <path d="M200 136H292V300H372V376H200V136Z" fill="#0A2239"/>
+  <rect x="158" y="98"  width="60" height="300" rx="16" fill="white"/>
+  <rect x="158" y="340" width="198" height="60"  rx="16" fill="white"/>
 </svg>
