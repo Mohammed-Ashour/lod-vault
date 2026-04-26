@@ -80,7 +80,7 @@ function meaningMarkup(entry) {
 function renderCurrentPageCard(savedEntry) {
   if (!state.currentEntry) {
     elements.currentWord.textContent = "Open a LOD word page";
-    elements.currentMeta.textContent = "This works on pages like https://lod.lu/artikel/SOZIALIST1. You can also use the inline buttons shown next to the word title.";
+    elements.currentMeta.textContent = "This works on pages like https://lod.lu/artikel/SOZIALIST1. You can also use the save banner shown directly under the word title.";
     elements.currentFavorite.disabled = true;
     elements.currentStudy.disabled = true;
     setCurrentButtonState(elements.currentFavorite, false, "favorite");

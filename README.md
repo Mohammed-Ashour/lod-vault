@@ -15,6 +15,7 @@ LODVault is a lightweight browser extension for [lod.lu](https://lod.lu/).
 - `pages/` — popup, preview, and flashcards pages
 - `scripts/` — extension logic
 - `styles/` — page and content styles
+- `icons/` — extension icons
 
 ## Install
 1. Open `chrome://extensions`

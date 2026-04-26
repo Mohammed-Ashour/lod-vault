@@ -1,5 +1,6 @@
 (() => {
-  const STORAGE_KEY = "lodWrapper.entries";
+  const STORAGE_KEY = "lodVault.entries";
+  const LEGACY_STORAGE_KEY = "lodWrapper.entries";
 
   function nowIso() {
     return new Date().toISOString();
@@ -87,8 +88,19 @@
 
   async function getEntryMap() {
     try {
-      const data = await chrome.storage.local.get(STORAGE_KEY);
-      return data[STORAGE_KEY] || {};
+      const data = await chrome.storage.local.get([STORAGE_KEY, LEGACY_STORAGE_KEY]);
+      if (data[STORAGE_KEY]) {
+        return data[STORAGE_KEY] || {};
+      }
+
+      if (data[LEGACY_STORAGE_KEY]) {
+        const migrated = data[LEGACY_STORAGE_KEY] || {};
+        await chrome.storage.local.set({ [STORAGE_KEY]: migrated });
+        await chrome.storage.local.remove(LEGACY_STORAGE_KEY);
+        return migrated;
+      }
+
+      return {};
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         return {};
@@ -172,32 +184,6 @@
     return normalizeEntry(merged);
   }
 
-  async function upsertEntry(entry) {
-    const normalized = normalizeEntry(entry);
-    if (!normalized.id || !normalized.word) {
-      throw new Error("Cannot save an empty entry.");
-    }
-
-    const entryMap = await getEntryMap();
-    const existing = entryMap[normalized.id];
-    if (!existing && !normalized.favorite && !normalized.study) {
-      return null;
-    }
-
-    const merged = mergeEntry(existing, normalized);
-    merged.favorite = Boolean(existing?.favorite) || Boolean(normalized.favorite);
-    merged.study = Boolean(existing?.study) || Boolean(normalized.study);
-    merged.note = cleanText(existing?.note || normalized.note);
-
-    if (!merged.favorite && !merged.study) {
-      return null;
-    }
-
-    entryMap[normalized.id] = merged;
-    await saveEntryMap(entryMap);
-    return normalizeEntry(merged);
-  }
-
   async function removeEntry(id) {
     if (!id) return;
     const entryMap = await getEntryMap();
@@ -222,7 +208,7 @@
   function buildJsonExport(entries) {
     return JSON.stringify(
       {
-        app: "lod-wrapper",
+        app: "lodvault",
         version: 1,
         exportedAt: nowIso(),
         entries: entries.map(normalizeEntry)
@@ -562,7 +548,6 @@
     getEntry,
     toggleList,
     saveNote,
-    upsertEntry,
     removeEntry,
     buildSearchText,
     buildJsonExport,
