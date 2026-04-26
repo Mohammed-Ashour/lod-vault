@@ -1,10 +1,7 @@
 /* ─────────────────────────────────────────────────────
-   LODVault popup — design language aligned with lod.lu
+   LODVault popup — glassmorphism on LOD palette
    ───────────────────────────────────────────────────── */
 :root {
-  --bg:          #f0f5f5;
-  --surface:     #ffffff;
-  --surface-2:   #f8fafb;
   --navy:        #1d3557;
   --navy-deep:   #10243e;
   --blue:        #457b9d;
@@ -12,13 +9,16 @@
   --teal:        #39a7c4;
   --teal-light:  #a8dadc;
   --teal-pale:   #c9e5e5;
-  --teal-bg:     #edf7f8;
   --red:         #e63946;
-  --text:        #1d3557;
-  --muted:       #5a7a94;
-  --border:      #c9e5e5;
-  --border-soft: #ddeef0;
+  --text:        #0f2236;
+  --muted:       #4e7490;
   --danger:      #e63946;
+
+  /* glass surfaces */
+  --glass:       rgba(255, 255, 255, 0.58);
+  --glass-2:     rgba(255, 255, 255, 0.36);
+  --glass-border: rgba(169, 219, 225, 0.55);
+  --glass-border-soft: rgba(169, 219, 225, 0.3);
 }
 
 * { box-sizing: border-box; }
@@ -29,7 +29,10 @@ body {
   min-height: 560px;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
                Roboto, "Helvetica Neue", Arial, sans-serif;
-  background: var(--bg);
+  background:
+    radial-gradient(ellipse at 10% 0%,   #b8dfe8 0%,  transparent 55%),
+    radial-gradient(ellipse at 90% 100%, #b5d4e8 0%,  transparent 55%),
+    linear-gradient(160deg, #cfe9f0 0%, #daeef5 40%, #cfe2ef 100%);
   color: var(--text);
   font-size: 14px;
   line-height: 1.5;
@@ -38,14 +41,19 @@ body {
 /* ── layout ──────────────────────────────────────── */
 .app { padding: 16px 16px 20px; }
 
+/* ── header ──────────────────────────────────────── */
 .header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 16px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: rgba(16, 36, 62, 0.82);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border-radius: 14px;
+  border: 1px solid rgba(57, 167, 196, 0.25);
 }
 
 .header-actions {
@@ -72,7 +80,7 @@ body {
 .header h1 {
   margin: 3px 0 0;
   font-size: 1.15rem;
-  color: var(--navy);
+  color: #ffffff;
 }
 
 .current-page h2 {
@@ -90,14 +98,16 @@ body {
   font-size: 12.5px;
 }
 
-/* ── cards ───────────────────────────────────────── */
+/* ── glass card base ─────────────────────────────── */
 .card,
 .summary-card,
 .saved-item,
 .empty-state {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
 }
 
 .card { padding: 14px; }
@@ -116,7 +126,7 @@ body {
 }
 
 .current-page code {
-  background: var(--teal-bg);
+  background: rgba(57, 167, 196, 0.12);
   color: var(--blue);
   border-radius: 5px;
   padding: 1px 5px;
@@ -134,43 +144,37 @@ body {
 .summary-card {
   padding: 10px 12px;
   text-align: center;
-  background: var(--surface-2);
-  border-color: var(--border-soft);
+  background: var(--glass-2);
+  border-color: var(--glass-border-soft);
 }
 
 .summary-card strong {
   display: block;
   margin-top: 4px;
   font-size: 1.3rem;
-  color: var(--navy);
+  color: var(--navy-deep);
 }
 
 /* ── search + tools bar ──────────────────────────── */
-.tools-card {
-  padding: 12px;
-  background: var(--surface);
-  border-color: var(--border);
-}
+.tools-card { padding: 12px; }
 
 .search-input,
 .note-input {
   width: 100%;
-  border: 1px solid var(--teal-pale);
+  border: 1px solid rgba(169, 219, 225, 0.5);
   border-radius: 8px;
-  background: var(--surface-2);
+  background: rgba(255, 255, 255, 0.55);
   color: var(--text);
   font: inherit;
 }
 
-.search-input {
-  padding: 9px 12px;
-}
+.search-input { padding: 9px 12px; }
 
 .search-input:focus,
 .note-input:focus {
   outline: none;
   border-color: var(--teal);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .helper-text { margin: 8px 0 0; }
@@ -189,37 +193,54 @@ body {
 .pill-button,
 .mini-button,
 .tool-button {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
+  border: 1px solid rgba(169, 219, 225, 0.4);
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--navy);
   border-radius: 8px;
   cursor: pointer;
   font: inherit;
   font-weight: 600;
   font-size: 13px;
   transition: background 0.15s, border-color 0.15s;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .secondary-button {
   padding: 8px 11px;
-  background: var(--teal-bg);
-  color: var(--blue);
-  border-color: var(--teal-pale);
+  background: rgba(57, 167, 196, 0.14);
+  color: var(--navy-deep);
+  border-color: rgba(57, 167, 196, 0.3);
 }
 
 .secondary-button:hover {
-  background: var(--teal-pale);
-  border-color: var(--teal-light);
+  background: rgba(57, 167, 196, 0.25);
+  border-color: rgba(57, 167, 196, 0.55);
+}
+
+/* header-area secondary buttons (on dark bg) */
+.header .secondary-button,
+.header .secondary-button-light {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--teal-light);
+  border-color: rgba(57, 167, 196, 0.25);
+}
+
+.header .secondary-button:hover,
+.header .secondary-button-light:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(57, 167, 196, 0.5);
+  color: #fff;
 }
 
 .secondary-button-light {
-  background: var(--surface);
-  color: var(--text);
-  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--navy);
+  border-color: rgba(169, 219, 225, 0.4);
 }
 
 .secondary-button-light:hover {
-  background: var(--surface-2);
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .pill-button,
@@ -230,13 +251,14 @@ body {
 
 .pill-button:hover,
 .tool-button:hover {
-  background: var(--surface-2);
+  background: rgba(255, 255, 255, 0.65);
 }
 
 .pill-button.is-active {
   background: var(--blue);
   border-color: var(--blue);
   color: #fff;
+  backdrop-filter: none;
 }
 
 .pill-button.is-active:hover {
@@ -253,15 +275,17 @@ body {
   background: var(--blue);
   border-color: var(--blue);
   color: #fff;
+  backdrop-filter: none;
 }
 
 .mini-button-danger {
   color: var(--danger);
-  border-color: #f9c9cc;
+  border-color: rgba(230, 57, 70, 0.22);
 }
 
 .mini-button-danger:hover {
-  background: #fff5f5;
+  background: rgba(230, 57, 70, 0.08);
+  border-color: rgba(230, 57, 70, 0.4);
 }
 
 /* ── saved list ──────────────────────────────────── */
@@ -290,11 +314,7 @@ body {
 .word-link:hover { color: var(--blue); }
 
 /* ── badges ──────────────────────────────────────── */
-.badges {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-}
+.badges { display: flex; gap: 5px; flex-wrap: wrap; }
 
 .badge {
   padding: 3px 7px;
@@ -304,14 +324,15 @@ body {
 }
 
 .badge-favorite {
-  background: #fde8c0;
-  color: #7d4a00;
+  background: rgba(253, 215, 120, 0.35);
+  color: #6b3d00;
+  border: 1px solid rgba(253, 215, 120, 0.6);
 }
 
 .badge-study {
-  background: var(--teal-bg);
-  color: var(--blue);
-  border: 1px solid var(--teal-pale);
+  background: rgba(57, 167, 196, 0.14);
+  color: var(--navy);
+  border: 1px solid rgba(57, 167, 196, 0.3);
 }
 
 /* ── meaning chips ───────────────────────────────── */
@@ -319,20 +340,16 @@ body {
 .item-example,
 .item-meanings { margin: 6px 0 0; }
 
-.item-meanings {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-}
+.item-meanings { display: flex; gap: 5px; flex-wrap: wrap; }
 
 .meaning-chip {
   display: inline-flex;
   align-items: center;
   padding: 3px 8px;
   border-radius: 999px;
-  background: var(--teal-bg);
-  color: var(--blue);
-  border: 1px solid var(--teal-pale);
+  background: rgba(57, 167, 196, 0.12);
+  color: var(--navy);
+  border: 1px solid rgba(57, 167, 196, 0.28);
   font-size: 11.5px;
   line-height: 1.3;
 }
@@ -344,7 +361,7 @@ body {
   overflow: hidden;
 }
 
-/* ── note textarea ───────────────────────────────── */
+/* ── note ────────────────────────────────────────── */
 .note-section { margin-top: 10px; }
 
 .note-input {
@@ -361,14 +378,14 @@ body {
 .empty-state {
   text-align: center;
   color: var(--muted);
+  background: rgba(255, 255, 255, 0.28);
   border-style: dashed;
-  background: var(--surface-2);
   font-size: 13px;
 }
 
 button:disabled,
 textarea:disabled,
 input:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
