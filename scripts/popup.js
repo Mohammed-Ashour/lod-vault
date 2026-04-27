@@ -131,7 +131,6 @@ function meaningMarkup(entry) {
 function renderAutoMode() {
   const historyCount = state.savedEntries.filter((entry) => entry.history).length;
 
-  elements.autoModeTitle.textContent = state.autoMode ? "Auto mode is on" : "Auto mode is off";
   elements.autoModeMeta.textContent = state.autoMode
     ? `Saving visited words to Study & History · ${historyCount} in history`
     : "Saves every visited word to Study and History.";

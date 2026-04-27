@@ -166,6 +166,27 @@ test("getEntries migrates legacy storage automatically", async () => {
   assert.equal("lodWrapper.entries" in storageData, false);
 });
 
+test("getEntries merges legacy storage into the current key before removing it", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.entries"]: {},
+    ["lodWrapper.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        favorite: true
+      }
+    }
+  });
+
+  const entries = await store.getEntries();
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].id, "HAUS1");
+  assert.equal(storageData[store.STORAGE_KEY].HAUS1.word, "Haus");
+  assert.equal("lodWrapper.entries" in storageData, false);
+});
+
 test("saveNote updates the note and removeEntry deletes the item", async () => {
   const { store, storageData } = loadSharedStore({
     ["lodVault.entries"]: {
@@ -322,7 +343,7 @@ test("buildExportHtml renders both sections and can skip the inline search scrip
       url: "https://lod.lu/artikel/HAUS1",
       favorite: true,
       study: false,
-      translations: { en: "house" }
+      translations: { en: "house", fr: "maison" }
     },
     {
       id: "BEEM1",
@@ -337,5 +358,6 @@ test("buildExportHtml renders both sections and can skip the inline search scrip
   assert.match(html, /HAUS1/);
   assert.match(html, /chip-list-favorite/);
   assert.match(html, /chip-list-study/);
+  assert.match(html, /data-langs="en,fr"/);
   assert.doesNotMatch(html, /input.addEventListener\('input', applySearch\)/);
 });

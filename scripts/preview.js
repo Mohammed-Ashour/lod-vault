@@ -5,6 +5,7 @@ const downloadButton = document.getElementById("download-html");
 let currentPreviewUrl = "";
 let currentSearchQuery = "";
 let currentLang = "";
+let applyPreviewFilters = () => {};
 
 const langNames = { en: "English", fr: "Français", de: "Deutsch", pt: "Português", nl: "Nederlands" };
 const langOrder = ["en", "fr", "de", "pt", "nl"];
@@ -34,6 +35,8 @@ function applyLangFilter() {
   style.textContent = currentLang
     ? `.chip[data-lang]:not([data-lang="${currentLang}"]) { display: none !important; }`
     : "";
+
+  applyPreviewFilters();
 }
 
 function populateLangSelect(entries) {
@@ -113,28 +116,33 @@ function attachPreviewSearch() {
   const entries = Array.from(doc.querySelectorAll(".entry"));
   if (!input || !status || !empty) return;
 
-  const applySearch = () => {
+  applyPreviewFilters = () => {
     const query = (input.value || "").trim().toLowerCase();
     currentSearchQuery = input.value || "";
     let visibleCount = 0;
 
     for (const entry of entries) {
-      const match = !query || (entry.dataset.search || "").includes(query);
+      const matchesQuery = !query || (entry.dataset.search || "").includes(query);
+      const languages = (entry.dataset.langs || "").split(",").filter(Boolean);
+      const matchesLanguage = !currentLang || languages.includes(currentLang);
+      const match = matchesQuery && matchesLanguage;
+
       entry.hidden = !match;
       if (match) visibleCount += 1;
     }
 
-    status.textContent = query
+    const activeFilters = [query ? "search" : "", currentLang ? "language" : ""].filter(Boolean).length;
+    status.textContent = activeFilters
       ? `${visibleCount} matching word${visibleCount === 1 ? "" : "s"}`
       : `${entries.length} saved word${entries.length === 1 ? "" : "s"}`;
-    empty.hidden = visibleCount !== 0 || !query;
+    empty.hidden = visibleCount !== 0 || activeFilters === 0;
   };
 
   input.value = currentSearchQuery;
-  input.addEventListener("input", applySearch);
+  input.addEventListener("input", applyPreviewFilters);
   attachRemoveButtons(doc);
   applyLangFilter();
-  applySearch();
+  applyPreviewFilters();
 }
 
 /* ── remove buttons ──────────────────────────────── */
@@ -208,7 +216,10 @@ async function renderPreview() {
 
   currentPreviewUrl = url;
   meta.textContent = `${count} · live preview from local extension storage`;
-  frame.onload = attachPreviewSearch;
+  frame.onload = () => {
+    applyPreviewFilters = () => {};
+    attachPreviewSearch();
+  };
   frame.src = url;
 }
 

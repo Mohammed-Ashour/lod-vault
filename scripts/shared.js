@@ -49,6 +49,55 @@
     return new Error("Extension updated — refresh the page.");
   }
 
+  const STORE_MUTATION_MESSAGE_TYPE = "lod-wrapper:store-mutate";
+  const STORE_MUTATIONS_RUN_DIRECTLY = Boolean(globalThis.__LOD_WRAPPER_DIRECT_STORE__);
+
+  function canProxyStoreMutations() {
+    return !STORE_MUTATIONS_RUN_DIRECTLY
+      && typeof chrome !== "undefined"
+      && Boolean(chrome?.runtime)
+      && typeof chrome.runtime.sendMessage === "function";
+  }
+
+  function isMissingMutationReceiver(error) {
+    const message = String(error || "");
+    return message.includes("Could not establish connection")
+      || message.includes("Receiving end does not exist")
+      || message.includes("message port closed");
+  }
+
+  async function runStoreMutation(method, args, directHandler) {
+    if (!canProxyStoreMutations()) {
+      return directHandler(...args);
+    }
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: STORE_MUTATION_MESSAGE_TYPE,
+        method,
+        args
+      });
+
+      if (!response?.ok) {
+        const error = response?.error ? new Error(response.error) : new Error(`Store mutation failed: ${method}`);
+        if (isExtensionContextInvalidated(error)) {
+          throw createRefreshPageError();
+        }
+        throw error;
+      }
+
+      return response.result;
+    } catch (error) {
+      if (isExtensionContextInvalidated(error)) {
+        throw createRefreshPageError();
+      }
+      if (isMissingMutationReceiver(error)) {
+        return directHandler(...args);
+      }
+      throw error;
+    }
+  }
+
   function normalizeEntry(entry = {}) {
     const id = cleanText(entry.id) || getIdFromUrl(entry.url);
     return {
@@ -122,18 +171,20 @@
   async function getEntryMap() {
     try {
       const data = await chrome.storage.local.get([STORAGE_KEY, LEGACY_STORAGE_KEY]);
-      if (data[STORAGE_KEY]) {
-        return data[STORAGE_KEY] || {};
-      }
+      const current = data[STORAGE_KEY] && typeof data[STORAGE_KEY] === "object" ? data[STORAGE_KEY] : {};
+      const legacy = data[LEGACY_STORAGE_KEY] && typeof data[LEGACY_STORAGE_KEY] === "object" ? data[LEGACY_STORAGE_KEY] : null;
 
-      if (data[LEGACY_STORAGE_KEY]) {
-        const migrated = data[LEGACY_STORAGE_KEY] || {};
+      if (legacy) {
+        const migrated = {
+          ...legacy,
+          ...current
+        };
         await chrome.storage.local.set({ [STORAGE_KEY]: migrated });
         await chrome.storage.local.remove(LEGACY_STORAGE_KEY);
         return migrated;
       }
 
-      return {};
+      return current;
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         return {};
@@ -173,7 +224,7 @@
     return Boolean(settings.autoMode);
   }
 
-  async function setAutoMode(enabled) {
+  async function setAutoModeDirect(enabled) {
     const nextSettings = {
       ...(await getSettings()),
       autoMode: Boolean(enabled)
@@ -189,6 +240,10 @@
     }
 
     return nextSettings.autoMode;
+  }
+
+  async function setAutoMode(enabled) {
+    return runStoreMutation("setAutoMode", [enabled], setAutoModeDirect);
   }
 
   async function getEntries() {
@@ -210,7 +265,7 @@
     return entry && shouldKeepEntry(entry) ? entry : null;
   }
 
-  async function toggleList(entry, listName) {
+  async function toggleListDirect(entry, listName) {
     if (!["favorite", "study"].includes(listName)) {
       throw new Error(`Unsupported list: ${listName}`);
     }
@@ -242,7 +297,11 @@
     return normalizeEntry(merged);
   }
 
-  async function recordAutoVisit(entry) {
+  async function toggleList(entry, listName) {
+    return runStoreMutation("toggleList", [entry, listName], toggleListDirect);
+  }
+
+  async function recordAutoVisitDirect(entry) {
     const normalized = normalizeEntry(entry);
     if (!normalized.id || !normalized.word) {
       throw new Error("Cannot save an empty entry.");
@@ -266,7 +325,11 @@
     return normalizeEntry(merged);
   }
 
-  async function removeFromHistory(id) {
+  async function recordAutoVisit(entry) {
+    return runStoreMutation("recordAutoVisit", [entry], recordAutoVisitDirect);
+  }
+
+  async function removeFromHistoryDirect(id) {
     if (!id) return null;
 
     const entryMap = await getEntryMap();
@@ -291,7 +354,11 @@
     return normalizeEntry(merged);
   }
 
-  async function saveNote(id, note) {
+  async function removeFromHistory(id) {
+    return runStoreMutation("removeFromHistory", [id], removeFromHistoryDirect);
+  }
+
+  async function saveNoteDirect(id, note) {
     if (!id) throw new Error("Missing entry id.");
 
     const entryMap = await getEntryMap();
@@ -311,11 +378,19 @@
     return normalizeEntry(merged);
   }
 
-  async function removeEntry(id) {
+  async function saveNote(id, note) {
+    return runStoreMutation("saveNote", [id, note], saveNoteDirect);
+  }
+
+  async function removeEntryDirect(id) {
     if (!id) return;
     const entryMap = await getEntryMap();
     delete entryMap[id];
     await saveEntryMap(entryMap);
+  }
+
+  async function removeEntry(id) {
+    return runStoreMutation("removeEntry", [id], removeEntryDirect);
   }
 
   function buildSearchText(entry) {
@@ -345,7 +420,7 @@
     );
   }
 
-  async function importJson(text) {
+  async function importJsonDirect(text) {
     const parsed = JSON.parse(text);
     const incomingEntries = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.entries) ? parsed.entries : [];
     if (!incomingEntries.length) {
@@ -384,6 +459,10 @@
 
     await saveEntryMap(entryMap);
     return { imported, total: countStoredEntries(entryMap) };
+  }
+
+  async function importJson(text) {
+    return runStoreMutation("importJson", [text], importJsonDirect);
   }
 
   function downloadTextFile(filename, content, mimeType = "text/plain") {
@@ -457,8 +536,12 @@
       }
     }
 
+    const translationLanguages = translationPairs
+      .map(([key]) => key)
+      .filter((key) => entry.translations?.[key]);
+
     return `
-      <article class="entry" data-id="${escapeHtml(entry.id)}" data-lists="${escapeHtml(activeLists.join(","))}" data-search="${escapeHtml(buildSearchText(entry))}">
+      <article class="entry" data-id="${escapeHtml(entry.id)}" data-lists="${escapeHtml(activeLists.join(","))}" data-langs="${escapeHtml(translationLanguages.join(","))}" data-search="${escapeHtml(buildSearchText(entry))}">
         <div class="entry-top">
           <h3><a href="${escapeHtml(entry.url)}" target="_blank" rel="noreferrer">${escapeHtml(entry.word)}</a></h3>
           <span class="timestamp">${escapeHtml(formatWhen(entry.updatedAt || entry.lastVisitedAt || entry.createdAt))}</span>

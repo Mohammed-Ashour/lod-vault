@@ -358,8 +358,7 @@ function applyState(savedEntry, sourceEntry = extractCurrentEntry()) {
   }
 }
 
-async function maybeAutoRecord(entry, savedEntry) {
-  const autoMode = await LodWrapperStore.getAutoMode();
+async function maybeAutoRecord(entry, savedEntry, autoMode = currentAutoMode) {
   if (!autoMode) {
     lastAutoRecordKey = "";
     return savedEntry;
@@ -386,7 +385,7 @@ async function refreshUI() {
 
     let savedEntry = await LodWrapperStore.getEntry(entry.id);
     currentAutoMode = await LodWrapperStore.getAutoMode();
-    savedEntry = await maybeAutoRecord(entry, savedEntry);
+    savedEntry = await maybeAutoRecord(entry, savedEntry, currentAutoMode);
     applyState(savedEntry, entry);
     notifyPopup(entry, savedEntry);
   } catch (error) {
