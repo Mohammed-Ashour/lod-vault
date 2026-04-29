@@ -4,8 +4,10 @@ node_modules/
 dist/
 *.zip
 scripts/__pycache__/
-media/pw-videos/
-media/pw-frames/
-media/live-demo/raw/
-media/test-*.png
-media/*.webm
+scripts/build_live_demo_video.py
+scripts/capture_live_demo.js
+scripts/generate_demo_video.py
+scripts/test_open_popup.js
+scripts/test_playwright_extension.js
+scripts/test_record_video.js
+media/
