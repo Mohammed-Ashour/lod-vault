@@ -7,8 +7,8 @@ let currentSearchQuery = "";
 let currentLang = "";
 let applyPreviewFilters = () => {};
 
-const langNames = { en: "English", fr: "Français", de: "Deutsch", pt: "Português", nl: "Nederlands" };
-const langOrder = ["en", "fr", "de", "pt", "nl"];
+const langNames = LodWrapperStore.TRANSLATION_LANGUAGE_LABELS;
+const langOrder = LodWrapperStore.TRANSLATION_LANGUAGE_ORDER;
 
 refreshButton.addEventListener("click", renderPreview);
 downloadButton.addEventListener("click", downloadHtml);
@@ -226,16 +226,8 @@ async function renderPreview() {
 async function downloadHtml() {
   const entries = await LodWrapperStore.getEntries();
   const html = LodWrapperStore.buildExportHtml(entries);
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
   const date = new Date().toISOString().slice(0, 10);
-
-  link.href = url;
-  link.download = `lodvault-export-${date}.html`;
-  link.click();
-
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  LodWrapperStore.downloadTextFile(`lodvault-export-${date}.html`, html, "text/html");
 }
 
 window.addEventListener("beforeunload", () => {

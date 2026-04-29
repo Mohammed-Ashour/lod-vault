@@ -51,6 +51,83 @@ function getBanner() {
   return document.getElementById(BANNER_ID);
 }
 
+function getBannerNoteInput() {
+  return getBanner()?.querySelector(".lodw-note__input") || null;
+}
+
+function setBannerNoteMeta(message, tone = "") {
+  const meta = getBanner()?.querySelector(".lodw-note__meta");
+  if (!meta) return;
+  meta.textContent = message;
+  meta.dataset.tone = tone;
+}
+
+const bannerNoteController = LodWrapperStore.createNoteAutosaveController({
+  isBlocked: () => contextInvalidated,
+  setStatus: (_textarea, message, tone = "") => setBannerNoteMeta(message, tone),
+  saveNote: (noteId, requestValue) => LodWrapperStore.saveNote(noteId, requestValue),
+  onSaved: async ({ textarea, savedEntry }) => {
+    const sourceEntry = extractCurrentEntry() || { id: textarea.dataset.noteId || savedEntry?.id || "", url: location.href };
+    lastRenderKey = "";
+    applyState(savedEntry, sourceEntry);
+    notifyPopup(sourceEntry, savedEntry);
+  },
+  onError: async ({ error }) => {
+    if (isExtensionContextInvalidated(error)) {
+      handleInvalidatedContext();
+      return true;
+    }
+    return false;
+  },
+  shouldKeepScheduling: (textarea) => Boolean(textarea?.isConnected)
+});
+
+function syncBannerNote(savedEntry, sourceEntry = extractCurrentEntry()) {
+  const textarea = getBannerNoteInput();
+  if (!textarea) return;
+
+  const noteId = sourceEntry?.id || savedEntry?.id || "";
+  const savedValue = savedEntry?.note || "";
+  const isSameEntry = textarea.dataset.noteId === noteId;
+  const isDirty = isSameEntry && textarea.dataset.dirty === "true";
+  const isFocused = document.activeElement === textarea;
+
+  if (!noteId) {
+    bannerNoteController.clear(textarea);
+    textarea.value = "";
+    textarea.dataset.noteId = "";
+    textarea.dataset.savedValue = "";
+    textarea.dataset.dirty = "";
+    textarea.disabled = true;
+    textarea.placeholder = "Save to Favorites or Study to add a note...";
+    setBannerNoteMeta("Open a word to add a note.");
+    return;
+  }
+
+  textarea.dataset.noteId = noteId;
+  textarea.dataset.savedValue = savedValue;
+  textarea.placeholder = savedEntry
+    ? "Add a note for this word..."
+    : "Save to Favorites or Study to add a note...";
+  textarea.disabled = !savedEntry || contextInvalidated;
+
+  if (!isDirty && (!isFocused || !isSameEntry)) {
+    textarea.value = savedValue;
+  }
+
+  if (!savedEntry) {
+    bannerNoteController.clear(textarea);
+    textarea.dataset.dirty = "";
+    textarea.value = "";
+    setBannerNoteMeta("Save to Favorites or Study to enable notes.");
+    return;
+  }
+
+  if (!isDirty) {
+    setBannerNoteMeta(savedValue ? "Saved with this word." : "Add a short note — it saves automatically.");
+  }
+}
+
 function wordFromUrl() {
   try {
     const params = new URLSearchParams(location.search);
@@ -249,12 +326,44 @@ function ensureBanner() {
           <button type="button" data-list="study"></button>
         </div>
       </div>
+      <div class="lodw-banner__note">
+        <label class="lodw-note__label" for="lodw-note-input">Note</label>
+        <textarea id="lodw-note-input" class="lodw-note__input" rows="2" placeholder="Save to Favorites or Study to add a note..." disabled></textarea>
+        <div class="lodw-note__meta">Save to Favorites or Study to enable notes.</div>
+      </div>
     `;
 
     banner.addEventListener("click", async (event) => {
       const button = event.target.closest("button[data-list]");
       if (!button) return;
       await handleListToggle(button.dataset.list);
+    });
+
+    banner.addEventListener("input", (event) => {
+      const textarea = event.target.closest(".lodw-note__input");
+      if (!textarea) return;
+      bannerNoteController.markDirty(textarea);
+    });
+
+    banner.addEventListener("change", (event) => {
+      const textarea = event.target.closest(".lodw-note__input");
+      if (!textarea) return;
+      bannerNoteController.commit(textarea);
+    });
+
+    banner.addEventListener("focusout", (event) => {
+      const textarea = event.target.closest(".lodw-note__input");
+      if (!textarea) return;
+      bannerNoteController.commit(textarea);
+    });
+
+    banner.addEventListener("keydown", (event) => {
+      const textarea = event.target.closest(".lodw-note__input");
+      if (!textarea) return;
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        bannerNoteController.commit(textarea);
+      }
     });
   }
 
@@ -293,6 +402,12 @@ function handleInvalidatedContext() {
   banner.classList.add("is-warning");
   banner.querySelector(".lodw-banner__status").textContent = "Extension updated — refresh page";
   banner.querySelector(".lodw-banner__info").textContent = "Reload this page to re-enable save actions.";
+  const noteInput = getBannerNoteInput();
+  if (noteInput) {
+    bannerNoteController.clear(noteInput);
+    noteInput.disabled = true;
+  }
+  setBannerNoteMeta("Reload this page to edit notes.", "error");
   setButtonsBusy(true);
 }
 
@@ -311,6 +426,7 @@ function buildRenderKey(entry, savedEntry) {
     history: Boolean(savedEntry?.history),
     visitCount: Number(savedEntry?.visitCount || 0),
     lastVisitedAt: savedEntry?.lastVisitedAt || "",
+    note: savedEntry?.note || "",
     autoMode: currentAutoMode
   });
 }
@@ -333,6 +449,10 @@ function applyState(savedEntry, sourceEntry = extractCurrentEntry()) {
   if (!banner) return;
 
   if (!entry) {
+    const noteInput = getBannerNoteInput();
+    if (noteInput) {
+      bannerNoteController.clear(noteInput);
+    }
     banner.style.display = "none";
     lastRenderKey = "";
     return;
@@ -356,6 +476,8 @@ function applyState(savedEntry, sourceEntry = extractCurrentEntry()) {
     button.textContent = buttonLabel(button.dataset.list, active);
     button.classList.toggle("is-active", active);
   }
+
+  syncBannerNote(savedEntry, entry);
 }
 
 async function maybeAutoRecord(entry, savedEntry, autoMode = currentAutoMode) {

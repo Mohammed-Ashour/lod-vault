@@ -8,6 +8,34 @@ const state = {
 };
 
 const elements = {};
+const noteAutosave = LodWrapperStore.createNoteAutosaveController({
+  getTimerKey: (textarea) => textarea === elements.currentNoteInput
+    ? "current-note"
+    : `saved-note:${textarea?.dataset?.noteId || ""}`,
+  setStatus: (textarea, message) => {
+    if (textarea === elements.currentNoteInput) {
+      setCurrentNoteStatus(message);
+    }
+  },
+  saveNote: (noteId, requestValue) => LodWrapperStore.saveNote(noteId, requestValue),
+  onSaved: async ({ textarea, savedEntry, noteId, changedSinceRequest }) => {
+    updateSavedEntryState(savedEntry);
+
+    if (savedEntry?.id === state.currentEntry?.id) {
+      renderCurrentPageCard(savedEntry);
+      await syncCurrentTabSavedEntry(savedEntry);
+    }
+
+    if (!changedSinceRequest && state.searchQuery.trim()) {
+      if (textarea === elements.currentNoteInput) {
+        renderList();
+      } else {
+        rerenderListPreservingNoteFocus(noteId);
+      }
+    }
+  },
+  shouldKeepScheduling: (textarea) => Boolean(textarea?.isConnected)
+});
 
 async function handleActiveTabChange() {
   await refreshCurrentPage();
@@ -29,6 +57,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.currentMeta = document.getElementById("current-meta");
   elements.currentFavorite = document.getElementById("current-favorite");
   elements.currentStudy = document.getElementById("current-study");
+  elements.currentNoteInput = document.getElementById("current-note");
+  elements.currentNoteStatus = document.getElementById("current-note-status");
   elements.autoModeBadge = document.getElementById("auto-mode-badge");
   elements.autoModeCard = document.querySelector(".auto-mode-card");
   elements.autoModeTitle = document.getElementById("auto-mode-title");
@@ -60,8 +90,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.importJson.addEventListener("click", () => elements.importJsonFile.click());
   elements.importJsonFile.addEventListener("change", importJsonFile);
   elements.searchInput.addEventListener("input", onSearchInput);
+  elements.currentNoteInput.addEventListener("input", onCurrentNoteInput);
+  elements.currentNoteInput.addEventListener("change", onCurrentNoteCommit);
+  elements.currentNoteInput.addEventListener("blur", onCurrentNoteCommit);
   elements.savedList.addEventListener("click", onSavedListClick);
+  elements.savedList.addEventListener("input", onSavedListInput);
   elements.savedList.addEventListener("change", onSavedListChange);
+  elements.savedList.addEventListener("focusout", onSavedListFocusOut);
 
   chrome.tabs.onActivated.addListener(handleActiveTabChange);
   chrome.tabs.onUpdated.addListener(handleTabUpdated);
@@ -77,6 +112,7 @@ window.addEventListener("unload", () => {
   chrome.tabs.onActivated.removeListener(handleActiveTabChange);
   chrome.tabs.onUpdated.removeListener(handleTabUpdated);
   chrome.runtime.onMessage.removeListener(handlePageStateMessage);
+  noteAutosave.destroy();
 });
 
 async function handlePageStateMessage(message, sender) {
@@ -105,15 +141,7 @@ function setCurrentButtonState(button, active, kind) {
 }
 
 function meaningParts(entry) {
-  const labels = {
-    en: "English",
-    fr: "Français",
-    de: "Deutsch",
-    pt: "Português",
-    nl: "Nederlands"
-  };
-
-  return Object.entries(labels)
+  return Object.entries(LodWrapperStore.TRANSLATION_LANGUAGE_LABELS)
     .filter(([lang]) => entry?.translations?.[lang])
     .map(([lang, label]) => `${label}: ${entry.translations[lang]}`);
 }
@@ -126,6 +154,106 @@ function meaningMarkup(entry) {
   const parts = meaningParts(entry);
   if (!parts.length) return "";
   return parts.map((part) => `<span class="meaning-chip">${LodWrapperStore.escapeHtml(part)}</span>`).join("");
+}
+
+function setCurrentNoteStatus(message) {
+  elements.currentNoteStatus.textContent = message;
+}
+
+function updateSavedEntryState(updatedEntry) {
+  if (!updatedEntry?.id) return;
+  const index = state.savedEntries.findIndex((entry) => entry.id === updatedEntry.id);
+  if (index === -1) return;
+  state.savedEntries[index] = {
+    ...state.savedEntries[index],
+    ...updatedEntry
+  };
+}
+
+async function syncCurrentTabSavedEntry(savedEntry) {
+  if (!state.currentTabId || !savedEntry?.id || savedEntry.id !== state.currentEntry?.id) return;
+
+  try {
+    await chrome.tabs.sendMessage(state.currentTabId, {
+      type: "lod-wrapper:sync-state",
+      entry: savedEntry
+    });
+  } catch {
+    // Ignore if the tab no longer has the content script.
+  }
+}
+
+function rerenderListPreservingNoteFocus(noteId) {
+  const active = document.activeElement;
+  const hadFocus = active?.matches?.('textarea[data-note-id]') && active.dataset.noteId === noteId;
+  const selectionStart = hadFocus ? active.selectionStart : null;
+  const selectionEnd = hadFocus ? active.selectionEnd : null;
+  const selectionDirection = hadFocus ? active.selectionDirection : "none";
+
+  renderList();
+
+  if (!hadFocus) return;
+
+  const next = Array.from(elements.savedList.querySelectorAll('textarea[data-note-id]'))
+    .find((textarea) => textarea.dataset.noteId === noteId);
+  if (!next) return;
+
+  next.focus();
+  if (typeof selectionStart === "number" && typeof selectionEnd === "number") {
+    next.setSelectionRange(selectionStart, selectionEnd, selectionDirection);
+  }
+}
+
+function syncCurrentNoteInput(savedEntry) {
+  const textarea = elements.currentNoteInput;
+  if (!textarea) return;
+
+  if (!state.currentEntry) {
+    noteAutosave.clear(textarea);
+    textarea.value = "";
+    textarea.dataset.noteId = "";
+    textarea.dataset.savedValue = "";
+    textarea.dataset.dirty = "";
+    textarea.disabled = true;
+    textarea.placeholder = "Save this word to add a note...";
+    setCurrentNoteStatus("Open a word on lod.lu to add a note.");
+    return;
+  }
+
+  const noteId = state.currentEntry.id || "";
+  const savedValue = savedEntry?.note || "";
+  const isSameEntry = textarea.dataset.noteId === noteId;
+  const isDirty = isSameEntry && textarea.dataset.dirty === "true";
+  const isFocused = document.activeElement === textarea;
+
+  textarea.dataset.noteId = noteId;
+  textarea.dataset.savedValue = savedValue;
+  textarea.disabled = !savedEntry;
+  textarea.placeholder = savedEntry ? "Add a note for this word..." : "Save this word to add a note...";
+
+  if (!isDirty && (!isFocused || !isSameEntry)) {
+    textarea.value = savedValue;
+  }
+
+  if (!savedEntry) {
+    noteAutosave.clear(textarea);
+    textarea.dataset.dirty = "";
+    textarea.value = "";
+    setCurrentNoteStatus("Save this word to Favorites or Study to add a note.");
+    return;
+  }
+
+  if (!isDirty) {
+    setCurrentNoteStatus(savedValue ? "Saved with this word." : "Add a short note — it saves automatically.");
+  }
+}
+
+function onCurrentNoteInput(event) {
+  noteAutosave.markDirty(event.target);
+}
+
+function onCurrentNoteCommit() {
+  return noteAutosave.commit(elements.currentNoteInput);
 }
 
 function renderAutoMode() {
@@ -151,6 +279,7 @@ function renderCurrentPageCard(savedEntry) {
     elements.currentStudy.disabled = true;
     setCurrentButtonState(elements.currentFavorite, false, "favorite");
     setCurrentButtonState(elements.currentStudy, false, "study");
+    syncCurrentNoteInput(null);
     return;
   }
 
@@ -165,6 +294,7 @@ function renderCurrentPageCard(savedEntry) {
   elements.currentStudy.disabled = false;
   setCurrentButtonState(elements.currentFavorite, Boolean(savedEntry?.favorite), "favorite");
   setCurrentButtonState(elements.currentStudy, Boolean(savedEntry?.study), "study");
+  syncCurrentNoteInput(savedEntry || null);
 }
 
 async function refreshCurrentPage() {
@@ -273,7 +403,11 @@ function renderSummary(entries) {
 const LIST_LIMIT = 10;
 
 function formatSearchStatus(filteredCount, totalCount) {
-  if (!state.searchQuery) return `${totalCount} saved word${totalCount === 1 ? "" : "s"} · type to search`;
+  if (!state.searchQuery) {
+    if (!totalCount) return "0 saved words";
+    const visibleCount = Math.min(totalCount, LIST_LIMIT);
+    return `${totalCount} saved word${totalCount === 1 ? "" : "s"} · showing ${visibleCount} recent`;
+  }
   return `${filteredCount} match${filteredCount === 1 ? "" : "es"} · ${totalCount} total`;
 }
 
@@ -314,12 +448,12 @@ function buildSavedItemMarkup(entry) {
       ${entry.example ? `<p class="item-example">${LodWrapperStore.escapeHtml(entry.example)}</p>` : ""}
       <div class="note-section">
         <label class="note-label" for="note-${LodWrapperStore.escapeHtml(entry.id)}">Note</label>
-        <textarea id="note-${LodWrapperStore.escapeHtml(entry.id)}" class="note-input" data-note-id="${LodWrapperStore.escapeHtml(entry.id)}" placeholder="Add a note for this word...">${LodWrapperStore.escapeHtml(entry.note || "")}</textarea>
+        <textarea id="note-${LodWrapperStore.escapeHtml(entry.id)}" class="note-input" data-note-id="${LodWrapperStore.escapeHtml(entry.id)}" data-saved-value="${LodWrapperStore.escapeHtml(entry.note || "")}" placeholder="Add a note for this word...">${LodWrapperStore.escapeHtml(entry.note || "")}</textarea>
       </div>
       <div class="item-actions">
-        <button data-action="toggle-favorite" data-id="${LodWrapperStore.escapeHtml(entry.id)}" class="mini-button ${entry.favorite ? "is-active" : ""}">★</button>
-        <button data-action="toggle-study" data-id="${LodWrapperStore.escapeHtml(entry.id)}" class="mini-button ${entry.study ? "is-active" : ""}">📚</button>
-        <button data-action="remove" data-id="${LodWrapperStore.escapeHtml(entry.id)}" class="mini-button mini-button-danger">Delete</button>
+        <button data-action="toggle-favorite" data-id="${LodWrapperStore.escapeHtml(entry.id)}" class="mini-button ${entry.favorite ? "is-active" : ""}" aria-label="${entry.favorite ? "Remove from favorites" : "Add to favorites"}" title="${entry.favorite ? "Remove from favorites" : "Add to favorites"}">★</button>
+        <button data-action="toggle-study" data-id="${LodWrapperStore.escapeHtml(entry.id)}" class="mini-button ${entry.study ? "is-active" : ""}" aria-label="${entry.study ? "Remove from study list" : "Add to study list"}" title="${entry.study ? "Remove from study list" : "Add to study list"}">📚</button>
+        <button data-action="remove" data-id="${LodWrapperStore.escapeHtml(entry.id)}" class="mini-button mini-button-danger" aria-label="Delete saved word" title="Delete saved word">Delete</button>
       </div>
     </article>
   `;
@@ -338,18 +472,18 @@ function renderList() {
   const entries = state.savedEntries;
   const visibleEntries = filteredEntries(entries);
   const hasQuery = state.searchQuery.trim().length > 0;
+  const displayEntries = hasQuery ? visibleEntries : entries;
 
   elements.searchStatus.textContent = formatSearchStatus(visibleEntries.length, entries.length);
 
-  // no query — hide list
-  if (!hasQuery) {
+  if (!entries.length) {
     elements.savedList.innerHTML = "";
-    elements.emptyState.classList.toggle("is-hidden", entries.length > 0);
+    elements.emptyState.classList.remove("is-hidden");
     elements.noResults.classList.add("is-hidden");
     return;
   }
 
-  if (!visibleEntries.length) {
+  if (hasQuery && !visibleEntries.length) {
     elements.savedList.innerHTML = "";
     elements.emptyState.classList.add("is-hidden");
     elements.noResults.classList.remove("is-hidden");
@@ -358,10 +492,12 @@ function renderList() {
 
   elements.emptyState.classList.add("is-hidden");
   elements.noResults.classList.add("is-hidden");
-  const capped = visibleEntries.slice(0, LIST_LIMIT);
+  const capped = displayEntries.slice(0, LIST_LIMIT);
   elements.savedList.innerHTML = capped.map(buildSavedItemMarkup).join("");
-  if (visibleEntries.length > LIST_LIMIT) {
-    elements.savedList.innerHTML += `<p class="list-overflow">Showing ${LIST_LIMIT} of ${visibleEntries.length} matches. Refine your search to narrow down.</p>`;
+  if (displayEntries.length > LIST_LIMIT) {
+    elements.savedList.innerHTML += hasQuery
+      ? `<p class="list-overflow">Showing ${LIST_LIMIT} of ${displayEntries.length} matches. Refine your search to narrow down.</p>`
+      : `<p class="list-overflow">Showing ${LIST_LIMIT} recent words. Type to search or open Preview to browse everything.</p>`;
   }
 }
 
@@ -410,17 +546,22 @@ async function onSavedListClick(event) {
   }
 }
 
-async function onSavedListChange(event) {
+function onSavedListInput(event) {
   const textarea = event.target.closest("textarea[data-note-id]");
   if (!textarea) return;
+  noteAutosave.markDirty(textarea);
+}
 
-  textarea.disabled = true;
-  try {
-    await LodWrapperStore.saveNote(textarea.dataset.noteId, textarea.value);
-    await renderSavedList();
-  } finally {
-    textarea.disabled = false;
-  }
+function onSavedListChange(event) {
+  const textarea = event.target.closest("textarea[data-note-id]");
+  if (!textarea) return;
+  noteAutosave.commit(textarea);
+}
+
+function onSavedListFocusOut(event) {
+  const textarea = event.target.closest("textarea[data-note-id]");
+  if (!textarea) return;
+  noteAutosave.commit(textarea);
 }
 
 function onSearchInput(event) {
@@ -444,8 +585,11 @@ async function exportHtml() {
 }
 
 async function exportJson() {
-  const entries = await LodWrapperStore.getEntries();
-  const json = LodWrapperStore.buildJsonExport(entries);
+  const [entries, settings] = await Promise.all([
+    LodWrapperStore.getEntries(),
+    LodWrapperStore.getSettings()
+  ]);
+  const json = LodWrapperStore.buildJsonExport(entries, { settings });
   const date = new Date().toISOString().slice(0, 10);
   LodWrapperStore.downloadTextFile(`lodvault-export-${date}.json`, json, "application/json");
 }

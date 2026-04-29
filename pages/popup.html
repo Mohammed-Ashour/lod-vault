@@ -41,6 +41,11 @@
         <button id="current-favorite" class="action-btn" disabled>☆ Favorite</button>
         <button id="current-study" class="action-btn" disabled>+ Study</button>
       </div>
+      <div class="note-section current-note-section">
+        <label class="note-label" for="current-note">Note</label>
+        <textarea id="current-note" class="note-input" placeholder="Save this word to add a note..." disabled></textarea>
+        <p id="current-note-status" class="helper-text muted" aria-live="polite">Open a word on lod.lu to add a note.</p>
+      </div>
     </section>
 
     <div class="stats-row">
@@ -71,7 +76,7 @@
         <button id="export-json" class="btn-tool">Export JSON</button>
         <button id="import-json" class="btn-tool">Import JSON</button>
       </div>
-      <p id="search-status" class="helper-text muted">0 saved words</p>
+      <p id="search-status" class="helper-text muted" aria-live="polite">0 saved words</p>
       <input id="import-json-file" type="file" accept="application/json,.json" hidden>
     </div>
 

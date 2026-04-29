@@ -31,8 +31,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.prevCard.addEventListener("click", showPrevious);
   elements.nextCard.addEventListener("click", showNext);
   document.addEventListener("keydown", onKeyDown);
+  chrome.storage?.onChanged?.addListener?.(handleStorageChange);
 
   await loadEntries();
+});
+
+window.addEventListener("unload", () => {
+  document.removeEventListener("keydown", onKeyDown);
+  chrome.storage?.onChanged?.removeListener?.(handleStorageChange);
 });
 
 async function loadEntries() {
@@ -51,6 +57,12 @@ function onDeckFilterChange(event) {
   state.index = 0;
   state.revealed = false;
   rebuildDeck();
+}
+
+function handleStorageChange(changes, areaName) {
+  if (areaName !== "local") return;
+  if (!changes?.[LodWrapperStore.STORAGE_KEY] && !changes?.[LodWrapperStore.LEGACY_STORAGE_KEY]) return;
+  loadEntries();
 }
 
 function toggleShuffle() {
@@ -128,15 +140,7 @@ function renderDeck() {
 }
 
 function buildMeaningMarkup(entry) {
-  const labels = {
-    de: "Deutsch",
-    fr: "Français",
-    en: "English",
-    pt: "Português",
-    nl: "Nederlands"
-  };
-
-  const rows = Object.entries(labels)
+  const rows = Object.entries(LodWrapperStore.TRANSLATION_LANGUAGE_LABELS)
     .filter(([lang]) => entry.translations?.[lang])
     .map(
       ([lang, label]) => `

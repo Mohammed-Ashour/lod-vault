@@ -57,7 +57,7 @@ test("applyState injects the banner under the heading and updates button state",
   const { api, dom } = loadContentScript({ html: samplePageHtml() });
 
   const entry = api.extractCurrentEntry();
-  api.applyState({ favorite: true, study: false }, entry);
+  api.applyState({ favorite: true, study: false, note: "remember this" }, entry);
 
   const banner = dom.window.document.getElementById("lod-wrapper-banner");
   assert.ok(banner);
@@ -67,11 +67,31 @@ test("applyState injects the banner under the heading and updates button state",
 
   const favoriteButton = banner.querySelector('button[data-list="favorite"]');
   const studyButton = banner.querySelector('button[data-list="study"]');
+  const noteInput = banner.querySelector('.lodw-note__input');
+  const noteMeta = banner.querySelector('.lodw-note__meta');
 
   assert.equal(favoriteButton.textContent, "★ Favorited");
   assert.equal(favoriteButton.classList.contains("is-active"), true);
   assert.equal(studyButton.textContent, "+ Add to Study");
   assert.equal(studyButton.classList.contains("is-active"), false);
+  assert.equal(noteInput.disabled, false);
+  assert.equal(noteInput.value, "remember this");
+  assert.equal(noteMeta.textContent, "Saved with this word.");
+});
+
+test("applyState keeps the banner note disabled until the word is saved", async () => {
+  const { api, dom } = loadContentScript({ html: samplePageHtml() });
+
+  const entry = api.extractCurrentEntry();
+  api.applyState(null, entry);
+
+  const banner = dom.window.document.getElementById("lod-wrapper-banner");
+  const noteInput = banner.querySelector('.lodw-note__input');
+  const noteMeta = banner.querySelector('.lodw-note__meta');
+
+  assert.equal(noteInput.disabled, true);
+  assert.equal(noteInput.value, "");
+  assert.equal(noteMeta.textContent, "Save to Favorites or Study to enable notes.");
 });
 
 test("statusText includes history when a word was auto-recorded", () => {

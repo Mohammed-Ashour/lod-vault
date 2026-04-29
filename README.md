@@ -98,8 +98,8 @@ The **LODVault** icon will appear in your browser toolbar.
 ### Preview and export
 - **Preview** — opens a live, searchable page of your saved words in a new tab
 - **HTML** — downloads a standalone HTML file you can keep or share
-- **Export JSON** — downloads a full backup of your data
-- **Import JSON** — restores or merges a previous backup
+- **Export JSON** — downloads a full backup of your saved words and extension settings
+- **Import JSON** — restores or merges a previous backup, including supported settings
 
 ---
 
@@ -119,6 +119,9 @@ npm test
 - save / remove / note flows
 - JSON import / export behavior
 - export HTML generation
+- popup rendering, default recent list behavior, and search filtering
+- flashcard deck refresh behavior when extension storage changes
+- background mutation queue behavior and LOD tab reloads on install
 - content-script extraction from LOD article pages
 - injected banner rendering and messaging
 

@@ -231,6 +231,14 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
   margin-top: 10px;
 }
 
+.current-note-section {
+  margin-top: 10px;
+}
+
+.current-note-section .helper-text {
+  margin-top: 6px;
+}
+
 .action-btn {
   flex: 1;
   padding: 8px 12px;

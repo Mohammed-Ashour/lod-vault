@@ -5,6 +5,22 @@
   const DEFAULT_SETTINGS = {
     autoMode: false
   };
+  const EXPORT_VERSION = 2;
+  const TRANSLATION_LANGUAGE_ORDER = Object.freeze(["en", "fr", "de", "pt", "nl"]);
+  const TRANSLATION_LANGUAGE_LABELS = Object.freeze({
+    en: "English",
+    fr: "Français",
+    de: "Deutsch",
+    pt: "Português",
+    nl: "Nederlands"
+  });
+  const TRANSLATION_LANGUAGE_CHIP_LABELS = Object.freeze({
+    en: "EN",
+    fr: "FR",
+    de: "DE",
+    pt: "PT",
+    nl: "NL"
+  });
 
   function nowIso() {
     return new Date().toISOString();
@@ -39,6 +55,13 @@
   function normalizeVisitCount(value) {
     const number = Number(value);
     return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
+  }
+
+  function normalizeSettings(settings = {}) {
+    return {
+      ...DEFAULT_SETTINGS,
+      autoMode: Boolean(settings?.autoMode)
+    };
   }
 
   function isExtensionContextInvalidated(error) {
@@ -207,10 +230,7 @@
   async function getSettings() {
     try {
       const data = await chrome.storage.local.get([SETTINGS_KEY]);
-      return {
-        ...DEFAULT_SETTINGS,
-        ...(data[SETTINGS_KEY] || {})
-      };
+      return normalizeSettings(data[SETTINGS_KEY] || {});
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         return { ...DEFAULT_SETTINGS };
@@ -407,12 +427,14 @@
       .toLowerCase();
   }
 
-  function buildJsonExport(entries) {
+  function buildJsonExport(entries, options = {}) {
+    const settings = normalizeSettings(options.settings || DEFAULT_SETTINGS);
     return JSON.stringify(
       {
         app: "lodvault",
-        version: 1,
+        version: EXPORT_VERSION,
         exportedAt: nowIso(),
+        settings,
         entries: entries.map(normalizeEntry)
       },
       null,
@@ -420,13 +442,43 @@
     );
   }
 
-  async function importJsonDirect(text) {
-    const parsed = JSON.parse(text);
-    const incomingEntries = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.entries) ? parsed.entries : [];
-    if (!incomingEntries.length) {
-      return { imported: 0, total: 0 };
+  function validateImportPayload(parsed) {
+    if (Array.isArray(parsed)) return;
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("Invalid JSON import format.");
+    }
+    if (parsed.app && parsed.app !== "lodvault") {
+      throw new Error("This JSON file is not a LODVault export.");
+    }
+    if (parsed.version && ![1, EXPORT_VERSION].includes(Number(parsed.version))) {
+      throw new Error("Unsupported LODVault export version.");
+    }
+  }
+
+  function getImportedSettings(parsed) {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
     }
 
+    const rawSettings = parsed.settings;
+    if (!rawSettings || typeof rawSettings !== "object" || Array.isArray(rawSettings)) {
+      return null;
+    }
+
+    const nextSettings = {};
+    if ("autoMode" in rawSettings) {
+      nextSettings.autoMode = Boolean(rawSettings.autoMode);
+    }
+
+    return Object.keys(nextSettings).length ? nextSettings : null;
+  }
+
+  async function importJsonDirect(text) {
+    const parsed = JSON.parse(text);
+    validateImportPayload(parsed);
+
+    const incomingEntries = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.entries) ? parsed.entries : [];
+    const importedSettings = getImportedSettings(parsed);
     const entryMap = await getEntryMap();
     let imported = 0;
 
@@ -458,6 +510,16 @@
     }
 
     await saveEntryMap(entryMap);
+
+    if (importedSettings) {
+      await chrome.storage.local.set({
+        [SETTINGS_KEY]: {
+          ...(await getSettings()),
+          ...importedSettings
+        }
+      });
+    }
+
     return { imported, total: countStoredEntries(entryMap) };
   }
 
@@ -498,6 +560,154 @@
     }
   }
 
+  function normalizeNoteValue(value) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  function createNoteAutosaveController(options = {}) {
+    const timers = new Map();
+    const getTimerKey = typeof options.getTimerKey === "function"
+      ? options.getTimerKey
+      : (textarea) => textarea?.dataset?.noteId || "default";
+    const getActiveElement = typeof options.getActiveElement === "function"
+      ? options.getActiveElement
+      : () => typeof document !== "undefined" ? document.activeElement : null;
+    const isBlocked = typeof options.isBlocked === "function"
+      ? options.isBlocked
+      : () => false;
+    const saveNoteHandler = typeof options.saveNote === "function"
+      ? options.saveNote
+      : async (_noteId, value) => ({ note: normalizeNoteValue(value) });
+    const setStatus = typeof options.setStatus === "function"
+      ? options.setStatus
+      : () => {};
+    const onSaved = typeof options.onSaved === "function"
+      ? options.onSaved
+      : async () => {};
+    const onError = typeof options.onError === "function"
+      ? options.onError
+      : async () => false;
+    const shouldKeepScheduling = typeof options.shouldKeepScheduling === "function"
+      ? options.shouldKeepScheduling
+      : (textarea) => textarea?.isConnected ?? true;
+    const getIdleMessage = typeof options.getIdleMessage === "function"
+      ? options.getIdleMessage
+      : ({ savedValue }) => savedValue ? "Saved with this word." : "Add a short note — it saves automatically.";
+    const getSavingMessage = typeof options.getSavingMessage === "function"
+      ? options.getSavingMessage
+      : () => "Saving note…";
+    const getSavedMessage = typeof options.getSavedMessage === "function"
+      ? options.getSavedMessage
+      : ({ savedEntry, changedSinceRequest }) => changedSinceRequest ? "Saving note…" : savedEntry?.note ? "Note saved." : "Note cleared.";
+    const getErrorMessage = typeof options.getErrorMessage === "function"
+      ? options.getErrorMessage
+      : () => "Could not save note.";
+
+    function getKey(textarea) {
+      return String(getTimerKey(textarea) || "default");
+    }
+
+    function clear(textarea) {
+      const timer = timers.get(getKey(textarea));
+      if (!timer) return;
+      clearTimeout(timer);
+      timers.delete(getKey(textarea));
+    }
+
+    function clearAll() {
+      for (const timer of timers.values()) {
+        clearTimeout(timer);
+      }
+      timers.clear();
+    }
+
+    function schedule(textarea, delay = 500) {
+      clear(textarea);
+      const key = getKey(textarea);
+      const timer = setTimeout(() => {
+        timers.delete(key);
+        commit(textarea);
+      }, delay);
+      timers.set(key, timer);
+    }
+
+    function markDirty(textarea, delay = 500) {
+      if (!textarea || textarea.disabled || isBlocked(textarea)) return;
+      textarea.dataset.dirty = "true";
+      setStatus(textarea, getSavingMessage({ textarea }), "saving");
+      schedule(textarea, delay);
+    }
+
+    async function commit(textarea) {
+      if (!textarea || isBlocked(textarea)) return;
+
+      clear(textarea);
+
+      const noteId = textarea.dataset.noteId || "";
+      if (!noteId || textarea.disabled) return;
+
+      if (textarea.dataset.saving === "true") {
+        textarea.dataset.resave = "true";
+        return;
+      }
+
+      const requestValue = textarea.value;
+      const requestNote = normalizeNoteValue(requestValue);
+      const savedValue = textarea.dataset.savedValue || "";
+
+      if (requestNote === savedValue) {
+        if (getActiveElement() !== textarea) {
+          textarea.value = savedValue;
+        }
+        textarea.dataset.dirty = "";
+        setStatus(textarea, getIdleMessage({ textarea, savedValue }), "");
+        return;
+      }
+
+      textarea.dataset.saving = "true";
+      setStatus(textarea, getSavingMessage({ textarea }), "saving");
+
+      try {
+        const savedEntry = await saveNoteHandler(noteId, requestValue, textarea);
+        const changedSinceRequest = normalizeNoteValue(textarea.value) !== requestNote;
+
+        textarea.dataset.savedValue = savedEntry?.note || "";
+        textarea.dataset.dirty = changedSinceRequest ? "true" : "";
+
+        if (!changedSinceRequest && getActiveElement() !== textarea) {
+          textarea.value = savedEntry?.note || "";
+        }
+
+        await onSaved({ textarea, savedEntry, noteId, requestValue, requestNote, changedSinceRequest });
+        setStatus(textarea, getSavedMessage({ textarea, savedEntry, noteId, requestValue, requestNote, changedSinceRequest }), changedSinceRequest ? "saving" : "success");
+      } catch (error) {
+        const handled = await onError({ error, textarea, noteId, requestValue, requestNote });
+        if (!handled) {
+          setStatus(textarea, getErrorMessage({ error, textarea, noteId, requestValue, requestNote }), "error");
+        }
+      } finally {
+        textarea.dataset.saving = "";
+
+        const needsResave = textarea.dataset.resave === "true"
+          || (textarea.dataset.dirty === "true" && normalizeNoteValue(textarea.value) !== (textarea.dataset.savedValue || ""));
+
+        textarea.dataset.resave = "";
+        if (needsResave && shouldKeepScheduling(textarea)) {
+          schedule(textarea, 0);
+        }
+      }
+    }
+
+    return {
+      clear,
+      clearAll,
+      schedule,
+      markDirty,
+      commit,
+      destroy: clearAll
+    };
+  }
+
   function buildVisitMeta(entry) {
     if (!entry.history) return "";
 
@@ -518,9 +728,7 @@
     if (entry.study)    activeLists.push("study");
     if (entry.history)  activeLists.push("history");
 
-    const translationPairs = [
-      ["en", "EN"], ["fr", "FR"], ["de", "DE"], ["pt", "PT"], ["nl", "NL"]
-    ];
+    const translationPairs = TRANSLATION_LANGUAGE_ORDER.map((key) => [key, TRANSLATION_LANGUAGE_CHIP_LABELS[key]]);
 
     if (entry.pos) {
       chips.push(`<span class="chip chip-type">${escapeHtml(entry.pos)}</span>`);
@@ -690,8 +898,14 @@
     STORAGE_KEY,
     LEGACY_STORAGE_KEY,
     SETTINGS_KEY,
+    DEFAULT_SETTINGS,
+    EXPORT_VERSION,
+    TRANSLATION_LANGUAGE_ORDER,
+    TRANSLATION_LANGUAGE_LABELS,
+    TRANSLATION_LANGUAGE_CHIP_LABELS,
     getIdFromUrl,
     normalizeEntry,
+    normalizeSettings,
     getSettings,
     getAutoMode,
     setAutoMode,
@@ -708,6 +922,8 @@
     downloadTextFile,
     escapeHtml,
     formatWhen,
+    normalizeNoteValue,
+    createNoteAutosaveController,
     buildExportHtml
   };
 })();

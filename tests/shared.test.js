@@ -239,7 +239,7 @@ test("removeFromHistory clears history and deletes orphaned history-only entries
   assert.equal(storageData[store.STORAGE_KEY].BEEM1.history, false);
 });
 
-test("importJson merges flags, keeps valid entries only, and prefers the imported note", async () => {
+test("importJson merges flags, keeps valid entries only, prefers the imported note, and restores supported settings", async () => {
   const { store, storageData } = loadSharedStore({
     ["lodVault.entries"]: {
       HAUS1: {
@@ -250,10 +250,18 @@ test("importJson merges flags, keeps valid entries only, and prefers the importe
         study: false,
         note: "old note"
       }
+    },
+    ["lodVault.settings"]: {
+      autoMode: false
     }
   });
 
   const result = await store.importJson(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    settings: {
+      autoMode: true
+    },
     entries: [
       {
         id: "HAUS1",
@@ -299,9 +307,10 @@ test("importJson merges flags, keeps valid entries only, and prefers the importe
   assert.equal(storageData[store.STORAGE_KEY].GANG1.history, true);
   assert.equal(storageData[store.STORAGE_KEY].GANG1.visitCount, 4);
   assert.equal(storageData[store.STORAGE_KEY].INVALID1, undefined);
+  assert.equal(storageData[store.SETTINGS_KEY].autoMode, true);
 });
 
-test("buildJsonExport uses the lodvault app identifier", () => {
+test("buildJsonExport uses the lodvault app identifier and includes normalized settings", () => {
   const { store } = loadSharedStore();
 
   const json = store.buildJsonExport([
@@ -311,12 +320,57 @@ test("buildJsonExport uses the lodvault app identifier", () => {
       url: "https://lod.lu/artikel/HAUS1",
       favorite: true
     }
-  ]);
+  ], {
+    settings: {
+      autoMode: 1
+    }
+  });
 
   const parsed = JSON.parse(json);
   assert.equal(parsed.app, "lodvault");
-  assert.equal(parsed.version, 1);
+  assert.equal(parsed.version, store.EXPORT_VERSION);
+  assert.deepEqual(parsed.settings, { autoMode: true });
   assert.equal(parsed.entries[0].id, "HAUS1");
+});
+
+test("importJson rejects exports from other apps", async () => {
+  const { store } = loadSharedStore();
+
+  await assert.rejects(
+    () => store.importJson(JSON.stringify({ app: "someone-else", version: 2, entries: [] })),
+    /not a LODVault export/
+  );
+});
+
+test("createNoteAutosaveController trims, saves, and updates textarea dataset state", async () => {
+  const { store } = loadSharedStore();
+  const statusUpdates = [];
+  const textarea = {
+    value: "  remember this  ",
+    disabled: false,
+    isConnected: true,
+    dataset: {
+      noteId: "HAUS1",
+      savedValue: "",
+      dirty: "true"
+    }
+  };
+
+  const controller = store.createNoteAutosaveController({
+    setStatus: (_textarea, message, tone) => statusUpdates.push({ message, tone }),
+    saveNote: async (noteId, value) => ({ id: noteId, note: store.normalizeNoteValue(value) })
+  });
+
+  await controller.commit(textarea);
+
+  assert.equal(textarea.dataset.savedValue, "remember this");
+  assert.equal(textarea.dataset.dirty, "");
+  assert.equal(textarea.dataset.saving, "");
+  assert.equal(textarea.value, "remember this");
+  assert.deepEqual(statusUpdates, [
+    { message: "Saving note…", tone: "saving" },
+    { message: "Note saved.", tone: "success" }
+  ]);
 });
 
 test("buildSearchText includes translations and notes in lowercase", () => {
