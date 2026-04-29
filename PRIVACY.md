@@ -1,6 +1,6 @@
 # Privacy Policy — LODVault
 
-**Last updated:** April 2025
+**Last updated:** April 2026
 
 LODVault is a browser extension for [lod.lu](https://lod.lu) — the official Luxembourgish Online Dictionary. This policy explains how the extension handles your data.
 

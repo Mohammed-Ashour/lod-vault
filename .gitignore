@@ -1,4 +1,11 @@
 .DS_Store
 Thumbs.db
 node_modules/
+dist/
 *.zip
+scripts/__pycache__/
+media/pw-videos/
+media/pw-frames/
+media/live-demo/raw/
+media/test-*.png
+media/*.webm
