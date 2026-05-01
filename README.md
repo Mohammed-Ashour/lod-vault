@@ -8,6 +8,7 @@
   </p>
   <p>
     <a href="https://lod.lu">lod.lu</a> ·
+    <a href="https://chromewebstore.google.com/detail/gdileleimdnibmieodhnjijmepjdfgil?utm_source=item-share-cb">Chrome Web Store</a> ·
     <a href="#install">Install</a> ·
     <a href="#features">Features</a> ·
     <a href="#credits">Credits</a> ·
@@ -68,13 +69,23 @@ The preview page lists all your saved words with their translations, POS tags, a
 
 <h2 id="install">Install</h2>
 
-LODVault is not yet on the Chrome Web Store.  
-You can load it directly from source in a few steps.
+LODVault is available on the Chrome Web Store:
+
+- **Chrome Web Store:** https://chromewebstore.google.com/detail/gdileleimdnibmieodhnjijmepjdfgil?utm_source=item-share-cb
+
+If you prefer, you can still load it directly from source.
 
 ### Requirements
 - Google Chrome, Microsoft Edge, or any Chromium-based browser
 
-### Steps
+### Install from the Chrome Web Store
+
+1. Open the store listing:
+   https://chromewebstore.google.com/detail/gdileleimdnibmieodhnjijmepjdfgil?utm_source=item-share-cb
+2. Click **Add to Chrome**
+3. Confirm the installation
+
+### Install from source
 
 1. [Download or clone this repository](https://github.com/Mohammed-Ashour/lod-vault)
 
