@@ -140,17 +140,7 @@ function renderDeck() {
 }
 
 function buildMeaningMarkup(entry) {
-  const rows = Object.entries(LodWrapperStore.TRANSLATION_LANGUAGE_LABELS)
-    .filter(([lang]) => entry.translations?.[lang])
-    .map(
-      ([lang, label]) => `
-        <div class="meaning-row">
-          <span class="meaning-label">${label}</span>
-          <span class="meaning-value">${LodWrapperStore.escapeHtml(entry.translations[lang])}</span>
-        </div>
-      `
-    )
-    .join("");
+  const rows = LodWrapperStore.buildMeaningRowsMarkup(entry);
 
   if (!rows) {
     return '<p class="muted">No saved meanings yet. Re-save this word from lod.lu to capture its translated meanings.</p>';

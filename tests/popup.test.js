@@ -57,7 +57,7 @@ test("popup search filters the saved list and shows the no-results state when ne
   assert.equal(noResults.classList.contains("is-hidden"), false);
 });
 
-test("popup renders sync language chips with count and capacity hints", async () => {
+test("popup renders sync language chips with count and estimated capacity hints", async () => {
   const { dom } = await loadPopupScript({ syncLanguages: ["en", "fr", "de"] });
 
   const chips = Array.from(dom.window.document.querySelectorAll("#sync-language-chips .sync-language-chip"));
@@ -67,7 +67,7 @@ test("popup renders sync language chips with count and capacity hints", async ()
   assert.equal(chips.length, 5);
   assert.equal(chips.filter((chip) => chip.getAttribute("aria-checked") === "true").length, 3);
   assert.match(count.textContent, /3 of 3 selected/);
-  assert.match(capacity.textContent, /~700 words synced/);
+  assert.match(capacity.textContent, /Est\. capacity ~700 words/);
   assert.equal(chips.find((chip) => chip.dataset.language === "pt").getAttribute("aria-disabled"), "true");
 });
 
@@ -108,5 +108,5 @@ test("popup sync language selector saves immediately and enforces min/max select
   assert.deepEqual(calls, [["en", "fr", "pt"], ["en", "pt"], ["pt"]]);
   assert.equal(chips.find((chip) => chip.dataset.language === "pt").getAttribute("aria-disabled"), "true");
   assert.match(dom.window.document.getElementById("sync-language-count").textContent, /1 of 3 selected/);
-  assert.match(dom.window.document.getElementById("sync-language-capacity").textContent, /~990 words synced/);
+  assert.match(dom.window.document.getElementById("sync-language-capacity").textContent, /Est\. capacity ~990 words/);
 });

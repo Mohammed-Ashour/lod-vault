@@ -5,6 +5,14 @@ const { JSDOM } = require("jsdom");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 
+function runScripts(context, scriptPaths) {
+  for (const scriptPath of scriptPaths) {
+    const absolutePath = path.isAbsolute(scriptPath) ? scriptPath : path.join(repoRoot, scriptPath);
+    const source = fs.readFileSync(absolutePath, "utf8");
+    vm.runInNewContext(source, context, { filename: absolutePath });
+  }
+}
+
 function createChromeEvent() {
   const listeners = new Set();
   return {
@@ -128,7 +136,6 @@ function createChromeStorage(initialData = {}) {
 
 function loadSharedStore(initialStorage = {}) {
   const { chrome, data } = createChromeStorage(initialStorage);
-  const source = fs.readFileSync(path.join(repoRoot, "scripts/shared.js"), "utf8");
   const context = {
     chrome,
     console,
@@ -151,7 +158,12 @@ function loadSharedStore(initialStorage = {}) {
   };
 
   context.globalThis = context;
-  vm.runInNewContext(source, context, { filename: "scripts/shared.js" });
+  runScripts(context, [
+    "scripts/store-core.js",
+    "scripts/note-autosave.js",
+    "scripts/entry-presenter.js",
+    "scripts/shared.js"
+  ]);
 
   return {
     store: context.LodWrapperStore,
@@ -165,8 +177,6 @@ function loadSharedStore(initialStorage = {}) {
 
 function loadSyncScript(initialStorage = {}) {
   const { chrome, data } = createChromeStorage(initialStorage);
-  const sharedSource = fs.readFileSync(path.join(repoRoot, "scripts/shared.js"), "utf8");
-  const syncSource = fs.readFileSync(path.join(repoRoot, "scripts/sync.js"), "utf8");
   const context = {
     chrome,
     console,
@@ -189,8 +199,13 @@ function loadSyncScript(initialStorage = {}) {
   };
 
   context.globalThis = context;
-  vm.runInNewContext(sharedSource, context, { filename: "scripts/shared.js" });
-  vm.runInNewContext(syncSource, context, { filename: "scripts/sync.js" });
+  runScripts(context, [
+    "scripts/store-core.js",
+    "scripts/note-autosave.js",
+    "scripts/entry-presenter.js",
+    "scripts/shared.js",
+    "scripts/sync.js"
+  ]);
 
   return {
     store: context.LodWrapperStore,
@@ -246,19 +261,21 @@ function loadContentScript({
     ...storeOverrides
   };
 
-  const source = `${fs.readFileSync(path.join(repoRoot, "scripts/content.js"), "utf8")}
+  const source = `${fs.readFileSync(path.join(repoRoot, "scripts/lod-article.js"), "utf8")}
+${fs.readFileSync(path.join(repoRoot, "scripts/page-banner.js"), "utf8")}
+${fs.readFileSync(path.join(repoRoot, "scripts/content.js"), "utf8")}
 ;globalThis.__contentTest = {
-  cleanWord,
-  stitchTokens,
-  collectText,
-  sanitizeHeading,
-  extractTranslations,
-  extractCurrentEntry,
-  statusText,
-  infoText,
-  buttonLabel,
-  ensureBanner,
-  applyState
+  cleanWord: LodWrapperArticleReader.cleanWord,
+  stitchTokens: LodWrapperArticleReader.stitchTokens,
+  collectText: LodWrapperArticleReader.collectText,
+  sanitizeHeading: LodWrapperArticleReader.sanitizeHeading,
+  extractTranslations: LodWrapperArticleReader.extractTranslations,
+  extractCurrentEntry: LodWrapperArticleReader.extractCurrentEntry,
+  statusText: bannerController.statusText,
+  infoText: LodWrapperArticleReader.infoText,
+  buttonLabel: bannerController.buttonLabel,
+  ensureBanner: bannerController.ensureBanner,
+  applyState: bannerController.applyState
 };`;
 
   const context = {
@@ -325,16 +342,9 @@ async function loadPopupScript({
     createNoteAutosaveController: shared.store.createNoteAutosaveController,
     escapeHtml: shared.store.escapeHtml,
     formatWhen: (value) => value || "",
-    buildSearchText(entry) {
-      return [
-        entry.word,
-        entry.pos,
-        entry.inflection,
-        entry.example,
-        entry.note,
-        ...Object.values(entry.translations || {})
-      ].filter(Boolean).join(" ").toLowerCase();
-    },
+    buildSearchText: shared.store.buildSearchText,
+    buildMeaningText: shared.store.buildMeaningText,
+    buildMeaningChipsMarkup: shared.store.buildMeaningChipsMarkup,
     async getAutoMode() {
       return autoMode;
     },
@@ -410,8 +420,16 @@ async function loadPopupScript({
     }
   };
 
-  const source = `${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
-;globalThis.__popupTest = { state, elements, renderList, renderSavedList, refreshCurrentPage, formatSearchStatus };`;
+  const source = `${fs.readFileSync(path.join(repoRoot, "scripts/popup-app.js"), "utf8")}
+${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
+;globalThis.__popupTest = {
+  state: popupApp.state,
+  elements: popupApp.elements,
+  renderList: popupApp.renderList,
+  renderSavedList: popupApp.renderSavedList,
+  refreshCurrentPage: popupApp.refreshCurrentPage,
+  formatSearchStatus: popupApp.formatSearchStatus
+};`;
 
   const context = {
     window: dom.window,
@@ -467,6 +485,7 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {} } = {}) 
     LEGACY_STORAGE_KEY: "lodWrapper.entries",
     TRANSLATION_LANGUAGE_LABELS: { ...shared.store.TRANSLATION_LANGUAGE_LABELS },
     escapeHtml: shared.store.escapeHtml,
+    buildMeaningRowsMarkup: shared.store.buildMeaningRowsMarkup,
     async getEntries() {
       return currentEntries.map((entry) => structuredClone(entry));
     },

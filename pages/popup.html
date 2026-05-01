@@ -35,13 +35,13 @@
 
     <section class="sync-row" aria-labelledby="sync-languages-title">
       <div class="sync-row__copy">
-        <p class="section-label">Sync languages</p>
-        <h2 id="sync-languages-title">Choose up to 3 languages to sync.</h2>
-        <p class="helper-text muted sync-language-helper">Tap the language chips to include or remove them from sync.</p>
+        <p class="section-label">Saved languages</p>
+        <h2 id="sync-languages-title">Choose up to 3 translation languages to keep.</h2>
+        <p class="helper-text muted sync-language-helper">Selected languages are kept in saved words and included in sync.</p>
         <div id="sync-language-chips" class="sync-language-chips" role="group" aria-label="Sync languages"></div>
         <div class="sync-language-meta">
           <p id="sync-language-count" class="muted">3 of 3 selected</p>
-          <p id="sync-language-capacity" class="muted">~700 words synced</p>
+          <p id="sync-language-capacity" class="muted">Est. capacity ~700 words</p>
         </div>
       </div>
     </section>
@@ -104,7 +104,11 @@
 
   </main>
 
+  <script src="../scripts/store-core.js"></script>
+  <script src="../scripts/note-autosave.js"></script>
+  <script src="../scripts/entry-presenter.js"></script>
   <script src="../scripts/shared.js"></script>
+  <script src="../scripts/popup-app.js"></script>
   <script src="../scripts/popup.js"></script>
 </body>
 </html>
