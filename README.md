@@ -17,20 +17,27 @@
 
 ---
 
-![LODVault screenshot](lodvault-screenshot.png)
+### Popup
 
-## Screenshots
+<img src="docs/screenshots/popup.png" width="380" alt="LODVault popup showing auto mode, sync language selector, and current word" />
 
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/page-banner.png" alt="LODVault banner injected into a lod.lu article page" /></td>
-    <td width="50%"><img src="docs/screenshots/preview-page.png" alt="LODVault preview page showing saved words and filters" /></td>
-  </tr>
-  <tr>
-    <td><strong>Inline article banner</strong><br/>Save the current word, see translations, and add notes without leaving lod.lu.</td>
-    <td><strong>Preview page</strong><br/>Browse your saved words in a searchable full-page view.</td>
-  </tr>
-</table>
+The popup shows your saved word count, lets you toggle **Auto mode**, pick **sync languages**, and manage the word you are currently reading.
+
+---
+
+### Article banner
+
+<img src="docs/screenshots/page-banner.png" width="640" alt="LODVault banner injected under a lod.lu article heading" />
+
+A banner is injected directly under the article heading on every `lod.lu/artikel/…` page. Save to Favorites or Study, see the translation summary, and add a personal note — without leaving the dictionary.
+
+---
+
+### Preview page
+
+<img src="docs/screenshots/preview-page.png" width="780" alt="LODVault preview page listing saved words with translations and tags" />
+
+The preview page lists all your saved words with their translations, POS tags, and list membership. Filter by language, search, or download as a standalone HTML file.
 
 ---
 
