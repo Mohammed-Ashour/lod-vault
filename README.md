@@ -19,13 +19,26 @@
 
 ![LODVault screenshot](lodvault-screenshot.png)
 
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/page-banner.png" alt="LODVault banner injected into a lod.lu article page" /></td>
+    <td width="50%"><img src="docs/screenshots/preview-page.png" alt="LODVault preview page showing saved words and filters" /></td>
+  </tr>
+  <tr>
+    <td><strong>Inline article banner</strong><br/>Save the current word, see translations, and add notes without leaving lod.lu.</td>
+    <td><strong>Preview page</strong><br/>Browse your saved words in a searchable full-page view.</td>
+  </tr>
+</table>
+
 ---
 
 ## What is LODVault?
 
 [LOD — Lëtzebuerger Online Dictionnaire](https://lod.lu) is the official Luxembourgish dictionary. It is well-designed and comprehensive, but it has no way to save words, track vocabulary, or study what you have looked up.
 
-**LODVault** is a browser extension that adds that layer on top of LOD. It lives inside the pages you already use and gives you a personal, local vocabulary vault — no account required, no data leaves your browser.
+**LODVault** is a browser extension that adds that layer on top of LOD. It lives inside the pages you already use and gives you a personal, local vocabulary vault — no account required, no external backend, and optional browser sync when you want it.
 
 ---
 
@@ -41,7 +54,8 @@
 | 👁 **Preview** | Browse your full word list in a clean page — no download needed |
 | 📤 **Export HTML** | Download a standalone, searchable HTML page of your words |
 | 📦 **Export / Import JSON** | Back up and restore your vocabulary |
-| 🔒 **Local-first** | All data stored in `chrome.storage.local` — nothing leaves your browser |
+| ☁️ **Optional browser sync** | Sync a compact copy across Chrome profiles with configurable language selection |
+| 🔒 **Local-first** | `chrome.storage.local` stays authoritative; sync is only a compact replica |
 
 ---
 
@@ -88,6 +102,7 @@ The **LODVault** icon will appear in your browser toolbar.
 ### Manage your words
 - Click the **LODVault icon** in your browser toolbar to open the popup
 - Turn **Auto mode** on if you want every visited LOD article to be added to **Study** and **History** automatically
+- Choose up to **3 sync languages** in the popup if you want a smaller synced copy across browsers
 - Search, add notes, toggle lists, or delete words from there
 
 ### Study with flashcards
@@ -119,18 +134,20 @@ npm test
 - save / remove / note flows
 - JSON import / export behavior
 - export HTML generation
-- popup rendering, default recent list behavior, and search filtering
+- popup rendering, sync language selection, default recent list behavior, and search filtering
 - flashcard deck refresh behavior when extension storage changes
-- background mutation queue behavior and LOD tab reloads on install
+- background mutation queue behavior, sync bridging, and LOD tab reloads on install
 - content-script extraction from LOD article pages
-- injected banner rendering and messaging
+- injected banner rendering, messaging, and saved-entry enrichment
+- compact sync serialization, merge behavior, sharding, and quota fallback logic
 
 ---
 
 ## Privacy
 
-- LODVault does **not** collect, transmit, or share any data
-- Everything you save stays in your browser via `chrome.storage.local`
+- LODVault does **not** collect, transmit, or share data with any external service
+- Everything you save lives in your browser via `chrome.storage.local`
+- If browser sync is enabled, a compact replica is stored in `chrome.storage.sync`
 - No analytics, no tracking, no external requests
 
 ---
