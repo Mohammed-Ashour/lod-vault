@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "LODVault",
   "version": "1.1.1",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxPJkWYIL+BCd4VLNAb8uY8dsdmwu8/7m8ALWL9h452PeSnNq20cQO4Sb2MwZd6Fvbw+tXImR5gp6FD6Mi/Jw153SAqVZZF37VZoLLlZldpIqi4GuO8B6NyfO7vEasRVMsTcjRgHnvo4T6jeV5lVy4S4amTWOqD8mo/HvwXSwo3j1yR2fNiXOmd0KGnRNEC+Bzx//D/I9BTSY+uOslWIEkDaZ4fy+5+2LF44xhdzQvn6VqFtdnb6hr/Npl60JPpNE3fyocAhynTNMI+tRDHE4q7Cl9xpojijLebSM+Syto0eQ8nBYCzMW2ZFxw8f3gB1zEsy1/akOcpBFYVE/mNbrfQIDAQAB",
   "description": "Save, study, and revisit Luxembourgish words directly from lod.lu.",
   "permissions": ["storage", "tabs"],
   "host_permissions": [
