@@ -32,39 +32,90 @@ async function flushAsync(dom, rounds = 3) {
 }
 
 function createChromeStorage(initialData = {}) {
-  const data = structuredClone(initialData);
+  const hasAreas = Boolean(initialData && ("local" in initialData || "sync" in initialData));
+  const data = {
+    local: structuredClone(hasAreas ? (initialData.local || {}) : initialData),
+    sync: structuredClone(hasAreas ? (initialData.sync || {}) : {})
+  };
+  const onChanged = createChromeEvent();
+
+  function cloneForStore(value) {
+    return value === undefined ? undefined : structuredClone(value);
+  }
+
+  function buildGetResult(areaData, keys) {
+    if (keys == null) {
+      return { ...areaData };
+    }
+
+    if (Array.isArray(keys)) {
+      return keys.reduce((result, key) => {
+        if (key in areaData) {
+          result[key] = areaData[key];
+        }
+        return result;
+      }, {});
+    }
+
+    if (typeof keys === "string") {
+      return keys in areaData ? { [keys]: areaData[keys] } : {};
+    }
+
+    if (typeof keys === "object") {
+      return Object.entries(keys).reduce((result, [key, fallback]) => {
+        result[key] = key in areaData ? areaData[key] : fallback;
+        return result;
+      }, {});
+    }
+
+    return { ...areaData };
+  }
+
+  function createAreaStore(areaName) {
+    const areaData = data[areaName];
+
+    return {
+      async get(keys) {
+        return buildGetResult(areaData, keys);
+      },
+      async set(values) {
+        const changes = {};
+
+        for (const [key, value] of Object.entries(values || {})) {
+          const oldValue = key in areaData ? cloneForStore(areaData[key]) : undefined;
+          const newValue = cloneForStore(value);
+          areaData[key] = newValue;
+          changes[key] = { oldValue, newValue: cloneForStore(newValue) };
+        }
+
+        if (Object.keys(changes).length) {
+          onChanged.dispatch(changes, areaName);
+        }
+      },
+      async remove(keys) {
+        const list = Array.isArray(keys) ? keys : [keys];
+        const changes = {};
+
+        for (const key of list) {
+          if (!(key in areaData)) continue;
+          changes[key] = { oldValue: cloneForStore(areaData[key]), newValue: undefined };
+          delete areaData[key];
+        }
+
+        if (Object.keys(changes).length) {
+          onChanged.dispatch(changes, areaName);
+        }
+      }
+    };
+  }
 
   return {
     data,
     chrome: {
       storage: {
-        local: {
-          async get(keys) {
-            if (Array.isArray(keys)) {
-              return keys.reduce((result, key) => {
-                if (key in data) {
-                  result[key] = data[key];
-                }
-                return result;
-              }, {});
-            }
-
-            if (typeof keys === "string") {
-              return keys in data ? { [keys]: data[keys] } : {};
-            }
-
-            return { ...data };
-          },
-          async set(values) {
-            Object.assign(data, structuredClone(values));
-          },
-          async remove(keys) {
-            const list = Array.isArray(keys) ? keys : [keys];
-            for (const key of list) {
-              delete data[key];
-            }
-          }
-        }
+        local: createAreaStore("local"),
+        sync: createAreaStore("sync"),
+        onChanged
       },
       runtime: {
         onMessage: {
@@ -92,6 +143,8 @@ function loadSharedStore(initialStorage = {}) {
     Promise,
     Blob,
     URL,
+    TextEncoder,
+    __LOD_SYNC_REPUSH_DELAY_MS__: 0,
     setTimeout,
     clearTimeout,
     globalThis: null
@@ -103,7 +156,49 @@ function loadSharedStore(initialStorage = {}) {
   return {
     store: context.LodWrapperStore,
     chrome,
-    storageData: data,
+    storageData: data.local,
+    syncStorageData: data.sync,
+    fullStorageData: data,
+    context
+  };
+}
+
+function loadSyncScript(initialStorage = {}) {
+  const { chrome, data } = createChromeStorage(initialStorage);
+  const sharedSource = fs.readFileSync(path.join(repoRoot, "scripts/shared.js"), "utf8");
+  const syncSource = fs.readFileSync(path.join(repoRoot, "scripts/sync.js"), "utf8");
+  const context = {
+    chrome,
+    console,
+    Intl,
+    Date,
+    JSON,
+    Object,
+    Array,
+    String,
+    Number,
+    Boolean,
+    Promise,
+    Blob,
+    URL,
+    TextEncoder,
+    __LOD_SYNC_REPUSH_DELAY_MS__: 0,
+    setTimeout,
+    clearTimeout,
+    globalThis: null
+  };
+
+  context.globalThis = context;
+  vm.runInNewContext(sharedSource, context, { filename: "scripts/shared.js" });
+  vm.runInNewContext(syncSource, context, { filename: "scripts/sync.js" });
+
+  return {
+    store: context.LodWrapperStore,
+    sync: context.LodWrapperSync,
+    chrome,
+    storageData: data.local,
+    syncStorageData: data.sync,
+    fullStorageData: data,
     context
   };
 }
@@ -146,6 +241,7 @@ function loadContentScript({
     getEntry: async () => null,
     getAutoMode: async () => false,
     recordAutoVisit: async (entry) => ({ ...entry, study: true, history: true, visitCount: 1 }),
+    refreshEntryData: async (entry) => entry,
     toggleList: async (entry, listName) => ({ ...entry, [listName]: true }),
     ...storeOverrides
   };
@@ -202,6 +298,7 @@ async function loadPopupScript({
   entries = [],
   currentEntry = null,
   autoMode = false,
+  syncLanguages = ["en", "fr", "de"],
   popupHtml,
   storeOverrides = {}
 } = {}) {
@@ -220,7 +317,11 @@ async function loadPopupScript({
   const LodWrapperStore = {
     STORAGE_KEY: "lodVault.entries",
     LEGACY_STORAGE_KEY: "lodWrapper.entries",
+    DEFAULT_SETTINGS: structuredClone(shared.store.DEFAULT_SETTINGS),
+    MAX_SYNC_LANGUAGES: shared.store.MAX_SYNC_LANGUAGES,
+    TRANSLATION_LANGUAGE_ORDER: [...shared.store.TRANSLATION_LANGUAGE_ORDER],
     TRANSLATION_LANGUAGE_LABELS: { ...shared.store.TRANSLATION_LANGUAGE_LABELS },
+    TRANSLATION_LANGUAGE_CHIP_LABELS: { ...shared.store.TRANSLATION_LANGUAGE_CHIP_LABELS },
     createNoteAutosaveController: shared.store.createNoteAutosaveController,
     escapeHtml: shared.store.escapeHtml,
     formatWhen: (value) => value || "",
@@ -237,6 +338,9 @@ async function loadPopupScript({
     async getAutoMode() {
       return autoMode;
     },
+    async getSyncLanguages() {
+      return [...syncLanguages];
+    },
     async getEntries() {
       return entries.map((entry) => structuredClone(entry));
     },
@@ -245,7 +349,12 @@ async function loadPopupScript({
       return entry ? structuredClone(entry) : null;
     },
     async setAutoMode(nextValue) {
-      return Boolean(nextValue);
+      autoMode = Boolean(nextValue);
+      return autoMode;
+    },
+    async setSyncLanguages(nextLanguages) {
+      syncLanguages = shared.store.normalizeSyncLanguages(nextLanguages);
+      return [...syncLanguages];
     },
     async recordAutoVisit(entry) {
       return { ...entry, study: true, history: true, visitCount: 1 };
@@ -259,7 +368,7 @@ async function loadPopupScript({
     },
     async importJson() {},
     async getSettings() {
-      return { autoMode };
+      return { autoMode, syncLanguages: [...syncLanguages] };
     },
     buildJsonExport(entriesToExport, options) {
       return shared.store.buildJsonExport(entriesToExport, options);
@@ -414,11 +523,13 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {} } = {}) 
 function loadBackgroundScript(initialStorage = {}) {
   const { chrome, data } = createChromeStorage(initialStorage);
   const runtimeOnInstalled = createChromeEvent();
+  const runtimeOnStartup = createChromeEvent();
   const runtimeOnMessage = createChromeEvent();
   const reloadedTabIds = [];
 
   chrome.runtime.getURL = (relativePath) => path.join(repoRoot, relativePath);
   chrome.runtime.onInstalled = runtimeOnInstalled;
+  chrome.runtime.onStartup = runtimeOnStartup;
   chrome.runtime.onMessage = runtimeOnMessage;
   chrome.tabs = {
     async query() {
@@ -453,6 +564,9 @@ function loadBackgroundScript(initialStorage = {}) {
     Promise,
     Blob,
     URL,
+    TextEncoder,
+    __LOD_SYNC_PUSH_DEBOUNCE_MS__: 10,
+    __LOD_SYNC_REPUSH_DELAY_MS__: 0,
     setTimeout,
     clearTimeout,
     globalThis: null
@@ -471,9 +585,12 @@ function loadBackgroundScript(initialStorage = {}) {
 
   return {
     chrome,
-    storageData: data,
+    storageData: data.local,
+    syncStorageData: data.sync,
+    fullStorageData: data,
     context,
     runtimeOnInstalled,
+    runtimeOnStartup,
     runtimeOnMessage,
     reloadedTabIds,
     dispatchStoreMutation
@@ -482,6 +599,7 @@ function loadBackgroundScript(initialStorage = {}) {
 
 module.exports = {
   loadSharedStore,
+  loadSyncScript,
   loadContentScript,
   loadPopupScript,
   loadFlashcardsScript,

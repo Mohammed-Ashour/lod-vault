@@ -3,9 +3,11 @@
   const LEGACY_STORAGE_KEY = "lodWrapper.entries";
   const SETTINGS_KEY = "lodVault.settings";
   const DEFAULT_SETTINGS = {
-    autoMode: false
+    autoMode: false,
+    syncLanguages: ["en", "fr", "de"]
   };
   const EXPORT_VERSION = 2;
+  const MAX_SYNC_LANGUAGES = 3;
   const TRANSLATION_LANGUAGE_ORDER = Object.freeze(["en", "fr", "de", "pt", "nl"]);
   const TRANSLATION_LANGUAGE_LABELS = Object.freeze({
     en: "English",
@@ -21,6 +23,16 @@
     pt: "PT",
     nl: "NL"
   });
+  const SYNC_LANGUAGE_TO_KEY = Object.freeze({
+    en: "e",
+    fr: "f",
+    de: "d",
+    pt: "p",
+    nl: "l"
+  });
+  const SYNC_KEY_TO_LANGUAGE = Object.freeze(
+    Object.fromEntries(Object.entries(SYNC_LANGUAGE_TO_KEY).map(([language, key]) => [key, language]))
+  );
 
   function nowIso() {
     return new Date().toISOString();
@@ -57,10 +69,26 @@
     return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
   }
 
+  function normalizeSyncLanguages(value) {
+    const requested = Array.isArray(value) ? value : DEFAULT_SETTINGS.syncLanguages;
+    const deduped = [];
+
+    for (const language of requested) {
+      const normalized = cleanText(language).toLowerCase();
+      if (!TRANSLATION_LANGUAGE_ORDER.includes(normalized)) continue;
+      if (deduped.includes(normalized)) continue;
+      deduped.push(normalized);
+      if (deduped.length >= MAX_SYNC_LANGUAGES) break;
+    }
+
+    return deduped.length ? deduped : [...DEFAULT_SETTINGS.syncLanguages];
+  }
+
   function normalizeSettings(settings = {}) {
     return {
       ...DEFAULT_SETTINGS,
-      autoMode: Boolean(settings?.autoMode)
+      autoMode: Boolean(settings?.autoMode),
+      syncLanguages: normalizeSyncLanguages(settings?.syncLanguages)
     };
   }
 
@@ -185,6 +213,26 @@
     return merged;
   }
 
+  function entriesMatchForStorage(left, right) {
+    const current = normalizeEntry(left);
+    const next = normalizeEntry(right);
+
+    return current.id === next.id
+      && current.word === next.word
+      && current.url === next.url
+      && current.pos === next.pos
+      && current.inflection === next.inflection
+      && current.example === next.example
+      && current.note === next.note
+      && current.favorite === next.favorite
+      && current.study === next.study
+      && current.history === next.history
+      && current.visitCount === next.visitCount
+      && current.lastVisitedAt === next.lastVisitedAt
+      && current.createdAt === next.createdAt
+      && JSON.stringify(current.translations || {}) === JSON.stringify(next.translations || {});
+  }
+
   function countStoredEntries(entryMap) {
     return Object.values(entryMap || {})
       .map(normalizeEntry)
@@ -244,6 +292,11 @@
     return Boolean(settings.autoMode);
   }
 
+  async function getSyncLanguages() {
+    const settings = await getSettings();
+    return [...settings.syncLanguages];
+  }
+
   async function setAutoModeDirect(enabled) {
     const nextSettings = {
       ...(await getSettings()),
@@ -264,6 +317,28 @@
 
   async function setAutoMode(enabled) {
     return runStoreMutation("setAutoMode", [enabled], setAutoModeDirect);
+  }
+
+  async function setSyncLanguagesDirect(languages) {
+    const nextSettings = normalizeSettings({
+      ...(await getSettings()),
+      syncLanguages: languages
+    });
+
+    try {
+      await chrome.storage.local.set({ [SETTINGS_KEY]: nextSettings });
+    } catch (error) {
+      if (isExtensionContextInvalidated(error)) {
+        throw createRefreshPageError();
+      }
+      throw error;
+    }
+
+    return [...nextSettings.syncLanguages];
+  }
+
+  async function setSyncLanguages(languages) {
+    return runStoreMutation("setSyncLanguages", [languages], setSyncLanguagesDirect);
   }
 
   async function getEntries() {
@@ -378,6 +453,39 @@
     return runStoreMutation("removeFromHistory", [id], removeFromHistoryDirect);
   }
 
+  async function refreshEntryDataDirect(entry) {
+    const normalized = normalizeEntry(entry);
+    if (!normalized.id || !normalized.word) return null;
+
+    const entryMap = await getEntryMap();
+    const existing = entryMap[normalized.id];
+    if (!existing) return null;
+
+    const merged = mergeEntry(existing, normalized);
+    merged.favorite = Boolean(existing.favorite);
+    merged.study = Boolean(existing.study);
+    merged.history = Boolean(existing.history);
+    merged.visitCount = normalizeVisitCount(existing.visitCount);
+    merged.lastVisitedAt = cleanText(existing.lastVisitedAt);
+    merged.createdAt = cleanText(existing.createdAt) || merged.createdAt;
+
+    if (!shouldKeepEntry(merged)) {
+      return null;
+    }
+
+    if (entriesMatchForStorage(existing, merged)) {
+      return normalizeEntry(existing);
+    }
+
+    entryMap[normalized.id] = merged;
+    await saveEntryMap(entryMap);
+    return normalizeEntry(merged);
+  }
+
+  async function refreshEntryData(entry) {
+    return runStoreMutation("refreshEntryData", [entry], refreshEntryDataDirect);
+  }
+
   async function saveNoteDirect(id, note) {
     if (!id) throw new Error("Missing entry id.");
 
@@ -468,6 +576,9 @@
     const nextSettings = {};
     if ("autoMode" in rawSettings) {
       nextSettings.autoMode = Boolean(rawSettings.autoMode);
+    }
+    if ("syncLanguages" in rawSettings) {
+      nextSettings.syncLanguages = normalizeSyncLanguages(rawSettings.syncLanguages);
     }
 
     return Object.keys(nextSettings).length ? nextSettings : null;
@@ -900,20 +1011,27 @@
     SETTINGS_KEY,
     DEFAULT_SETTINGS,
     EXPORT_VERSION,
+    MAX_SYNC_LANGUAGES,
     TRANSLATION_LANGUAGE_ORDER,
     TRANSLATION_LANGUAGE_LABELS,
     TRANSLATION_LANGUAGE_CHIP_LABELS,
+    SYNC_LANGUAGE_TO_KEY,
+    SYNC_KEY_TO_LANGUAGE,
     getIdFromUrl,
     normalizeEntry,
     normalizeSettings,
+    normalizeSyncLanguages,
     getSettings,
     getAutoMode,
+    getSyncLanguages,
     setAutoMode,
+    setSyncLanguages,
     getEntries,
     getEntry,
     toggleList,
     recordAutoVisit,
     removeFromHistory,
+    refreshEntryData,
     saveNote,
     removeEntry,
     buildSearchText,

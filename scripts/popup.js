@@ -4,6 +4,8 @@ const state = {
   savedEntries: [],
   searchQuery: "",
   autoMode: false,
+  syncLanguages: [...(LodWrapperStore.DEFAULT_SETTINGS?.syncLanguages || ["en", "fr", "de"])],
+  syncLanguagesSaving: false,
   currentPageRequestId: 0
 };
 
@@ -64,6 +66,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.autoModeTitle = document.getElementById("auto-mode-title");
   elements.autoModeMeta = document.getElementById("auto-mode-meta");
   elements.autoModeToggle = document.getElementById("toggle-auto-mode");
+  elements.syncLanguageChips = document.getElementById("sync-language-chips");
+  elements.syncLanguageCount = document.getElementById("sync-language-count");
+  elements.syncLanguageCapacity = document.getElementById("sync-language-capacity");
   elements.openFlashcards = document.getElementById("open-flashcards");
   elements.openPreview = document.getElementById("open-preview");
   elements.exportHtml = document.getElementById("export-html");
@@ -83,6 +88,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.currentFavorite.addEventListener("click", () => toggleCurrentPage("favorite"));
   elements.currentStudy.addEventListener("click", () => toggleCurrentPage("study"));
   elements.autoModeToggle.addEventListener("click", toggleAutoMode);
+  elements.syncLanguageChips.addEventListener("click", onSyncLanguageChipClick);
   elements.openFlashcards.addEventListener("click", openFlashcards);
   elements.openPreview.addEventListener("click", openPreview);
   elements.exportHtml.addEventListener("click", exportHtml);
@@ -102,8 +108,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   chrome.tabs.onUpdated.addListener(handleTabUpdated);
   chrome.runtime.onMessage.addListener(handlePageStateMessage);
 
-  state.autoMode = await LodWrapperStore.getAutoMode();
+  await refreshSettingsState();
   renderAutoMode();
+  renderSyncLanguages();
   await refreshCurrentPage();
   await renderSavedList();
 });
@@ -254,6 +261,101 @@ function onCurrentNoteInput(event) {
 
 function onCurrentNoteCommit() {
   return noteAutosave.commit(elements.currentNoteInput);
+}
+
+async function refreshSettingsState() {
+  const settings = await LodWrapperStore.getSettings();
+  state.autoMode = Boolean(settings?.autoMode);
+  state.syncLanguages = Array.isArray(settings?.syncLanguages) && settings.syncLanguages.length
+    ? [...settings.syncLanguages]
+    : [...(LodWrapperStore.DEFAULT_SETTINGS?.syncLanguages || ["en", "fr", "de"])];
+}
+
+function getSyncCapacityHint(selectedCount) {
+  const capacityByCount = {
+    1: 990,
+    2: 830,
+    3: 700
+  };
+  return capacityByCount[selectedCount] || capacityByCount[LodWrapperStore.MAX_SYNC_LANGUAGES || 3];
+}
+
+function buildSyncLanguageChipMarkup(language, selectedLanguages, maxSelected) {
+  const selected = selectedLanguages.includes(language);
+  const blockedByLimit = !selected && selectedLanguages.length >= maxSelected;
+  const blockedByMinimum = selected && selectedLanguages.length <= 1;
+  const disabled = state.syncLanguagesSaving || blockedByLimit || blockedByMinimum;
+  const label = LodWrapperStore.TRANSLATION_LANGUAGE_LABELS?.[language] || language.toUpperCase();
+  const chipLabel = LodWrapperStore.TRANSLATION_LANGUAGE_CHIP_LABELS?.[language] || language.toUpperCase();
+
+  return `
+    <button
+      type="button"
+      class="sync-language-chip ${selected ? "is-selected" : ""} ${disabled ? "is-disabled" : ""}" 
+      data-language="${LodWrapperStore.escapeHtml(language)}"
+      role="checkbox"
+      aria-label="${LodWrapperStore.escapeHtml(label)}"
+      aria-checked="${selected}"
+      aria-disabled="${disabled}"
+      title="${LodWrapperStore.escapeHtml(label)}"
+    >
+      <span class="sync-language-chip-code">${LodWrapperStore.escapeHtml(chipLabel)}</span>
+      <span class="sync-language-chip-label">${LodWrapperStore.escapeHtml(label)}</span>
+      ${selected ? '<span class="sync-language-chip-check" aria-hidden="true">✓</span>' : ""}
+    </button>
+  `;
+}
+
+function renderSyncLanguages() {
+  const selectedLanguages = Array.isArray(state.syncLanguages) && state.syncLanguages.length
+    ? state.syncLanguages
+    : [...(LodWrapperStore.DEFAULT_SETTINGS?.syncLanguages || ["en", "fr", "de"])];
+  const maxSelected = LodWrapperStore.MAX_SYNC_LANGUAGES || 3;
+  const languageOrder = LodWrapperStore.TRANSLATION_LANGUAGE_ORDER || Object.keys(LodWrapperStore.TRANSLATION_LANGUAGE_LABELS || {});
+
+  elements.syncLanguageChips.innerHTML = languageOrder
+    .map((language) => buildSyncLanguageChipMarkup(language, selectedLanguages, maxSelected))
+    .join("");
+  elements.syncLanguageCount.textContent = `${selectedLanguages.length} of ${maxSelected} selected`;
+  elements.syncLanguageCapacity.textContent = `~${getSyncCapacityHint(selectedLanguages.length)} words synced`;
+  elements.syncLanguageCapacity.classList.toggle("sync-language-capacity", true);
+}
+
+async function toggleSyncLanguage(language) {
+  if (!language || state.syncLanguagesSaving) return;
+
+  const selectedLanguages = [...state.syncLanguages];
+  const maxSelected = LodWrapperStore.MAX_SYNC_LANGUAGES || 3;
+  const isSelected = selectedLanguages.includes(language);
+
+  if (isSelected && selectedLanguages.length <= 1) return;
+  if (!isSelected && selectedLanguages.length >= maxSelected) return;
+
+  const nextLanguages = isSelected
+    ? selectedLanguages.filter((value) => value !== language)
+    : [...selectedLanguages, language];
+  const previousLanguages = [...selectedLanguages];
+
+  state.syncLanguagesSaving = true;
+  state.syncLanguages = nextLanguages;
+  renderSyncLanguages();
+
+  try {
+    state.syncLanguages = Array.from(await LodWrapperStore.setSyncLanguages(nextLanguages));
+  } catch {
+    state.syncLanguages = previousLanguages;
+    elements.searchStatus.textContent = "Could not update sync languages.";
+  } finally {
+    state.syncLanguagesSaving = false;
+    renderSyncLanguages();
+  }
+}
+
+function onSyncLanguageChipClick(event) {
+  const button = event.target.closest("button[data-language]");
+  if (!button) return;
+  if (button.getAttribute("aria-disabled") === "true") return;
+  toggleSyncLanguage(button.dataset.language);
 }
 
 function renderAutoMode() {
@@ -464,6 +566,7 @@ async function renderSavedList() {
   state.savedEntries = entries;
   renderSummary(entries);
   renderAutoMode();
+  renderSyncLanguages();
   renderList();
   await syncCurrentCardState();
 }
@@ -601,6 +704,9 @@ async function importJsonFile(event) {
   try {
     const text = await file.text();
     await LodWrapperStore.importJson(text);
+    await refreshSettingsState();
+    renderAutoMode();
+    renderSyncLanguages();
     await renderSavedList();
     await refreshCurrentPage();
   } catch {

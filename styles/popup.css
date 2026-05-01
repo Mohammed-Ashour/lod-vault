@@ -137,6 +137,7 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── section rows (no card borders) ─────────────── */
 .auto-row,
+.sync-row,
 .current-section,
 .stats-row,
 .search-section {
@@ -196,6 +197,86 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
 .auto-toggle.is-active:hover {
   background: var(--teal-h);
   border-color: var(--teal-h);
+}
+
+/* ── sync languages row ──────────────────────────── */
+.sync-row__copy { min-width: 0; }
+
+.sync-row h2 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 2px;
+  line-height: 1.2;
+}
+
+.sync-language-helper {
+  margin-top: 6px;
+}
+
+.sync-language-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.sync-language-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-solid);
+  color: var(--muted);
+}
+
+.sync-language-chip:hover {
+  border-color: rgba(168, 218, 220, 0.3);
+  color: var(--teal-lt);
+}
+
+.sync-language-chip.is-selected {
+  background: rgba(57, 167, 196, 0.12);
+  border-color: rgba(57, 167, 196, 0.35);
+  color: var(--teal-lt);
+}
+
+.sync-language-chip.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sync-language-chip-code {
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--teal-lt);
+}
+
+.sync-language-chip-label {
+  text-transform: none;
+}
+
+.sync-language-chip-check {
+  color: var(--teal-lt);
+  font-size: 11px;
+}
+
+.sync-language-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.sync-language-capacity {
+  color: var(--teal-lt);
 }
 
 /* ── current word section ────────────────────────── */

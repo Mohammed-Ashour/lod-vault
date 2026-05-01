@@ -508,6 +508,9 @@ async function refreshUI() {
     let savedEntry = await LodWrapperStore.getEntry(entry.id);
     currentAutoMode = await LodWrapperStore.getAutoMode();
     savedEntry = await maybeAutoRecord(entry, savedEntry, currentAutoMode);
+    if (savedEntry) {
+      savedEntry = await LodWrapperStore.refreshEntryData(entry) || savedEntry;
+    }
     applyState(savedEntry, entry);
     notifyPopup(entry, savedEntry);
   } catch (error) {

@@ -114,3 +114,38 @@ test("message listener returns the extracted entry for popup requests", () => {
   assert.equal(response.entry.word, "Haus");
   assert.equal(response.entry.id, "HAUS1");
 });
+
+test("refreshUI enriches an existing saved entry with later-available translations", async () => {
+  let refreshedEntry = null;
+  const { context } = loadContentScript({
+    html: samplePageHtml(),
+    storeOverrides: {
+      getEntry: async () => ({
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        study: true,
+        history: true,
+        translations: {}
+      }),
+      getAutoMode: async () => false,
+      refreshEntryData: async (entry) => {
+        refreshedEntry = entry;
+        return {
+          ...entry,
+          study: true,
+          history: true
+        };
+      }
+    }
+  });
+
+  await context.refreshUI();
+
+  assert.ok(refreshedEntry);
+  assert.deepEqual({ ...refreshedEntry.translations }, {
+    en: "house",
+    fr: "maison",
+    de: "Haus"
+  });
+});

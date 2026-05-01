@@ -39,13 +39,19 @@ test("normalizeEntry trims values and derives id from the url", () => {
 });
 
 
-test("auto mode setting defaults to off and can be toggled on", async () => {
+test("settings default to auto mode off with default sync languages and can be updated", async () => {
   const { store, storageData } = loadSharedStore();
 
   assert.equal(await store.getAutoMode(), false);
+  assert.deepEqual(Array.from(await store.getSyncLanguages()), ["en", "fr", "de"]);
+
   assert.equal(await store.setAutoMode(true), true);
+  assert.deepEqual(Array.from(await store.setSyncLanguages(["pt", "nl", "pt", "en", "fr"])), ["pt", "nl", "en"]);
+
   assert.equal(await store.getAutoMode(), true);
+  assert.deepEqual(Array.from(await store.getSyncLanguages()), ["pt", "nl", "en"]);
   assert.equal(storageData[store.SETTINGS_KEY].autoMode, true);
+  assert.deepEqual(storageData[store.SETTINGS_KEY].syncLanguages, ["pt", "nl", "en"]);
 });
 
 test("toggleList saves a new entry and removes it when the last active list is toggled off", async () => {
@@ -239,6 +245,40 @@ test("removeFromHistory clears history and deletes orphaned history-only entries
   assert.equal(storageData[store.STORAGE_KEY].BEEM1.history, false);
 });
 
+test("refreshEntryData enriches an existing saved entry without changing its list membership", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        study: true,
+        history: true,
+        visitCount: 2,
+        lastVisitedAt: "2025-01-01T00:00:00.000Z",
+        createdAt: "2025-01-01T00:00:00.000Z",
+        updatedAt: "2025-01-01T00:00:00.000Z"
+      }
+    }
+  });
+
+  const refreshed = await store.refreshEntryData({
+    id: "HAUS1",
+    word: "Haus",
+    url: "https://lod.lu/artikel/HAUS1",
+    pos: "noun",
+    translations: { en: "house", fr: "maison" },
+    example: "Dëst ass en Haus."
+  });
+
+  assert.equal(refreshed.study, true);
+  assert.equal(refreshed.history, true);
+  assert.equal(refreshed.visitCount, 2);
+  assert.equal(refreshed.pos, "noun");
+  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, { en: "house", fr: "maison" });
+  assert.equal(storageData[store.STORAGE_KEY].HAUS1.example, "Dëst ass en Haus.");
+});
+
 test("importJson merges flags, keeps valid entries only, prefers the imported note, and restores supported settings", async () => {
   const { store, storageData } = loadSharedStore({
     ["lodVault.entries"]: {
@@ -308,6 +348,7 @@ test("importJson merges flags, keeps valid entries only, prefers the imported no
   assert.equal(storageData[store.STORAGE_KEY].GANG1.visitCount, 4);
   assert.equal(storageData[store.STORAGE_KEY].INVALID1, undefined);
   assert.equal(storageData[store.SETTINGS_KEY].autoMode, true);
+  assert.deepEqual(storageData[store.SETTINGS_KEY].syncLanguages, ["en", "fr", "de"]);
 });
 
 test("buildJsonExport uses the lodvault app identifier and includes normalized settings", () => {
@@ -329,7 +370,7 @@ test("buildJsonExport uses the lodvault app identifier and includes normalized s
   const parsed = JSON.parse(json);
   assert.equal(parsed.app, "lodvault");
   assert.equal(parsed.version, store.EXPORT_VERSION);
-  assert.deepEqual(parsed.settings, { autoMode: true });
+  assert.deepEqual(parsed.settings, { autoMode: true, syncLanguages: ["en", "fr", "de"] });
   assert.equal(parsed.entries[0].id, "HAUS1");
 });
 

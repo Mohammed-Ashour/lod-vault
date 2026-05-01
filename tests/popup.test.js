@@ -56,3 +56,57 @@ test("popup search filters the saved list and shows the no-results state when ne
   assert.equal(items.length, 0);
   assert.equal(noResults.classList.contains("is-hidden"), false);
 });
+
+test("popup renders sync language chips with count and capacity hints", async () => {
+  const { dom } = await loadPopupScript({ syncLanguages: ["en", "fr", "de"] });
+
+  const chips = Array.from(dom.window.document.querySelectorAll("#sync-language-chips .sync-language-chip"));
+  const count = dom.window.document.getElementById("sync-language-count");
+  const capacity = dom.window.document.getElementById("sync-language-capacity");
+
+  assert.equal(chips.length, 5);
+  assert.equal(chips.filter((chip) => chip.getAttribute("aria-checked") === "true").length, 3);
+  assert.match(count.textContent, /3 of 3 selected/);
+  assert.match(capacity.textContent, /~700 words synced/);
+  assert.equal(chips.find((chip) => chip.dataset.language === "pt").getAttribute("aria-disabled"), "true");
+});
+
+test("popup sync language selector saves immediately and enforces min/max selection", async () => {
+  const calls = [];
+  const { dom } = await loadPopupScript({
+    syncLanguages: ["en", "fr"],
+    storeOverrides: {
+      async setSyncLanguages(nextLanguages) {
+        calls.push([...nextLanguages]);
+        return nextLanguages;
+      }
+    }
+  });
+
+  const ptChip = dom.window.document.querySelector('#sync-language-chips [data-language="pt"]');
+  ptChip.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  let chips = Array.from(dom.window.document.querySelectorAll("#sync-language-chips .sync-language-chip"));
+  assert.deepEqual(calls[0], ["en", "fr", "pt"]);
+  assert.match(dom.window.document.getElementById("sync-language-count").textContent, /3 of 3 selected/);
+  assert.equal(chips.find((chip) => chip.dataset.language === "de").getAttribute("aria-disabled"), "true");
+
+  const frChip = dom.window.document.querySelector('#sync-language-chips [data-language="fr"]');
+  frChip.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const enChip = dom.window.document.querySelector('#sync-language-chips [data-language="en"]');
+  enChip.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const lastSelectedChip = dom.window.document.querySelector('#sync-language-chips [data-language="pt"]');
+  lastSelectedChip.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  chips = Array.from(dom.window.document.querySelectorAll("#sync-language-chips .sync-language-chip"));
+  assert.deepEqual(calls, [["en", "fr", "pt"], ["en", "pt"], ["pt"]]);
+  assert.equal(chips.find((chip) => chip.dataset.language === "pt").getAttribute("aria-disabled"), "true");
+  assert.match(dom.window.document.getElementById("sync-language-count").textContent, /1 of 3 selected/);
+  assert.match(dom.window.document.getElementById("sync-language-capacity").textContent, /~990 words synced/);
+});
