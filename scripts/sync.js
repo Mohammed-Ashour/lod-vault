@@ -398,6 +398,35 @@
     return merged;
   }
 
+  function filterEntryMapTranslations(entryMap = {}, languages = DEFAULT_SETTINGS.syncLanguages) {
+    const allowed = new Set(normalizeSyncLanguages(languages));
+    const filtered = {};
+
+    for (const [entryId, value] of Object.entries(normalizeEntryMap(entryMap))) {
+      const entry = normalizeEntry({ id: entryId, ...value });
+      const translations = {};
+
+      for (const [language, translation] of Object.entries(entry.translations || {})) {
+        const normalizedLanguage = cleanText(language).toLowerCase();
+        const cleanedTranslation = cleanText(translation);
+        if (!allowed.has(normalizedLanguage) || !cleanedTranslation) continue;
+        translations[normalizedLanguage] = cleanedTranslation;
+      }
+
+      if (Object.keys(translations).length) {
+        entry.translations = translations;
+      } else {
+        delete entry.translations;
+      }
+
+      if (entry.id && entry.word && shouldKeepEntry(entry)) {
+        filtered[entry.id] = entry;
+      }
+    }
+
+    return filtered;
+  }
+
   function buildSyncSettings(settings = DEFAULT_SETTINGS) {
     const normalized = normalizeSettings(settings);
     return {
@@ -622,11 +651,12 @@
     const data = await chrome.storage.local.get([STORAGE_KEY, LOCAL_SETTINGS_KEY]);
     const rawEntries = data[STORAGE_KEY] && typeof data[STORAGE_KEY] === "object" ? data[STORAGE_KEY] : {};
     const rawSettings = data[LOCAL_SETTINGS_KEY] && typeof data[LOCAL_SETTINGS_KEY] === "object" ? data[LOCAL_SETTINGS_KEY] : {};
+    const settings = normalizeSettings(rawSettings);
 
     return {
-      entries: normalizeEntryMap(rawEntries),
+      entries: filterEntryMapTranslations(rawEntries, settings.syncLanguages),
       rawSettings,
-      settings: normalizeSettings(rawSettings)
+      settings
     };
   }
 
@@ -842,10 +872,13 @@
   async function pullAll(options = {}) {
     const [localState, syncState] = await Promise.all([getLocalState(), getSyncState()]);
     const remoteEntries = buildRemoteEntryMap(syncState.entries, localState.entries);
-    const mergedEntries = Object.keys(remoteEntries).length
-      ? mergeEntryMaps(localState.entries, remoteEntries)
-      : localState.entries;
     const mergedSettings = buildPulledSettings(localState, syncState);
+    const mergedEntries = filterEntryMapTranslations(
+      Object.keys(remoteEntries).length
+        ? mergeEntryMaps(localState.entries, remoteEntries)
+        : localState.entries,
+      mergedSettings.syncLanguages
+    );
     const entriesChanged = stableStringify(localState.entries) !== stableStringify(mergedEntries);
     const settingsChanged = stableStringify(localState.settings) !== stableStringify(mergedSettings);
 

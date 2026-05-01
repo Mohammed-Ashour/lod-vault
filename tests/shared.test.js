@@ -54,19 +54,46 @@ test("settings default to auto mode off with default sync languages and can be u
   assert.deepEqual(storageData[store.SETTINGS_KEY].syncLanguages, ["pt", "nl", "en"]);
 });
 
+test("setSyncLanguages rewrites existing saved translations to the selected languages", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        study: true,
+        translations: {
+          en: "house",
+          fr: "maison",
+          de: "Haus",
+          pt: "casa"
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(Array.from(await store.setSyncLanguages(["en", "de"])), ["en", "de"]);
+  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, { en: "house", de: "Haus" });
+});
+
 test("toggleList saves a new entry and removes it when the last active list is toggled off", async () => {
-  const { store, storageData } = loadSharedStore();
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.settings"]: {
+      syncLanguages: ["en", "de"]
+    }
+  });
   const entry = {
     id: "HAUS1",
     word: "Haus",
     url: "https://lod.lu/artikel/HAUS1",
-    translations: { en: "house" }
+    translations: { en: "house", fr: "maison", pt: "casa", de: "Haus" }
   };
 
   const saved = await store.toggleList(entry, "favorite");
   assert.equal(saved.favorite, true);
   assert.equal(saved.study, false);
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.word, "Haus");
+  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, { en: "house", de: "Haus" });
 
   const removed = await store.toggleList(entry, "favorite");
   assert.equal(removed, null);
@@ -259,6 +286,9 @@ test("refreshEntryData enriches an existing saved entry without changing its lis
         createdAt: "2025-01-01T00:00:00.000Z",
         updatedAt: "2025-01-01T00:00:00.000Z"
       }
+    },
+    ["lodVault.settings"]: {
+      syncLanguages: ["en"]
     }
   });
 
@@ -275,7 +305,7 @@ test("refreshEntryData enriches an existing saved entry without changing its lis
   assert.equal(refreshed.history, true);
   assert.equal(refreshed.visitCount, 2);
   assert.equal(refreshed.pos, "noun");
-  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, { en: "house", fr: "maison" });
+  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, { en: "house" });
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.example, "Dëst ass en Haus.");
 });
 
@@ -344,6 +374,7 @@ test("importJson merges flags, keeps valid entries only, prefers the imported no
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.study, true);
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.note, "new note");
   assert.equal(storageData[store.STORAGE_KEY].BEEM1.word, "Beem");
+  assert.deepEqual(storageData[store.STORAGE_KEY].BEEM1.translations, { en: "tree" });
   assert.equal(storageData[store.STORAGE_KEY].GANG1.history, true);
   assert.equal(storageData[store.STORAGE_KEY].GANG1.visitCount, 4);
   assert.equal(storageData[store.STORAGE_KEY].INVALID1, undefined);
