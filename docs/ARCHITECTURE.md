@@ -1,6 +1,6 @@
 # LODVault Architecture
 
-This document describes the current architecture of the extension after the sync work and shard-level sync optimization.
+This document describes the current architecture of the extension after the store split, page-module split, popup split, and sync-coordination refactor.
 
 ---
 
@@ -8,97 +8,245 @@ This document describes the current architecture of the extension after the sync
 
 LODVault is a Chrome extension with four main runtime parts:
 
-1. **Content script**
+1. **Content runtime**
    - Runs on `lod.lu/artikel/*`
-   - Extracts the current word from the page
-   - Shows the inline save banner on LOD pages
+   - Reads the current LOD article
+   - Renders the inline page banner
+   - Handles auto-record, page-local note editing, and popup messaging
 
-2. **Popup UI**
+2. **Popup runtime**
    - The main control surface for saved words
-   - Lets the user view, search, edit notes, toggle auto mode, and choose sync languages
+   - Shows the current word, recent saved words, search, notes, auto mode, and saved-language selection
 
-3. **Background service worker**
+3. **Background runtime**
    - Serializes store mutations
    - Initializes sync
    - Bridges local storage changes to sync storage and sync changes back to local storage
 
-4. **Shared store layer**
-   - Central storage API used by popup/content/background
-   - Owns local data normalization, import/export, and mutation logic
+4. **Shared runtime modules**
+   - Saved-word storage rules
+   - Note autosave behaviour
+   - Saved-word presentation helpers
+   - Sync serialization and coordination
 
-The important design rule is:
+The key design rule is still:
 
 > `chrome.storage.local` is authoritative. `chrome.storage.sync` is a compact replication layer.
 
 ---
 
-## 2. File responsibilities
+## 2. Runtime module map
 
-### Core runtime files
+## 2.1 Store and presentation modules
 
-- `scripts/shared.js`
-  - Canonical store API
-  - Entry normalization
-  - Settings normalization
-  - Local storage read/write helpers
-  - Import/export helpers
-  - Note autosave controller
+### `scripts/store-core.js`
+Owns the local vocabulary-vault rules:
+- entry normalization
+- settings normalization
+- local storage read/write helpers
+- legacy storage migration
+- list mutation rules
+- auto-record rules
+- note persistence
+- JSON import/export
+- mutation proxying to background
 
-- `scripts/content.js`
-  - Parses the current LOD article page
-  - Builds the page banner UI
-  - Talks to popup/background through messaging
-  - Uses `LodWrapperStore` for mutations
+This is the deepest store module in the codebase. Most callers should depend on this seam through `LodWrapperStore` rather than reimplementing store rules.
 
-- `scripts/popup.js`
-  - Popup state management and rendering
-  - Current-word card
-  - Saved list rendering
-  - Search/filtering
-  - Sync language selector UI
-  - Auto mode UI
+### `scripts/note-autosave.js`
+Owns note autosave behaviour:
+- timer scheduling
+- dirty/saving/resave state
+- save callbacks
+- status callbacks
 
-- `scripts/background.js`
-  - Service worker entrypoint
-  - Loads `shared.js` and `sync.js`
-  - Queues store mutations so they run one at a time
-  - Debounces sync writes
-  - Routes local changes to `pushEntry`, `pushSettings`, or `pushAll`
-  - Routes sync changes to `pullAll`
+It is intentionally generic so popup and page banner can share the same note Interface.
 
-- `scripts/sync.js`
-  - Compact sync serialization/deserialization
-  - Sharding logic
-  - Merge logic
-  - Quota safety checks
-  - Partial-read tolerance
-  - Legacy sync format migration
-  - Shard-level fast-path updates for single-entry changes
+### `scripts/entry-presenter.js`
+Owns saved-word presentation helpers:
+- escaping
+- date formatting
+- search-text generation
+- translation/meaning helpers
+- export entry markup
+- export document generation
+- file download helper
 
-### UI files
+Popup, preview, flashcards, and export all use this module instead of each building their own presentation rules.
 
-- `pages/popup.html`
-- `styles/popup.css`
+### `scripts/shared.js`
+Thin compatibility facade that composes:
+- `LodWrapperStoreCore`
+- `LodWrapperNotes`
+- `LodWrapperEntryPresenter`
 
-These define the popup structure and styling. The sync languages row was added without changing the overall visual system.
-
-### Other UI/runtime
-
-- `pages/flashcards.html` / `scripts/flashcards.js`
-- `pages/preview.html` / `scripts/preview.js`
-
-These are secondary UIs built on top of the same local store.
+This keeps the runtime no-build style intact while narrowing the responsibilities of the underlying modules.
 
 ---
 
-## 3. Data model
+## 2.2 Content runtime modules
 
-### Local entry shape
+### `scripts/lod-article.js`
+Owns LOD article-reading rules:
+- heading extraction
+- URL/lemma extraction
+- translation extraction
+- stale-page protection during SPA navigation
+- current-entry construction
+- article info text
+
+This module is the seam for “what word is on this LOD page right now?”
+
+### `scripts/page-banner.js`
+Owns the inline page banner:
+- banner creation and placement
+- banner note state
+- status text
+- button labels
+- banner rendering and update suppression
+- invalidated-extension UI
+
+It depends on the article reader and store but does not own page refresh orchestration.
+
+### `scripts/content.js`
+Thin page-runtime adapter that wires together:
+- article reading
+- page banner rendering
+- auto mode recording
+- page refresh scheduling
+- message handling with popup/background
+- DOM and location observers
+
+This file should stay focused on orchestration, not on extraction rules or banner markup details.
+
+---
+
+## 2.3 Popup runtime modules
+
+### `scripts/popup-app.js`
+Owns popup state and popup flows:
+- current-word card
+- saved-word list
+- search
+- note autosave wiring
+- auto mode UI
+- saved-language selection UI
+- tab/runtime messaging
+- export/import actions
+
+### `scripts/popup.js`
+Thin entry adapter:
+- creates the popup app
+- starts it on `DOMContentLoaded`
+- destroys it on unload
+
+This keeps the popup seam narrower than the previous single-file design.
+
+---
+
+## 2.4 Background and sync modules
+
+### `scripts/sync.js`
+Owns compact sync behaviour:
+- compact/expand entry format
+- translation filtering for sync
+- shard building
+- merge rules
+- manifest/settings serialization
+- migration handling
+- quota safety
+- partial-read tolerance
+- `SyncAdapter` fast paths
+
+### `scripts/sync-coordinator.js`
+Owns replication coordination policy:
+- local change classification
+- settings-only vs entry-only vs full push planning
+- debounce windows
+- suppression windows
+- init scheduling
+- push/pull orchestration
+
+### `scripts/background.js`
+Thin service-worker adapter:
+- loads modules
+- keeps the mutation queue for store writes
+- reloads LOD tabs on install/update
+- forwards storage events into the sync coordinator
+- exposes store mutations to other runtimes through messaging
+
+---
+
+## 2.5 Secondary UI modules
+
+### `scripts/preview.js`
+Preview page adapter built on the shared presentation module.
+
+Responsibilities:
+- render live preview HTML from local data
+- apply language/search filters in the preview iframe
+- attach remove buttons to preview entries
+
+### `scripts/flashcards.js`
+Flashcard page adapter built on the shared presentation module.
+
+Responsibilities:
+- deck filtering
+- shuffle/reveal/navigation
+- storage-change refresh
+
+---
+
+## 3. Load order and composition
+
+Because the extension keeps a no-build architecture, runtime composition happens by script load order.
+
+### Popup page
+Load order is:
+1. `store-core.js`
+2. `note-autosave.js`
+3. `entry-presenter.js`
+4. `shared.js`
+5. `popup-app.js`
+6. `popup.js`
+
+### Preview / flashcards pages
+Load order is:
+1. `store-core.js`
+2. `entry-presenter.js`
+3. `shared.js`
+4. page-specific adapter
+
+### Content script
+Load order is:
+1. `store-core.js`
+2. `note-autosave.js`
+3. `entry-presenter.js`
+4. `shared.js`
+5. `lod-article.js`
+6. `page-banner.js`
+7. `content.js`
+
+### Background service worker
+Load order is:
+1. `store-core.js`
+2. `shared.js`
+3. `sync.js`
+4. `sync-coordinator.js`
+5. `background.js`
+
+The important consequence is that the thin adapter files assume the deeper modules are already present on `globalThis`.
+
+---
+
+## 4. Data model
+
+## 4.1 Local entry shape
 
 Entries are stored in local storage under:
 - `lodVault.entries`
 
-Each entry is normalized in `shared.js` and looks conceptually like:
+Each entry is normalized in `store-core.js` and looks conceptually like:
 
 ```js
 {
@@ -125,7 +273,7 @@ An entry is kept only if at least one of these is true:
 - `study`
 - `history`
 
-### Settings shape
+## 4.2 Settings shape
 
 Stored in local storage under:
 - `lodVault.settings`
@@ -139,23 +287,23 @@ Current settings:
 }
 ```
 
-`shared.js` is responsible for validating and normalizing these settings.
+`store-core.js` validates and normalizes these settings.
 
 ---
 
-## 4. Storage architecture
+## 5. Storage architecture
 
-### Local storage
+## 5.1 Local storage
 
 `chrome.storage.local` is the source of truth.
 
 Why:
 - no small quota pressure
-- full translations are preserved
-- simpler UI/state behavior
+- full translations are preserved locally
+- UI state stays simple
 - sync failures never block normal use
 
-### Sync storage
+## 5.2 Sync storage
 
 `chrome.storage.sync` stores a compact replicated copy.
 
@@ -168,11 +316,11 @@ Compact sync format reduces field sizes and only includes translations allowed b
 
 ---
 
-## 5. Sync architecture
+## 6. Sync architecture
 
-## 5.1 Sync format
+## 6.1 Sync format
 
-`scripts/sync.js` converts local entries into compact sync entries.
+`sync.js` converts local entries into compact sync entries.
 
 Examples:
 - `id -> i`
@@ -181,27 +329,24 @@ Examples:
 - `translations -> t`
 - flags packed into `a`
 
-Translations are compacted with short keys:
+Translation key mapping:
 - `en -> e`
 - `fr -> f`
 - `de -> d`
 - `pt -> p`
 - `nl -> l`
 
-## 5.2 Sharding
+## 6.2 Sharding
 
 Entries are sorted by `id` and grouped into shard arrays.
 
 Target:
 - soft limit: `7000` bytes per shard
-- hard sync item limit safety: `8192` bytes
+- hard sync item safety: `8192` bytes
 
-This keeps shards under Chrome sync item size limits.
+## 6.3 SyncAdapter API
 
-## 5.3 SyncAdapter API
-
-Current API in `scripts/sync.js`:
-
+The deep sync seam in `sync.js` is:
 - `init()`
 - `pushAll()`
 - `pullAll()`
@@ -209,186 +354,94 @@ Current API in `scripts/sync.js`:
 - `pushSettings()`
 - `destroy()`
 
-### `pushAll()`
-Rebuilds all compact shards from local data and writes them to sync.
+## 6.4 Sync coordination seam
 
-Used when:
-- first push
-- migration fallback
-- syncLanguages changed
-- fast-path update is not safe
+The coordination seam in `sync-coordinator.js` decides when to call the adapter.
 
-### `pullAll()`
-Reads sync shards, expands them, merges them into local entries, and optionally re-pushes.
+Important behaviours:
+- local entry-only changes prefer `pushEntry(id)`
+- auto-mode-only changes prefer `pushSettings()`
+- mixed or risky changes fall back to `pushAll()`
+- sync-triggered pulls suppress redundant local-triggered pushes
+- local-triggered pushes suppress redundant sync-triggered pulls
 
-Important behavior:
-- local is never blindly replaced
-- last-write-wins per entry using timestamps
-- translations are merged so local-only languages are preserved
-- partial shard reads do not delete local data
-
-### `pushEntry(id)`
-Shard-level fast path.
-
-Used when a single local entry changed and sync layout is healthy.
-
-Fast path rules:
-- only for an entry that already exists in sync
-- updates only the shard that contains that entry
-- updates manifest metadata too
-- falls back to `pushAll()` if unsafe
-
-Fallback cases include:
-- entry not found in sync
-- sync layout is partial/inconsistent
-- migration is needed
-- syncLanguages changed
-- updated shard becomes too large
-- deletion would create an empty middle shard
-
-### `pushSettings()`
-Metadata fast path.
-
-Used when:
-- only `autoMode` changed
-- `syncLanguages` did not change
-
-It updates only:
-- `lodVault.m`
-- `lodVault.s`
-
-If `syncLanguages` changed, it falls back to `pushAll()` because all compact entries depend on the language filter.
+This split keeps serialization rules in one module and orchestration policy in another.
 
 ---
 
-## 6. Background sync orchestration
+## 7. End-to-end flows
 
-`background.js` watches storage changes and decides which sync operation to run.
+## 7.1 Save a word from the page banner
 
-### Local → Sync
+1. `lod-article.js` extracts the current entry
+2. `page-banner.js` renders the banner
+3. User toggles Favorite or Study
+4. `store-core.js` mutates local storage
+5. `background.js` receives the storage change
+6. `sync-coordinator.js` classifies the change
+7. `sync.js` pushes the compact sync update
 
-When local storage changes:
-- if one entry changed: `pushEntry(id)`
-- if only `autoMode` changed: `pushSettings()`
-- otherwise: `pushAll()`
+## 7.2 Auto-record a visited word
 
-These writes are debounced to reduce write pressure.
+1. `content.js` refreshes the page state
+2. `store-core.js.getAutoMode()` loads settings
+3. `content.js` calls `recordAutoVisit()` when needed
+4. The updated local entry triggers sync through the background runtime
 
-### Sync → Local
+## 7.3 Edit a note
 
-When sync storage changes:
-- background calls `pullAll({ repush: true })`
-- local merges are applied
-- migrated/merged data may be re-pushed after a delay
+1. Popup or page banner delegates to `note-autosave.js`
+2. The autosave module debounces and commits the change
+3. `store-core.js.saveNote()` writes the normalized note
+4. UI adapters rerender using the updated entry
+5. Background sync bridges the local mutation if sync is active
 
-### Loop suppression
+## 7.4 Pull data from another device
 
-Background keeps short suppression windows so that:
-- a local-triggered sync write does not immediately trigger a redundant pull
-- a sync-triggered local merge does not immediately trigger a redundant push
+1. Sync storage changes
+2. Background forwards the change to `sync-coordinator.js`
+3. The coordinator schedules `pullAll({ repush: true })`
+4. `sync.js` expands shards and merges remote entries into local storage
+5. UIs reread local storage and reflect the merged state
 
-This prevents ping-pong loops.
+## 7.5 Render preview/export/flashcards
 
----
-
-## 7. Phase 4 shard-level sync design
-
-The new optimization is intentionally conservative.
-
-### What it optimizes
-
-Frequent small mutations like:
-- note edits
-- favorite/study toggles
-- history updates
-
-### What it does not try to over-optimize
-
-It does **not** attempt complicated shard rebalancing.
-
-If a single-entry update is risky, the code chooses correctness and falls back to `pushAll()`.
-
-This keeps the system easier to reason about while still reducing sync churn for common edits.
+1. UI adapter loads entries from `LodWrapperStore`
+2. Presentation helpers from `entry-presenter.js` generate the shared meaning/export markup
+3. The page-specific adapter adds its own interaction layer
 
 ---
 
-## 8. Migration and robustness
-
-`scripts/sync.js` now handles:
-
-### Partial shard reads
-If manifest expects shards that are missing or malformed:
-- available shards are still merged
-- warnings are logged
-- local data is preserved
-- automatic re-push is skipped while the sync read is incomplete
-
-### Legacy sync format migration
-If old sync data is detected:
-- old entries are coerced into the current compact format
-- data is merged locally
-- a new v3 payload is written back to sync
-
-### Quota handling
-Before a sync write:
-- per-item sizes are estimated
-- total payload size is estimated
-
-If limits would be exceeded:
-- sync write is skipped gracefully
-- local storage remains fully usable
-
----
-
-## 9. UI architecture
-
-### Popup
-The popup is a lightweight stateful renderer driven by `scripts/popup.js`.
-
-State includes:
-- current tab / current word
-- saved entries list
-- search query
-- auto mode
-- sync languages
-
-The popup uses the shared store API directly and does not talk to sync storage.
-
-That is deliberate:
-- popup logic stays simple
-- sync logic stays isolated in background + `sync.js`
-
-### Content script
-The content script focuses on page extraction and page-local UI.
-
-It does not own storage rules.
-
-Instead it delegates mutations to `shared.js`, which keeps behavior consistent between popup and in-page UI.
-
----
-
-## 10. Testing architecture
+## 8. Testing architecture
 
 Tests live under `tests/`.
 
 ### Key test areas
 
 - `tests/shared.test.js`
-  - local store behavior
+  - store-core behaviour through the `LodWrapperStore` facade
   - normalization
   - import/export
-  - settings behavior
+  - settings behaviour
+  - note autosave helpers
+  - export/presentation helpers
 
 - `tests/popup.test.js`
-  - popup rendering
-  - search behavior
-  - sync language UI behavior
+  - popup app rendering
+  - search behaviour
+  - saved-language UI behaviour
 
 - `tests/background.test.js`
-  - mutation queue behavior
-  - install/startup behavior
+  - mutation queue behaviour
+  - install/startup behaviour
   - local/sync change routing
   - fast-path selection (`pushEntry`, `pushSettings`)
+
+- `tests/content.test.js`
+  - article reading
+  - banner rendering
+  - popup messaging
+  - saved-entry enrichment
 
 - `tests/sync.test.js`
   - compact/expand roundtrips
@@ -398,21 +451,16 @@ Tests live under `tests/`.
   - migration
   - quota fallback
   - shard-level sync fast path
-  - stress tests
 
 ### Loader strategy
 
-`tests/helpers/loaders.js` builds a mocked extension environment with:
-- fake `chrome.storage.local`
-- fake `chrome.storage.sync`
-- fake runtime/tabs events
-- JS execution in VM contexts
+`tests/helpers/loaders.js` constructs mocked runtimes and now mirrors the new module composition by loading the split script set in the same order as production.
 
-This makes the architecture testable without a browser.
+That keeps the test seam close to the real runtime seam.
 
 ---
 
-## 11. Current architectural principles
+## 9. Current architectural principles
 
 The codebase currently follows these principles:
 
@@ -422,62 +470,41 @@ The codebase currently follows these principles:
 
 2. **Conservative correctness over cleverness**
    - fast paths are used only when clearly safe
-   - otherwise fallback to full rebuild/merge
+   - otherwise the code falls back to full rebuild/merge
 
-3. **Centralized normalization**
-   - `shared.js` owns shape validation for entries and settings
+3. **Centralized vocabulary-vault rules**
+   - store-core owns saved-word and settings rules
 
-4. **Sync isolation**
+4. **Shared note and presentation seams**
+   - popup and page banner share note autosave behaviour
+   - popup, preview, flashcards, and export share saved-word presentation helpers
+
+5. **Thin runtime adapters**
+   - `content.js`, `popup.js`, and `background.js` are orchestration adapters over deeper modules
+
+6. **Sync isolation**
    - popup/content do not manage sync storage directly
-   - background + `sync.js` own sync behavior
+   - background + sync modules own replication
 
-5. **Graceful degradation**
-   - quota failures, partial sync data, and old formats should not break core usage
-
----
-
-## 12. Current end-to-end flow
-
-### Save a word
-1. Content script extracts the current word
-2. User toggles favorite/study
-3. `shared.js` updates local storage
-4. Background sees the local change
-5. Background chooses `pushEntry(id)` or `pushAll()`
-6. Sync storage updates
-
-### Pull from another device
-1. Sync storage changes
-2. Background sees the sync change
-3. `pullAll()` expands + merges remote data into local
-4. If needed, normalized data is re-pushed
-5. Popup/content reflect the merged local state
-
-### Change auto mode only
-1. Popup updates local settings
-2. Background sees a settings-only change
-3. Background calls `pushSettings()`
-4. Only sync metadata is updated
-
-### Change sync languages
-1. Popup updates local settings
-2. Background sees `syncLanguages` changed
-3. Background calls `pushAll()`
-4. All compact entries are rebuilt with the new language filter
+7. **Graceful degradation**
+   - quota failures, partial sync data, and old formats do not break core local usage
 
 ---
 
-## 13. Where to extend next
+## 10. Remaining likely extension points
 
 Likely future extension points:
 - sync status indicator in popup
 - user-visible sync diagnostics
-- more explicit migration versions
-- selective pull/push telemetry/debug tools
-- more aggressive shard rebalancing if needed later
+- more explicit sync/debug tooling
+- more extracted popup submodules if popup flows grow further
+- preview-specific document interaction module if preview gains more editing features
+- more aggressive shard rebalancing only if sync scale demands it
 
-For now, the architecture is intentionally optimized for:
+For now, the architecture is optimized for:
 - reliability
-- predictable behavior
-- small, safe sync fast paths
+- predictable behaviour
+- small safe sync fast paths
+- shared presentation and note behaviour
 - maintainable testing
+- better locality than the original single-file runtime modules
