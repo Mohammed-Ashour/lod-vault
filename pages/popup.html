@@ -41,7 +41,11 @@
         <div id="sync-language-chips" class="sync-language-chips" role="group" aria-label="Sync languages"></div>
         <div class="sync-language-meta">
           <p id="sync-language-count" class="muted">3 of 3 selected</p>
-          <p id="sync-language-capacity" class="muted">Est. capacity ~700 words</p>
+          <p class="sync-bar-label muted">Sync space</p>
+          <div id="sync-capacity-bar" class="sync-capacity-bar">
+            <div id="sync-capacity-fill" class="sync-capacity-fill" style="width: 0%"></div>
+          </div>
+          <p id="sync-language-capacity" class="muted">Sync: 0 / 100 KB used</p>
         </div>
       </div>
     </section>
@@ -108,6 +112,8 @@
   <script src="../scripts/note-autosave.js"></script>
   <script src="../scripts/entry-presenter.js"></script>
   <script src="../scripts/shared.js"></script>
+  <script src="../scripts/compress.js"></script>
+  <script src="../scripts/sync.js"></script>
   <script src="../scripts/popup-app.js"></script>
   <script src="../scripts/popup.js"></script>
 </body>

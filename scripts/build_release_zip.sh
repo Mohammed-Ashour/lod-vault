@@ -38,11 +38,20 @@ cp manifest.json "$STAGE_DIR/"
 cp -R icons pages styles "$STAGE_DIR/"
 cp \
   scripts/background.js \
+  scripts/compress.js \
   scripts/content.js \
+  scripts/entry-presenter.js \
   scripts/flashcards.js \
+  scripts/lod-article.js \
+  scripts/note-autosave.js \
+  scripts/page-banner.js \
+  scripts/popup-app.js \
   scripts/popup.js \
   scripts/preview.js \
   scripts/shared.js \
+  scripts/store-core.js \
+  scripts/sync-coordinator.js \
+  scripts/sync.js \
   "$STAGE_DIR/scripts/"
 
 (

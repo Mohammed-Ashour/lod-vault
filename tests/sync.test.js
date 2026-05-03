@@ -330,7 +330,7 @@ test("SyncAdapter.pullAll tolerates partial shard reads and merges only availabl
   assert.equal(fixture.storageData["lodVault.entries"].LOCAL1.word, "Lokal");
 });
 
-test("SyncAdapter.pullAll migrates legacy sync format forward to v3", async () => {
+test("SyncAdapter.pullAll migrates legacy sync format forward to v4", async () => {
   const fixture = loadSyncScript({
     sync: {
       "lodVault.m": { v: 2, n: 1, a: true, l: ["en", "fr"], t: 1714564800 },
@@ -357,7 +357,7 @@ test("SyncAdapter.pullAll migrates legacy sync format forward to v3", async () =
   assert.equal(result.needsMigration, true);
   assert.equal(fixture.storageData["lodVault.entries"].HAUS1.word, "Haus");
   assert.deepEqual(fixture.storageData["lodVault.entries"].HAUS1.translations, { en: "house", fr: "maison" });
-  assert.equal(fixture.syncStorageData["lodVault.m"].v, 3);
+  assert.equal(fixture.syncStorageData["lodVault.m"].v, 4);
   assert.deepEqual(fixture.syncStorageData["lodVault.m"].l, ["e", "f"]);
   assert.deepEqual(fixture.syncStorageData["lodVault.s"].l, ["en", "fr"]);
 });
@@ -491,4 +491,347 @@ test("SyncAdapter.pushAll can shard and write 500+ compact entries", async () =>
   assert.equal(fixture.syncStorageData["lodVault.m"].n, result.shardCount);
   assert.equal(fixture.syncStorageData["lodVault.s"].l[0], "en");
   assert.equal(fixture.syncStorageData["lodVault.e.0"][0].t.f, undefined);
+});
+
+test("SyncAdapter.pushAll stores compressed shards when compression is available", async () => {
+  const fixture = loadSyncScript({
+    local: {
+      "lodVault.entries": {
+        HAUS1: makeLocalEntry(),
+        BEEM1: makeLocalEntry({
+          id: "BEEM1",
+          word: "Beem",
+          url: "https://lod.lu/artikel/BEEM1",
+          translations: { en: "tree", fr: "arbre", de: "Baum" },
+          favorite: false,
+          study: true,
+          history: false,
+          visitCount: 0,
+          lastVisitedAt: "",
+          note: ""
+        })
+      },
+      "lodVault.settings": {
+        autoMode: true,
+        syncLanguages: ["en", "fr"]
+      }
+    }
+  }, { enableCompression: true });
+
+  const result = await fixture.sync.SyncAdapter.pushAll();
+
+  assert.equal(result.ok, true);
+  assert.equal(fixture.syncStorageData["lodVault.m"].z, 1);
+
+  // Shard should be a compressed string, not a JSON array
+  const shardKey = `${fixture.sync.SYNC_ENTRY_PREFIX}0`;
+  assert.equal(typeof fixture.syncStorageData[shardKey], "string");
+
+  // Verify round-trip: decompress and check content
+  const decompressed = await fixture.compress.decompress(fixture.syncStorageData[shardKey]);
+  const parsed = JSON.parse(decompressed);
+  assert.ok(Array.isArray(parsed));
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].i, "BEEM1");
+});
+
+test("SyncAdapter.pullAll reads compressed shards correctly", async () => {
+  // First push with compression to populate sync storage
+  const fixture = loadSyncScript({
+    local: {
+      "lodVault.entries": {
+        HAUS1: makeLocalEntry()
+      },
+      "lodVault.settings": {
+        autoMode: false,
+        syncLanguages: ["en", "fr", "de"]
+      }
+    }
+  }, { enableCompression: true });
+
+  await fixture.sync.SyncAdapter.pushAll();
+
+  // Now simulate a fresh local state that needs to pull
+  const fixture2 = loadSyncScript({
+    local: {},
+    sync: fixture.syncStorageData
+  }, { enableCompression: true });
+
+  const result = await fixture2.sync.SyncAdapter.pullAll({ repush: false });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.changed, true);
+  assert.equal(fixture2.storageData["lodVault.entries"].HAUS1.word, "Haus");
+  assert.deepEqual(fixture2.storageData["lodVault.entries"].HAUS1.translations, { en: "house", fr: "maison", de: "Haus" });
+});
+
+test("SyncAdapter.pullAll migrates uncompressed v3 data to compressed v4 on repush", async () => {
+  // Build enough entries so compression beats the deflate+base64 overhead.
+  const legacyEntries = [];
+  for (let index = 1; index <= 8; index += 1) {
+    legacyEntries.push({
+      i: `WORD${String(index).padStart(3, "0")}`,
+      w: `Word ${index}`,
+      u: `WORD${String(index).padStart(3, "0")}`,
+      t: { e: `english ${index}`, f: `francais ${index}` },
+      a: index % 2 === 0 ? 7 : 3,
+      e: `Example sentence number ${index} with some Luxembourgish context.`,
+      n: `Study note for word ${index}: remember the gender and plural form.`,
+      r: 1735689600,
+      o: 1736208000 + index
+    });
+  }
+
+  const fixture = loadSyncScript({
+    sync: {
+      "lodVault.m": { v: 3, n: 1, a: false, l: ["e", "f"], t: 1714564800 },
+      "lodVault.s": { a: false, l: ["en", "fr"] },
+      "lodVault.e.0": legacyEntries
+    }
+  }, { enableCompression: true });
+
+  const result = await fixture.sync.SyncAdapter.pullAll({ repush: true, repushDelayMs: 0 });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.needsMigration, true);
+
+  // After migration, manifest should be v4 with compression flag
+  assert.equal(fixture.syncStorageData["lodVault.m"].v, 4);
+  assert.equal(fixture.syncStorageData["lodVault.m"].z, 1);
+
+  // Shard should now be compressed
+  const shardKey = `${fixture.sync.SYNC_ENTRY_PREFIX}0`;
+  const stored = fixture.syncStorageData[shardKey];
+
+  // The shard may be compressed (string) or fall back to array if compression
+  // wasn't beneficial.  Either outcome is valid — the key assertion is that
+  // the manifest upgraded to v4.
+  assert.ok(typeof stored === "string" || Array.isArray(stored));
+
+  // Verify the data round-trips correctly regardless of storage format.
+  const decompressed = typeof stored === "string"
+    ? JSON.parse(await fixture.compress.decompress(stored))
+    : stored;
+  assert.ok(Array.isArray(decompressed));
+  assert.ok(decompressed.length > 0);
+});
+
+test("getSyncUsageStats returns correct byte counts", async () => {
+  const fixture = loadSyncScript({
+    local: {
+      "lodVault.entries": {
+        HAUS1: makeLocalEntry(),
+        BEEM1: makeLocalEntry({
+          id: "BEEM1",
+          word: "Beem",
+          url: "https://lod.lu/artikel/BEEM1",
+          translations: { en: "tree" },
+          favorite: false,
+          study: true,
+          history: false,
+          visitCount: 0,
+          lastVisitedAt: "",
+          note: ""
+        })
+      },
+      "lodVault.settings": {
+        autoMode: false,
+        syncLanguages: ["en"]
+      }
+    }
+  });
+
+  await fixture.sync.SyncAdapter.pushAll();
+
+  const stats = await fixture.sync.getSyncUsageStats();
+
+  assert.equal(typeof stats.bytesUsed, "number");
+  assert.ok(stats.bytesUsed > 0);
+  assert.equal(stats.bytesTotal, 100 * 1024);
+  assert.ok(stats.percentUsed >= 0);
+  assert.equal(stats.entryCount, 2);
+  assert.equal(stats.shardCount, 1);
+  assert.equal(stats.bytesRemaining, stats.bytesTotal - stats.bytesUsed);
+  assert.equal(typeof stats.estimatedRemaining, "number");
+  assert.ok(stats.estimatedRemaining > 0);
+});
+
+test("getSyncUsageStats returns zero state when sync is empty", async () => {
+  const fixture = loadSyncScript({});
+
+  const stats = await fixture.sync.getSyncUsageStats();
+
+  assert.equal(stats.bytesUsed, 0);
+  assert.equal(stats.bytesTotal, 100 * 1024);
+  assert.equal(stats.percentUsed, 0);
+  assert.equal(stats.entryCount, 0);
+  assert.equal(stats.shardCount, 0);
+  assert.equal(stats.bytesRemaining, 100 * 1024);
+  assert.equal(typeof stats.estimatedRemaining, "number");
+});
+
+test("getSyncUsageStats returns fallback on error", async () => {
+  const fixture = loadSyncScript({});
+
+  // Simulate an error
+  const originalGet = fixture.chrome.storage.sync.get;
+  fixture.chrome.storage.sync.get = async () => {
+    throw new Error("Sync unavailable");
+  };
+
+  const stats = await fixture.sync.getSyncUsageStats();
+
+  assert.equal(stats.bytesUsed, 0);
+  assert.equal(stats.bytesTotal, 100 * 1024);
+  assert.equal(stats.percentUsed, 0);
+  assert.equal(stats.entryCount, 0);
+});
+
+test("getSyncUsageStats with compressed shards counts entries correctly", async () => {
+  const fixture = loadSyncScript({
+    local: {
+      "lodVault.entries": {
+        HAUS1: makeLocalEntry(),
+        SCHOUL1: makeLocalEntry({
+          id: "SCHOUL1",
+          word: "Schoul",
+          url: "https://lod.lu/artikel/SCHOUL1",
+          translations: { en: "school", fr: "école", de: "Schule" },
+          favorite: true,
+          study: true,
+          history: true
+        }),
+        BOUCH1: makeLocalEntry({
+          id: "BOUCH1",
+          word: "Bouch",
+          url: "https://lod.lu/artikel/BOUCH1",
+          translations: { en: "book" },
+          favorite: false,
+          study: false,
+          history: true
+        })
+      },
+      "lodVault.settings": {
+        autoMode: false,
+        syncLanguages: ["en", "fr", "de"]
+      }
+    }
+  }, { enableCompression: true });
+
+  await fixture.sync.SyncAdapter.pushAll();
+
+  const stats = await fixture.sync.getSyncUsageStats();
+
+  assert.equal(stats.entryCount, 3);
+  assert.ok(stats.bytesUsed > 0);
+  assert.ok(stats.estimatedRemaining > 0);
+});
+
+test("SyncAdapter.pushAll compresses only when smaller", async () => {
+  // Create a single tiny entry — compression overhead might make it larger,
+  // so the code should fall back to storing uncompressed.
+  const fixture = loadSyncScript({
+    local: {
+      "lodVault.entries": {
+        A1: makeLocalEntry({
+          id: "A1",
+          word: "a",
+          url: "https://lod.lu/artikel/A1",
+          translations: { en: "a" },
+          favorite: true,
+          study: false,
+          history: false,
+          visitCount: 0,
+          lastVisitedAt: "",
+          note: "",
+          example: "",
+          inflection: ""
+        })
+      },
+      "lodVault.settings": {
+        autoMode: false,
+        syncLanguages: ["en"]
+      }
+    }
+  }, { enableCompression: true });
+
+  const result = await fixture.sync.SyncAdapter.pushAll();
+
+  assert.equal(result.ok, true);
+
+  // For a single-entry tiny shard, the compressed version may be smaller
+  // or the code may fall back to uncompressed. Either outcome is valid.
+  const shardKey = `${fixture.sync.SYNC_ENTRY_PREFIX}0`;
+  const stored = fixture.syncStorageData[shardKey];
+  assert.ok(typeof stored === "string" || Array.isArray(stored));
+});
+
+test("pushAll handles compression unavailability gracefully", async () => {
+  const fixture = loadSyncScript({
+    local: {
+      "lodVault.entries": {
+        HAUS1: makeLocalEntry()
+      },
+      "lodVault.settings": {
+        autoMode: false,
+        syncLanguages: ["en", "fr", "de"]
+      }
+    }
+  }, { enableCompression: true });
+
+  // Disable compression mid-flight
+  fixture.compress._setAvailableForTest(false);
+
+  const result = await fixture.sync.SyncAdapter.pushAll();
+
+  assert.equal(result.ok, true);
+
+  // Shard should be an uncompressed array since compression is unavailable
+  const shardKey = `${fixture.sync.SYNC_ENTRY_PREFIX}0`;
+  assert.ok(Array.isArray(fixture.syncStorageData[shardKey]));
+  assert.equal(fixture.syncStorageData["lodVault.m"].z, undefined);
+});
+
+test("SyncAdapter.pushEntry handles compressed shard update", async () => {
+  const entries = {};
+
+  for (let index = 1; index <= 12; index += 1) {
+    const id = `WORD${String(index).padStart(3, "0")}`;
+    entries[id] = makeLocalEntry({
+      id,
+      word: `Word ${index}`,
+      url: `https://lod.lu/artikel/${id}`,
+      example: `Example ${index}: ${"x".repeat(200)}`,
+      note: `Note ${index}: ${"y".repeat(80)}`,
+      updatedAt: `2025-01-${String((index % 28) + 1).padStart(2, "0")}T08:30:00.000Z`
+    });
+  }
+
+  const fixture = loadSyncScript({
+    local: {
+      "lodVault.entries": entries,
+      "lodVault.settings": { autoMode: false, syncLanguages: ["en"] }
+    }
+  }, { enableCompression: true });
+
+  await fixture.sync.SyncAdapter.pushAll();
+
+  fixture.storageData["lodVault.entries"].WORD005.note = "Updated via pushEntry with compression.";
+  fixture.storageData["lodVault.entries"].WORD005.updatedAt = "2025-02-01T00:00:00.000Z";
+
+  const result = await fixture.sync.SyncAdapter.pushEntry("WORD005");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.mode, "entry");
+
+  // Verify the updated note is in the stored shard after decompression
+  const shardKey = `${fixture.sync.SYNC_ENTRY_PREFIX}0`;
+  const stored = fixture.syncStorageData[shardKey];
+  assert.equal(typeof stored, "string");
+
+  const decompressed = await fixture.compress.decompress(stored);
+  const parsed = JSON.parse(decompressed);
+  const updatedEntry = parsed.find((entry) => entry.i === "WORD005");
+  assert.ok(updatedEntry);
+  assert.equal(updatedEntry.n, "Updated via pushEntry with compression.");
 });

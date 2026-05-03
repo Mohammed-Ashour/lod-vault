@@ -39,6 +39,10 @@ async function flushAsync(dom, rounds = 3) {
   }
 }
 
+const COMPRESSION_GLOBALS = typeof CompressionStream !== "undefined"
+  ? { CompressionStream, DecompressionStream, ReadableStream: globalThis.ReadableStream, WritableStream: globalThis.WritableStream }
+  : {};
+
 function createChromeStorage(initialData = {}) {
   const hasAreas = Boolean(initialData && ("local" in initialData || "sync" in initialData));
   const data = {
@@ -151,9 +155,11 @@ function loadSharedStore(initialStorage = {}) {
     Blob,
     URL,
     TextEncoder,
+    TextDecoder,
     __LOD_SYNC_REPUSH_DELAY_MS__: 0,
     setTimeout,
     clearTimeout,
+    ...COMPRESSION_GLOBALS,
     globalThis: null
   };
 
@@ -175,7 +181,8 @@ function loadSharedStore(initialStorage = {}) {
   };
 }
 
-function loadSyncScript(initialStorage = {}) {
+function loadSyncScript(initialStorage = {}, options = {}) {
+  const enableCompression = Boolean(options.enableCompression);
   const { chrome, data } = createChromeStorage(initialStorage);
   const context = {
     chrome,
@@ -192,9 +199,11 @@ function loadSyncScript(initialStorage = {}) {
     Blob,
     URL,
     TextEncoder,
+    TextDecoder,
     __LOD_SYNC_REPUSH_DELAY_MS__: 0,
     setTimeout,
     clearTimeout,
+    ...COMPRESSION_GLOBALS,
     globalThis: null
   };
 
@@ -204,12 +213,18 @@ function loadSyncScript(initialStorage = {}) {
     "scripts/note-autosave.js",
     "scripts/entry-presenter.js",
     "scripts/shared.js",
+    "scripts/compress.js",
     "scripts/sync.js"
   ]);
+
+  if (!enableCompression && context.LodWrapperCompress) {
+    context.LodWrapperCompress._setAvailableForTest(false);
+  }
 
   return {
     store: context.LodWrapperStore,
     sync: context.LodWrapperSync,
+    compress: context.LodWrapperCompress,
     chrome,
     storageData: data.local,
     syncStorageData: data.sync,
@@ -584,10 +599,12 @@ function loadBackgroundScript(initialStorage = {}) {
     Blob,
     URL,
     TextEncoder,
+    TextDecoder,
     __LOD_SYNC_PUSH_DEBOUNCE_MS__: 10,
     __LOD_SYNC_REPUSH_DELAY_MS__: 0,
     setTimeout,
     clearTimeout,
+    ...COMPRESSION_GLOBALS,
     globalThis: null
   };
 

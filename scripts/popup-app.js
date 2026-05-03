@@ -202,6 +202,39 @@
       return capacityByCount[selectedCount] || capacityByCount[store.MAX_SYNC_LANGUAGES || 3];
     }
 
+    function formatBytes(bytes) {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    async function renderSyncCapacity() {
+      const sync = globalThis.LodWrapperSync;
+      if (!sync || !sync.getSyncUsageStats) {
+        elements.syncLanguageCapacity.textContent = `Sync: Est. ~${getSyncCapacityHint(state.syncLanguages.length)} words`;
+        return;
+      }
+
+      try {
+        const stats = await sync.getSyncUsageStats();
+        const percentUsed = Math.min(100, stats.percentUsed || 0);
+        const usedLabel = formatBytes(stats.bytesUsed || 0);
+        const totalLabel = formatBytes(stats.bytesTotal || sync.SYNC_TOTAL_HARD_LIMIT || 102400);
+
+        elements.syncCapacityFill.style.width = `${percentUsed}%`;
+        elements.syncCapacityFill.classList.toggle("is-warning", percentUsed >= 70 && percentUsed < 90);
+        elements.syncCapacityFill.classList.toggle("is-danger", percentUsed >= 90);
+
+        if (stats.entryCount > 0) {
+          elements.syncLanguageCapacity.textContent = `Sync: ${usedLabel} / ${totalLabel} used · ~${stats.estimatedRemaining} words fit`;
+        } else {
+          elements.syncLanguageCapacity.textContent = `Sync: 0 / ${totalLabel} used · ~${getSyncCapacityHint(state.syncLanguages.length)} words fit`;
+        }
+      } catch (_error) {
+        elements.syncLanguageCapacity.textContent = `Sync: Est. ~${getSyncCapacityHint(state.syncLanguages.length)} words`;
+      }
+    }
+
     function buildSyncLanguageChipMarkup(language, selectedLanguages, maxSelected) {
       const selected = selectedLanguages.includes(language);
       const blockedByLimit = !selected && selectedLanguages.length >= maxSelected;
@@ -239,8 +272,8 @@
         .map((language) => buildSyncLanguageChipMarkup(language, selectedLanguages, maxSelected))
         .join("");
       elements.syncLanguageCount.textContent = `${selectedLanguages.length} of ${maxSelected} selected`;
-      elements.syncLanguageCapacity.textContent = `Est. capacity ~${getSyncCapacityHint(selectedLanguages.length)} words`;
       elements.syncLanguageCapacity.classList.toggle("sync-language-capacity", true);
+      renderSyncCapacity();
     }
 
     async function toggleSyncLanguage(language) {
@@ -658,6 +691,8 @@
       elements.syncLanguageChips = document.getElementById("sync-language-chips");
       elements.syncLanguageCount = document.getElementById("sync-language-count");
       elements.syncLanguageCapacity = document.getElementById("sync-language-capacity");
+      elements.syncCapacityBar = document.getElementById("sync-capacity-bar");
+      elements.syncCapacityFill = document.getElementById("sync-capacity-fill");
       elements.openFlashcards = document.getElementById("open-flashcards");
       elements.openPreview = document.getElementById("open-preview");
       elements.exportHtml = document.getElementById("export-html");

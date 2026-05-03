@@ -17,7 +17,8 @@
     Object.fromEntries(Object.entries(SYNC_LANGUAGE_TO_KEY).map(([language, key]) => [key, language]))
   );
 
-  const SYNC_FORMAT_VERSION = 3;
+  const SYNC_FORMAT_VERSION = 4;
+  const COMPRESSION = globalThis.LodWrapperCompress || null;
   const SYNC_MANIFEST_KEY = "lodVault.m";
   const SYNC_SETTINGS_KEY = "lodVault.s";
   const SYNC_ENTRY_PREFIX = "lodVault.e.";
@@ -437,13 +438,19 @@
 
   function buildManifest(settings = DEFAULT_SETTINGS, shardCount = 0, timestamp = nowUnix()) {
     const normalized = normalizeSettings(settings);
-    return {
+    const manifest = {
       v: SYNC_FORMAT_VERSION,
       n: Math.max(0, Number(shardCount) || 0),
       a: Boolean(normalized.autoMode),
       l: normalized.syncLanguages.map((language) => SYNC_LANGUAGE_TO_KEY[language]).filter(Boolean),
       t: timestamp
     };
+
+    if (COMPRESSION && COMPRESSION.isAvailable && COMPRESSION.isAvailable()) {
+      manifest.z = 1;
+    }
+
+    return manifest;
   }
 
   function normalizeSyncLanguageList(value, fallback = DEFAULT_SETTINGS.syncLanguages) {
@@ -493,6 +500,10 @@
     };
   }
 
+  function isManifestCompressed(manifest) {
+    return Boolean(manifest && (manifest.z === 1 || manifest.z === true || Number(manifest.v) >= 4));
+  }
+
   function normalizeManifest(rawManifest = null, shardCount = 0) {
     if (!rawManifest || typeof rawManifest !== "object") {
       return null;
@@ -507,7 +518,8 @@
       n: Math.max(0, Number(rawManifest.n) || shardCount),
       a: Boolean(rawManifest.a),
       l: normalizedLanguages,
-      t: Number(rawManifest.t) || 0
+      t: Number(rawManifest.t) || 0,
+      z: Number(rawManifest.z) || 0
     };
   }
 
@@ -523,9 +535,10 @@
     ));
   }
 
-  function detectSyncMigrationNeed({ rawManifest, rawSettings, shardEntries, hasSyncData }) {
+  function detectSyncMigrationNeed({ rawManifest, rawSettings, shardEntries, hasSyncData, hasRawCompressedShards }) {
     if (!hasSyncData) return false;
     if (!rawManifest || Number(rawManifest.v) !== SYNC_FORMAT_VERSION) return true;
+    if (!isManifestCompressed(rawManifest) && COMPRESSION && COMPRESSION.isAvailable && COMPRESSION.isAvailable()) return true;
 
     if (Array.isArray(rawSettings?.l) && rawSettings.l.some((value) => cleanText(value).length === 1)) {
       return true;
@@ -534,6 +547,8 @@
     if (Array.isArray(rawManifest?.l) && rawManifest.l.some((value) => cleanText(value).length > 1)) {
       return true;
     }
+
+    if (hasRawCompressedShards && !isManifestCompressed(rawManifest)) return true;
 
     return shardEntries.some((entry) => {
       if (hasLegacySyncEntryShape(entry)) return true;
@@ -660,6 +675,25 @@
     };
   }
 
+  async function decompressShard(shardValue) {
+    if (typeof shardValue === "string" && COMPRESSION && COMPRESSION.decompress) {
+      try {
+        const decompressed = await COMPRESSION.decompress(shardValue);
+        if (decompressed && decompressed !== shardValue) {
+          const parsed = JSON.parse(decompressed);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (_error) {
+        // If decompression fails, fall through.
+      }
+    }
+    return Array.isArray(shardValue) ? shardValue : [];
+  }
+
+  function isCompressedShard(value) {
+    return typeof value === "string" && !Array.isArray(value);
+  }
+
   async function getSyncState() {
     const data = await chrome.storage.sync.get(null);
     const rawManifest = data[SYNC_MANIFEST_KEY] && typeof data[SYNC_MANIFEST_KEY] === "object"
@@ -676,10 +710,27 @@
       ? Array.from({ length: manifest.n }, (_value, index) => `${SYNC_ENTRY_PREFIX}${index}`)
       : presentShardKeys;
     const missingShardKeys = expectedShardKeys.filter((key) => !(key in data));
-    const malformedShardKeys = expectedShardKeys.filter((key) => key in data && !Array.isArray(data[key]));
+
+    const hasRawCompressedShards = expectedShardKeys.some((key) => isCompressedShard(data[key]));
+
+    const malformedShardKeys = expectedShardKeys.filter((key) => {
+      if (!(key in data)) return false;
+      const value = data[key];
+      return !Array.isArray(value) && !isCompressedShard(value);
+    });
+
+    const shardKeys = expectedShardKeys.filter((key) => {
+      if (!(key in data)) return false;
+      const value = data[key];
+      return Array.isArray(value) || isCompressedShard(value);
+    });
+
+    const shards = [];
+    for (const key of shardKeys) {
+      shards.push(await decompressShard(data[key]));
+    }
+
     const extraShardKeys = presentShardKeys.filter((key) => !expectedShardKeys.includes(key));
-    const shardKeys = expectedShardKeys.filter((key) => Array.isArray(data[key]));
-    const shards = shardKeys.map((key) => data[key]);
     const rawShardEntries = flattenShardEntries(shards);
     const settings = normalizeSyncSettings(rawSettings, manifest);
     const compactShards = shards.map((shard) => shard
@@ -693,7 +744,8 @@
       rawManifest,
       rawSettings,
       shardEntries: rawShardEntries,
-      hasSyncData
+      hasSyncData,
+      hasRawCompressedShards
     });
 
     if (partialRead) {
@@ -845,15 +897,30 @@
     return validation;
   }
 
+  async function compressShard(shard) {
+    if (!COMPRESSION || !COMPRESSION.compress) return shard;
+    if (!COMPRESSION.isAvailable || !COMPRESSION.isAvailable()) return shard;
+    try {
+      const json = JSON.stringify(shard);
+      const compressed = await COMPRESSION.compress(json);
+      if (compressed && compressed !== json && getByteLength(compressed) < getByteLength(json)) {
+        return compressed;
+      }
+    } catch (_error) {
+      // Fall through — store uncompressed.
+    }
+    return shard;
+  }
+
   async function pushAll() {
     const localState = await getLocalState();
     const syncState = await getSyncState();
     const shards = shardEntries(localState.entries, localState.settings.syncLanguages);
     const nextSyncData = {};
 
-    shards.forEach((shard, index) => {
-      nextSyncData[`${SYNC_ENTRY_PREFIX}${index}`] = shard;
-    });
+    for (let index = 0; index < shards.length; index += 1) {
+      nextSyncData[`${SYNC_ENTRY_PREFIX}${index}`] = await compressShard(shards[index]);
+    }
 
     Object.assign(nextSyncData, buildMetadataPayload(localState.settings, shards.length));
 
@@ -1001,7 +1068,7 @@
     };
 
     if (compactShards[shardRef.shardIndex]) {
-      payload[shardRef.key] = compactShards[shardRef.shardIndex];
+      payload[shardRef.key] = await compressShard(compactShards[shardRef.shardIndex]);
     }
 
     const writeResult = await writeSyncPayload(payload, { removeKeys });
@@ -1040,6 +1107,68 @@
     initPromise = null;
   }
 
+  /* ------------------------------------------------------------------ */
+  /*  Sync usage statistics (for the popup capacity bar)                  */
+  /* ------------------------------------------------------------------ */
+
+  async function getSyncUsageStats() {
+    try {
+      const data = await chrome.storage.sync.get(null);
+      const syncKeys = Object.keys(data).filter((key) => (
+        key === SYNC_MANIFEST_KEY
+        || key === SYNC_SETTINGS_KEY
+        || key.startsWith(SYNC_ENTRY_PREFIX)
+      ));
+
+      const bytesUsed = syncKeys.reduce((total, key) => {
+        return total + getSyncItemSize(key, data[key]);
+      }, 0);
+
+      const manifest = normalizeManifest(data[SYNC_MANIFEST_KEY], 0);
+      const shardKeys = syncKeys.filter((key) => key.startsWith(SYNC_ENTRY_PREFIX));
+      const shardCount = shardKeys.length;
+
+      let entryCount = 0;
+      for (const key of shardKeys) {
+        const decompressed = await decompressShard(data[key]);
+        entryCount += Array.isArray(decompressed) ? decompressed.length : 0;
+      }
+
+      const bytesRemaining = Math.max(0, SYNC_TOTAL_HARD_LIMIT - bytesUsed);
+      const percentUsed = Math.min(100, Math.round((bytesUsed / SYNC_TOTAL_HARD_LIMIT) * 100));
+
+      let estimatedRemaining = 0;
+      if (entryCount > 0 && bytesUsed > 0) {
+        const avgBytesPerEntry = bytesUsed / entryCount;
+        estimatedRemaining = Math.floor(bytesRemaining / Math.max(1, avgBytesPerEntry));
+      } else if (bytesUsed === 0) {
+        const capacityByCount = { 1: 990, 2: 830, 3: 700 };
+        const langCount = Array.isArray(manifest?.l) ? manifest.l.length : 3;
+        estimatedRemaining = capacityByCount[Math.min(langCount, 3)] || 700;
+      }
+
+      return {
+        bytesUsed,
+        bytesTotal: SYNC_TOTAL_HARD_LIMIT,
+        bytesRemaining,
+        percentUsed,
+        entryCount,
+        shardCount,
+        estimatedRemaining
+      };
+    } catch (_error) {
+      return {
+        bytesUsed: 0,
+        bytesTotal: SYNC_TOTAL_HARD_LIMIT,
+        bytesRemaining: SYNC_TOTAL_HARD_LIMIT,
+        percentUsed: 0,
+        entryCount: 0,
+        shardCount: 0,
+        estimatedRemaining: 700
+      };
+    }
+  }
+
   globalThis.LodWrapperSync = {
     SYNC_FORMAT_VERSION,
     SYNC_MANIFEST_KEY,
@@ -1060,6 +1189,8 @@
     expandUrl,
     isoToUnix,
     unixToIso,
+    getByteLength,
+    getSyncUsageStats,
     SyncAdapter: {
       init,
       pushAll,
