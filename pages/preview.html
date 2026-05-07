@@ -3,25 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LODVault Preview</title>
+  <title>LODVault Vault</title>
   <link rel="stylesheet" href="../styles/preview.css">
 </head>
 <body>
   <header class="toolbar">
     <div>
       <p class="eyebrow">LODVault</p>
-      <h1>Export preview</h1>
+      <h1>Export vault</h1>
       <p id="preview-meta" class="meta">Loading…</p>
     </div>
     <div class="toolbar-actions">
+      <select id="sort-order" class="sort-select">
+        <option value="recent">Most recent</option>
+        <option value="visited">Most visited</option>
+        <option value="alpha">A → Z</option>
+        <option value="oldest">Oldest first</option>
+      </select>
       <select id="lang-filter" class="lang-select"><option value="">All languages</option></select>
+      <button id="open-flashcards" class="toolbar-button" title="Open Flashcards">Flashcards</button>
       <button id="refresh-preview" class="toolbar-button">Refresh</button>
       <button id="download-html" class="toolbar-button toolbar-button-primary">Download HTML</button>
     </div>
   </header>
 
   <main class="preview-shell">
-    <iframe id="preview-frame" title="LODVault export preview"></iframe>
+    <iframe id="preview-frame" title="LODVault export vault"></iframe>
   </main>
 
   <script src="../scripts/store-core.js"></script>

@@ -1,20 +1,30 @@
 const frame = document.getElementById("preview-frame");
 const meta = document.getElementById("preview-meta");
+const flashcardsButton = document.getElementById("open-flashcards");
 const refreshButton = document.getElementById("refresh-preview");
 const downloadButton = document.getElementById("download-html");
 let currentPreviewUrl = "";
 let currentSearchQuery = "";
 let currentLang = "";
+let currentSort = "recent";
 let applyPreviewFilters = () => {};
 
 const langNames = LodWrapperStore.TRANSLATION_LANGUAGE_LABELS;
 const langOrder = LodWrapperStore.TRANSLATION_LANGUAGE_ORDER;
 
 refreshButton.addEventListener("click", renderPreview);
+flashcardsButton?.addEventListener("click", () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL("pages/flashcards.html") });
+});
 downloadButton.addEventListener("click", downloadHtml);
 document.getElementById("lang-filter").addEventListener("change", (e) => {
   currentLang = e.target.value;
   applyLangFilter();
+});
+
+document.getElementById("sort-order").addEventListener("change", (e) => {
+  currentSort = e.target.value;
+  renderPreview();
 });
 
 document.addEventListener("DOMContentLoaded", renderPreview);
@@ -74,27 +84,84 @@ function injectPreviewStyles(doc) {
     .preview-entry-actions {
       margin-top: 12px;
       display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
     }
-    .preview-remove-button {
-      border: 1px solid rgba(230,57,70,0.25);
-      background: rgba(230,57,70,0.08);
-      color: #f08088;
-      border-radius: 7px;
-      padding: 6px 12px;
-      font: inherit;
-      font-size: 12px;
-      font-weight: 600;
+    .preview-toggle-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 11px;
+      font-size: 12.5px;
+      font-weight: 700;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px;
+      color: #5f8fa8;
       cursor: pointer;
-      transition: background 0.15s, border-color 0.15s;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
-    .preview-remove-button:hover {
-      background: rgba(230,57,70,0.18);
-      border-color: rgba(230,57,70,0.5);
-      color: #ff8890;
+    .preview-toggle-pill:disabled {
+      opacity: 0.5;
+      cursor: wait;
     }
-    .preview-remove-button:disabled {
+    .preview-toggle-pill:hover:enabled {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.22);
+      color: #ddeef5;
+    }
+    .preview-toggle-pill-icon {
+      font-size: 13px;
+      line-height: 1;
+    }
+    .preview-toggle-pill-label {
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .preview-toggle-pill.is-fav {
+      background: rgba(230,197,96,0.15);
+      border-color: rgba(230,197,96,0.4);
+      color: #e6c560;
+    }
+    .preview-toggle-pill.is-fav:hover:enabled {
+      background: rgba(230,197,96,0.25);
+      border-color: rgba(230,197,96,0.55);
+      color: #f0d56e;
+    }
+    .preview-toggle-pill.is-study {
+      background: rgba(57,167,196,0.15);
+      border-color: rgba(57,167,196,0.4);
+      color: #a8dadc;
+    }
+    .preview-toggle-pill.is-study:hover:enabled {
+      background: rgba(57,167,196,0.25);
+      border-color: rgba(57,167,196,0.55);
+      color: #a8dadc;
+    }
+    .preview-delete-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      margin-left: auto;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 7px;
+      color: #5f8fa8;
+      font-size: 16px;
+      font-weight: 300;
+      line-height: 1;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .preview-delete-btn:hover {
+      background: rgba(230,57,70,0.1);
+      border-color: rgba(230,57,70,0.3);
+      color: #e63946;
+    }
+    .preview-delete-btn:disabled {
       opacity: 0.5;
       cursor: wait;
     }
@@ -145,23 +212,11 @@ function attachPreviewSearch() {
   applyPreviewFilters();
 }
 
-/* ── remove buttons ──────────────────────────────── */
+/* ── toggle pills & delete ──────────────────────── */
 
-function previewRemoveLabel(listName) {
-  if (listName === "favorite") return "Remove from favorites";
-  if (listName === "study") return "Remove from study list";
-  return "Remove from history";
-}
-
-async function handlePreviewRemove(id, listName) {
+async function handlePreviewToggle(id, listName) {
   const savedEntry = await LodWrapperStore.getEntry(id);
   if (!savedEntry) return;
-
-  if (listName === "history") {
-    await LodWrapperStore.removeFromHistory(id);
-    return;
-  }
-
   await LodWrapperStore.toggleList(savedEntry, listName);
 }
 
@@ -169,31 +224,64 @@ function attachRemoveButtons(doc) {
   for (const entryElement of doc.querySelectorAll(".entry[data-id][data-lists]")) {
     if (entryElement.querySelector(".preview-entry-actions")) continue;
 
+    const id = entryElement.dataset.id;
     const lists = (entryElement.dataset.lists || "").split(",").filter(Boolean);
-    if (!lists.length) continue;
 
     const actions = doc.createElement("div");
     actions.className = "preview-entry-actions";
 
-    for (const listName of lists) {
-      const button = doc.createElement("button");
-      button.type = "button";
-      button.className = "preview-remove-button";
-      button.textContent = previewRemoveLabel(listName);
-      button.dataset.list = listName;
+    /* Favorite toggle */
+    const isFav = lists.includes("favorite");
+    const favBtn = doc.createElement("button");
+    favBtn.type = "button";
+    favBtn.className = "preview-toggle-pill" + (isFav ? " is-fav" : "");
+    favBtn.title = isFav ? "Remove from favorites" : "Add to favorites";
+    favBtn.innerHTML = '<span class="preview-toggle-pill-icon">' + (isFav ? "★" : "☆") + '</span><span class="preview-toggle-pill-label">Fav</span>';
+    favBtn.addEventListener("click", async () => {
+      favBtn.disabled = true;
+      try {
+        await handlePreviewToggle(id, "favorite");
+        await renderPreview();
+      } finally {
+        favBtn.disabled = false;
+      }
+    });
+    actions.appendChild(favBtn);
 
-      button.addEventListener("click", async () => {
-        button.disabled = true;
-        try {
-          await handlePreviewRemove(entryElement.dataset.id, listName);
-          await renderPreview();
-        } finally {
-          button.disabled = false;
-        }
-      });
+    /* Study toggle */
+    const isStudy = lists.includes("study");
+    const studyBtn = doc.createElement("button");
+    studyBtn.type = "button";
+    studyBtn.className = "preview-toggle-pill" + (isStudy ? " is-study" : "");
+    studyBtn.title = isStudy ? "Remove from study list" : "Add to study list";
+    studyBtn.innerHTML = '<span class="preview-toggle-pill-icon">' + (isStudy ? "●" : "○") + '</span><span class="preview-toggle-pill-label">Study</span>';
+    studyBtn.addEventListener("click", async () => {
+      studyBtn.disabled = true;
+      try {
+        await handlePreviewToggle(id, "study");
+        await renderPreview();
+      } finally {
+        studyBtn.disabled = false;
+      }
+    });
+    actions.appendChild(studyBtn);
 
-      actions.appendChild(button);
-    }
+    /* Delete button */
+    const delBtn = doc.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "preview-delete-btn";
+    delBtn.title = "Remove saved word";
+    delBtn.textContent = "×";
+    delBtn.addEventListener("click", async () => {
+      delBtn.disabled = true;
+      try {
+        await LodWrapperStore.removeEntry(id);
+        await renderPreview();
+      } finally {
+        delBtn.disabled = false;
+      }
+    });
+    actions.appendChild(delBtn);
 
     entryElement.appendChild(actions);
   }
@@ -201,8 +289,32 @@ function attachRemoveButtons(doc) {
 
 /* ── render ──────────────────────────────────────── */
 
+function sortEntries(entries, sortMode) {
+  const sorted = [...entries];
+  if (sortMode === "visited") {
+    sorted.sort((a, b) => {
+      const aVisits = Number(a.visitCount) || 0;
+      const bVisits = Number(b.visitCount) || 0;
+      if (bVisits !== aVisits) return bVisits - aVisits;
+      const aTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      const bTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      return aTime - bTime;
+    });
+  } else if (sortMode === "alpha") {
+    sorted.sort((a, b) => (a.word || "").localeCompare(b.word || "", undefined, { sensitivity: "base" }));
+  } else if (sortMode === "oldest") {
+    sorted.sort((a, b) => {
+      const aTime = new Date(a.createdAt || a.updatedAt || 0).getTime();
+      const bTime = new Date(b.createdAt || b.updatedAt || 0).getTime();
+      return aTime - bTime;
+    });
+  }
+  return sorted;
+}
+
 async function renderPreview() {
-  const entries = await LodWrapperStore.getEntries();
+  let entries = await LodWrapperStore.getEntries();
+  entries = sortEntries(entries, currentSort);
   populateLangSelect(entries);
 
   const html = LodWrapperStore.buildExportHtml(entries, { includeInlineScript: false });
@@ -215,7 +327,7 @@ async function renderPreview() {
   }
 
   currentPreviewUrl = url;
-  meta.textContent = `${count} · live preview from local extension storage`;
+  meta.textContent = `${count} · live vault from local extension storage`;
   frame.onload = () => {
     applyPreviewFilters = () => {};
     attachPreviewSearch();
@@ -224,7 +336,8 @@ async function renderPreview() {
 }
 
 async function downloadHtml() {
-  const entries = await LodWrapperStore.getEntries();
+  let entries = await LodWrapperStore.getEntries();
+  entries = sortEntries(entries, currentSort);
   const html = LodWrapperStore.buildExportHtml(entries);
   const date = new Date().toISOString().slice(0, 10);
   LodWrapperStore.downloadTextFile(`lodvault-export-${date}.html`, html, "text/html");
