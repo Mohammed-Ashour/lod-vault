@@ -703,10 +703,181 @@
     return runStoreMutation("importJson", [text], importJsonDirect);
   }
 
+  const FLASHCARD_META_KEY = "lodVault.flashcardMeta";
+
+  function normalizeFlashcardMeta(meta = {}) {
+    const reviews = Array.isArray(meta.reviews) ? meta.reviews.slice(-100) : [];
+    const cleanReviews = reviews
+      .filter((r) => r && typeof r === "object")
+      .map((r) => ({
+        date: cleanText(r.date) || nowIso(),
+        rating: [1, 2, 3].includes(Number(r.rating)) ? Number(r.rating) : 2,
+        direction: r.direction === "rev" ? "rev" : "fwd"
+      }));
+
+    return {
+      reviews: cleanReviews,
+      totalReviews: Math.max(0, Number(meta.totalReviews) || cleanReviews.length),
+      hardCount: Math.max(0, Number(meta.hardCount) || 0),
+      goodCount: Math.max(0, Number(meta.goodCount) || 0),
+      easyCount: Math.max(0, Number(meta.easyCount) || 0),
+      lastReviewedAt: cleanText(meta.lastReviewedAt),
+      dueAt: cleanText(meta.dueAt),
+      interval: Math.max(0, Number(meta.interval) || 0)
+    };
+  }
+
+  async function getFlashcardMeta() {
+    try {
+      const data = await chrome.storage.local.get([FLASHCARD_META_KEY]);
+      const raw = data[FLASHCARD_META_KEY] && typeof data[FLASHCARD_META_KEY] === "object"
+        ? data[FLASHCARD_META_KEY]
+        : {};
+      const result = {};
+      for (const [id, value] of Object.entries(raw)) {
+        result[id] = normalizeFlashcardMeta(value);
+      }
+      return result;
+    } catch (error) {
+      if (isExtensionContextInvalidated(error)) {
+        return {};
+      }
+      throw error;
+    }
+  }
+
+  async function saveFlashcardMeta(meta) {
+    try {
+      await chrome.storage.local.set({ [FLASHCARD_META_KEY]: meta });
+    } catch (error) {
+      if (isExtensionContextInvalidated(error)) {
+        throw createRefreshPageError();
+      }
+      throw error;
+    }
+  }
+
+  function computeFlashcardDueAt(existing, rating) {
+    const normalizedRating = [1, 2, 3].includes(Number(rating)) ? Number(rating) : 2;
+    let interval = existing.interval || 0;
+
+    if (normalizedRating === 1) {
+      interval = 1;
+    } else if (normalizedRating === 2) {
+      interval = interval ? Math.ceil(interval * 2) : 1;
+    } else {
+      interval = interval ? Math.ceil(interval * 2.5) : 2;
+    }
+
+    const due = new Date();
+    due.setDate(due.getDate() + interval);
+    return { dueAt: due.toISOString(), interval };
+  }
+
+  function computeFlashcardStreak(sortedDescDates) {
+    if (!sortedDescDates.length) return 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let streak = 0;
+    let checkDate = new Date(today);
+
+    for (const dateStr of sortedDescDates) {
+      const d = new Date(dateStr);
+      d.setHours(0, 0, 0, 0);
+      if (d.getTime() === checkDate.getTime()) {
+        streak += 1;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else if (d.getTime() === checkDate.getTime() + 86400000) {
+        continue;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  async function recordFlashcardReviewDirect(entryId, rating, direction) {
+    if (!entryId) throw new Error("Missing entry id.");
+    const normalizedRating = [1, 2, 3].includes(Number(rating)) ? Number(rating) : 2;
+    const normalizedDirection = direction === "rev" ? "rev" : "fwd";
+    const meta = await getFlashcardMeta();
+    const existing = meta[entryId] || {};
+
+    const reviews = Array.isArray(existing.reviews) ? existing.reviews : [];
+    reviews.push({
+      date: nowIso(),
+      rating: normalizedRating,
+      direction: normalizedDirection
+    });
+
+    const trimmed = reviews.slice(-100);
+    const hardCount = trimmed.filter((r) => r.rating === 1).length;
+    const goodCount = trimmed.filter((r) => r.rating === 2).length;
+    const easyCount = trimmed.filter((r) => r.rating === 3).length;
+    const { dueAt, interval } = computeFlashcardDueAt(existing, normalizedRating);
+
+    meta[entryId] = {
+      reviews: trimmed,
+      totalReviews: (existing.totalReviews || 0) + 1,
+      hardCount,
+      goodCount,
+      easyCount,
+      lastReviewedAt: nowIso(),
+      dueAt,
+      interval
+    };
+
+    await saveFlashcardMeta(meta);
+    return meta[entryId];
+  }
+
+  async function recordFlashcardReview(entryId, rating, direction) {
+    return runStoreMutation("recordFlashcardReview", [entryId, rating, direction], recordFlashcardReviewDirect);
+  }
+
+  async function getFlashcardStatsDirect() {
+    const meta = await getFlashcardMeta();
+    const todayIso = new Date().toISOString().slice(0, 10);
+    let todayCount = 0;
+    let learningCount = 0;
+    let masteredCount = 0;
+    const reviewDates = new Set();
+
+    for (const [id, data] of Object.entries(meta)) {
+      const m = normalizeFlashcardMeta(data);
+      if (!m.totalReviews) continue;
+
+      const dateSet = new Set(m.reviews.map((r) => r.date.slice(0, 10)));
+      for (const d of dateSet) reviewDates.add(d);
+
+      const last = m.reviews[m.reviews.length - 1];
+      if (last && last.date.slice(0, 10) === todayIso) {
+        todayCount += 1;
+      }
+
+      if (m.easyCount >= 3 && last && last.rating === 3) {
+        masteredCount += 1;
+      } else {
+        learningCount += 1;
+      }
+    }
+
+    const sortedDates = Array.from(reviewDates).sort().reverse();
+    const streak = computeFlashcardStreak(sortedDates);
+
+    return { streak, todayCount, newCount: 0, learningCount, masteredCount, reviewDates: sortedDates };
+  }
+
+  async function getFlashcardStats() {
+    return runStoreMutation("getFlashcardStats", [], getFlashcardStatsDirect);
+  }
+
   globalThis.LodWrapperStoreCore = {
     STORAGE_KEY,
     LEGACY_STORAGE_KEY,
     SETTINGS_KEY,
+    FLASHCARD_META_KEY,
     DEFAULT_SETTINGS,
     EXPORT_VERSION,
     MAX_SYNC_LANGUAGES,
@@ -718,48 +889,34 @@
     STORE_MUTATION_MESSAGE_TYPE,
     getIdFromUrl,
     cleanText,
-    cleanWordLabel,
-    cleanTranslations,
-    filterTranslationsByLanguages,
     normalizeVisitCount,
     normalizeSyncLanguages,
     normalizeSettings,
     isExtensionContextInvalidated,
-    createRefreshPageError,
-    runStoreMutation,
     normalizeEntry,
     normalizeEntryMap,
     shouldKeepEntry,
-    mergeEntry,
-    entriesMatchForStorage,
-    applyTranslationLanguageFilter,
     filterEntryMapTranslations,
-    countStoredEntries,
     getEntryMap,
-    saveEntryMap,
     getSettings,
     getAutoMode,
     getSyncLanguages,
     setAutoMode,
     setSyncLanguages,
-    setAutoModeDirect,
-    setSyncLanguagesDirect,
     getEntries,
     getEntry,
     toggleList,
-    toggleListDirect,
     recordAutoVisit,
-    recordAutoVisitDirect,
     removeFromHistory,
-    removeFromHistoryDirect,
     refreshEntryData,
-    refreshEntryDataDirect,
     saveNote,
-    saveNoteDirect,
     removeEntry,
-    removeEntryDirect,
     buildJsonExport,
     importJson,
-    importJsonDirect
+    normalizeFlashcardMeta,
+    getFlashcardMeta,
+    saveFlashcardMeta,
+    recordFlashcardReview,
+    getFlashcardStats
   };
 })();

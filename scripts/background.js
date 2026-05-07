@@ -10,7 +10,7 @@ importScripts(
 );
 
 const LOD_URL_PATTERNS = ["https://lod.lu/artikel/*", "https://www.lod.lu/artikel/*"];
-const STORE_MUTATION_MESSAGE_TYPE = "lod-wrapper:store-mutate";
+const STORE_MUTATION_MESSAGE_TYPE = LodWrapperStore.STORE_MUTATION_MESSAGE_TYPE;
 const STORE_MUTATION_METHODS = new Set([
   "setAutoMode",
   "setSyncLanguages",
@@ -20,7 +20,9 @@ const STORE_MUTATION_METHODS = new Set([
   "refreshEntryData",
   "saveNote",
   "removeEntry",
-  "importJson"
+  "importJson",
+  "recordFlashcardReview",
+  "getFlashcardStats"
 ]);
 
 let storeMutationQueue = Promise.resolve();
