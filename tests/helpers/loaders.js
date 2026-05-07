@@ -501,6 +501,8 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {} } = {}) 
     FLASHCARD_META_KEY: "lodVault.flashcardMeta",
     DEFAULT_SETTINGS: { syncLanguages: ["en", "fr", "de"] },
     TRANSLATION_LANGUAGE_LABELS: { ...shared.store.TRANSLATION_LANGUAGE_LABELS },
+    normalizeFlashcardMeta: shared.store.normalizeFlashcardMeta,
+    computeFlashcardStreak: shared.store.computeFlashcardStreak,
     escapeHtml: shared.store.escapeHtml,
     buildMeaningRowsMarkup: shared.store.buildMeaningRowsMarkup,
     getPrimaryMeaning: shared.store.getPrimaryMeaning,

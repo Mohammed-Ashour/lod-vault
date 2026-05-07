@@ -525,6 +525,9 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .helper-text { margin-top: 8px; }
 
+.helper-text.is-success { color: #7dd4a8; }
+.helper-text.is-error { color: #f29ba2; }
+
 /* ── saved list ──────────────────────────────────── */
 .saved-list {
   display: flex;

@@ -214,7 +214,6 @@
     getHeadingElement,
     extractTranslations,
     extractCurrentEntry,
-    getHeadingElement,
     infoText
   };
 })();

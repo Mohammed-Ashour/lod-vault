@@ -4,6 +4,7 @@
    ───────────────────────────────────────────────────── */
 
 #lod-wrapper-banner {
+  all: revert;
   margin: 14px 0 20px;
   border-radius: 12px;
   background: #10243e;

@@ -600,7 +600,7 @@
 
     async function onSavedListClick(event) {
       const button = event.target.closest("button[data-action]");
-      if (!button) return;
+      if (!button || button.disabled) return;
 
       const entry = findEntry(button.dataset.id);
       if (!entry) return;
@@ -676,16 +676,24 @@
 
       try {
         const text = await file.text();
-        await store.importJson(text);
+        const result = await store.importJson(text);
         await refreshSettingsState();
         renderAutoMode();
         renderSyncLanguages();
         await renderSavedList();
         await refreshCurrentPage();
+        elements.searchStatus.textContent = `Imported ${result.imported} word${result.imported === 1 ? "" : "s"}.`;
+        elements.searchStatus.classList.add("is-success");
+        elements.searchStatus.classList.remove("is-error");
       } catch {
         elements.searchStatus.textContent = "Could not import that JSON file.";
+        elements.searchStatus.classList.add("is-error");
+        elements.searchStatus.classList.remove("is-success");
       } finally {
         event.target.value = "";
+        setTimeout(() => {
+          elements.searchStatus.classList.remove("is-success", "is-error");
+        }, 4000);
       }
     }
 

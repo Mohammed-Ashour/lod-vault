@@ -12,7 +12,7 @@
       <div>
         <p class="eyebrow">LODVault</p>
         <h1>Flashcards</h1>
-        <p id="deck-status" class="muted">Loading deck…</p>
+        <p id="deck-status" class="muted" aria-live="polite">Loading deck…</p>
       </div>
       <div class="controls">
         <button id="open-preview" class="secondary-button" title="Open Export Vault">Vault</button>
@@ -74,9 +74,9 @@
     </section>
 
     <section id="card-shell" class="card-shell is-hidden">
-      <div id="progress" class="progress">1 / 1</div>
-      <div id="session-progress" class="session-progress is-hidden">Session: 0 / 0</div>
-      <button id="flashcard" class="flashcard" type="button">
+      <div id="progress" class="progress" aria-live="polite">1 / 1</div>
+      <div id="session-progress" class="session-progress is-hidden" aria-live="polite">Session: 0 / 0</div>
+      <button id="flashcard" class="flashcard" type="button" role="button" aria-label="Flashcard — click to reveal answer">
         <div class="card-face card-front">
           <span class="face-label">Front</span>
           <h2 id="card-word">Word</h2>

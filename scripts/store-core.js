@@ -917,6 +917,7 @@
     getFlashcardMeta,
     saveFlashcardMeta,
     recordFlashcardReview,
-    getFlashcardStats
+    getFlashcardStats,
+    computeFlashcardStreak
   };
 })();

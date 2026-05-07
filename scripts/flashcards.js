@@ -96,44 +96,8 @@ async function loadFlashcardMeta() {
   state.flashcardMeta = await LodWrapperStore.getFlashcardMeta();
 }
 
-const normalizeFlashcardMeta = typeof LodWrapperStore?.normalizeFlashcardMeta === "function"
-  ? LodWrapperStore.normalizeFlashcardMeta
-  : (meta = {}) => {
-    const reviews = Array.isArray(meta.reviews) ? meta.reviews.slice(-100) : [];
-    const cleanReviews = reviews
-      .filter((r) => r && typeof r === "object")
-      .map((r) => ({
-        date: String(r.date || new Date().toISOString()),
-        rating: [1, 2, 3].includes(Number(r.rating)) ? Number(r.rating) : 2,
-        direction: r.direction === "rev" ? "rev" : "fwd"
-      }));
-    return {
-      reviews: cleanReviews,
-      totalReviews: Math.max(0, Number(meta.totalReviews) || cleanReviews.length),
-      hardCount: Math.max(0, Number(meta.hardCount) || 0),
-      goodCount: Math.max(0, Number(meta.goodCount) || 0),
-      easyCount: Math.max(0, Number(meta.easyCount) || 0),
-      lastReviewedAt: String(meta.lastReviewedAt || ""),
-      dueAt: String(meta.dueAt || ""),
-      interval: Math.max(0, Number(meta.interval) || 0)
-    };
-  };
-
-const computeStreak = typeof LodWrapperStore?.computeFlashcardStreak === "function"
-  ? LodWrapperStore.computeFlashcardStreak
-  : (sortedDescDates) => {
-    if (!sortedDescDates.length) return 0;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    let streak = 0;
-    let checkDate = new Date(today);
-    for (const dateStr of sortedDescDates) {
-      const d = new Date(dateStr); d.setHours(0, 0, 0, 0);
-      if (d.getTime() === checkDate.getTime()) { streak += 1; checkDate.setDate(checkDate.getDate() - 1); }
-      else if (d.getTime() === checkDate.getTime() + 86400000) { continue; }
-      else { break; }
-    }
-    return streak;
-  };
+const normalizeFlashcardMeta = LodWrapperStore.normalizeFlashcardMeta;
+const computeStreak = LodWrapperStore.computeFlashcardStreak;
 
 function computeStats() {
   const meta = state.flashcardMeta;
@@ -231,6 +195,8 @@ function toggleDirection() {
 }
 
 function onKeyDown(event) {
+  if (!state.deck.length) return;
+
   if (event.key === "ArrowRight") {
     showNext();
   } else if (event.key === "ArrowLeft") {

@@ -110,37 +110,61 @@
       const settingsChange = changes?.[store.SETTINGS_KEY || "lodVault.settings"];
       const settingsKind = getSettingsChangeKind(settingsChange);
 
+      // If both entries and settings changed, or sync-languages changed,
+      // we must do a full push because the shard layout may change.
       if (entryChange && settingsKind) {
         return { type: "all" };
       }
 
+      // If only the autoMode toggle changed, a settings-only push suffices.
       if (settingsKind === "settings") {
         return { type: "settings" };
       }
 
+      // If sync-languages changed without entries, the shard layout still
+      // needs re-splitting because translations may be added/removed.
       if (settingsKind === "all") {
         return { type: "all" };
       }
 
+      // If only entries changed, check whether a single-entry push is sufficient.
       if (entryChange) {
         const changedEntryIds = getChangedEntryIds(entryChange);
         if (changedEntryIds.length === 1) {
           return { type: "entry", id: changedEntryIds[0] };
         }
+        // Multiple entries changed at once — full push is safer.
         if (changedEntryIds.length > 1) {
           return { type: "all" };
         }
+        // No net change in entry data (e.g. a timestamp-only update that
+        // stableStringify considers equal). Fall through to full push.
       }
 
+      // Default: full push covers any edge case.
       return { type: "all" };
     }
 
     function mergeLocalPushPlans(previousPlan, nextPlan) {
+      // No previous plan — use the new one directly.
       if (!previousPlan) return nextPlan;
+
+      // No new plan — keep the previous one.
       if (!nextPlan) return previousPlan;
+
+      // If either plan requires a full push, the merged plan must also be
+      // a full push (it's the broadest possible scope).
       if (previousPlan.type === "all" || nextPlan.type === "all") return { type: "all" };
+
+      // Two different plan types (e.g. "entry" + "settings") can't be
+      // satisfied by a single targeted push — escalate to full.
       if (previousPlan.type !== nextPlan.type) return { type: "all" };
+
+      // Two entry pushes targeting different entries can't be merged
+      // into a single pushEntry call — escalate to full.
       if (previousPlan.type === "entry" && previousPlan.id !== nextPlan.id) return { type: "all" };
+
+      // Same type targeting the same entry — the newer plan supersedes.
       return nextPlan;
     }
 
@@ -171,8 +195,12 @@
     }
 
     function scheduleLocalPush(plan = { type: "all" }) {
+      // Merge this plan with any pending plan so rapid successive
+      // changes are coalesced into a single push after the debounce.
       pendingLocalPushPlan = mergeLocalPushPlans(pendingLocalPushPlan, plan);
 
+      // Reset the debounce timer — the push fires only after this
+      // quiet period elapses without another change.
       if (pendingLocalPushTimer) {
         clearTimeout(pendingLocalPushTimer);
       }
@@ -183,14 +211,19 @@
         pendingLocalPushPlan = null;
 
         enqueueSyncTask(async () => {
+          // If sync hasn't been initialized yet, do that first and suppress
+          // a redundant pull that would immediately follow.
           if (!syncInitialized) {
             suppressSyncPull();
             await initializeSync("local-change");
             return;
           }
 
+          // Prevent a pull from immediately running after the push —
+          // our own push just wrote the latest data.
           suppressSyncPull();
 
+          // Dispatch to the appropriate targeted push method.
           if (planToRun.type === "entry" && planToRun.id) {
             return syncAdapter.pushEntry(planToRun.id);
           }
