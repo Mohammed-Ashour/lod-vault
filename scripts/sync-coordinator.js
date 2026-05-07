@@ -61,14 +61,15 @@
     }
 
     function stableStringify(value) {
+      if (typeof syncNamespace.stableStringify === "function") {
+        try { return syncNamespace.stableStringify(value); } catch (_error) { /* fall through */ }
+      }
       if (Array.isArray(value)) {
         return `[${value.map((item) => stableStringify(item)).join(",")}]`;
       }
-
       if (value && typeof value === "object") {
         return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
       }
-
       return JSON.stringify(value);
     }
 
@@ -251,22 +252,9 @@
     }
 
     return {
-      enqueueSyncTask,
-      initializeSync,
       handleInstalled,
       handleStartup,
-      handleStorageChanged,
-      clearPendingLocalPush,
-      describeLocalPushPlan,
-      mergeLocalPushPlans,
-      isRelevantLocalStorageChange,
-      isRelevantSyncStorageChange,
-      scheduleLocalPush,
-      scheduleSyncPull,
-      stableStringify,
-      getSettingsChangeKind,
-      getChangedEntryIds,
-      logSyncWarning
+      handleStorageChanged
     };
   }
 

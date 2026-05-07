@@ -212,15 +212,9 @@
     collectText,
     sanitizeHeading,
     getHeadingElement,
-    wordFromUrl,
-    extractWord,
-    wordMatchesUrlId,
-    addTranslationValue,
-    normalizeLanguageKey,
-    extractTranslationsFromStructuredBlocks,
-    extractTranslationsFromSplitSections,
     extractTranslations,
     extractCurrentEntry,
+    getHeadingElement,
     infoText
   };
 })();

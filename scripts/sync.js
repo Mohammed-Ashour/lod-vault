@@ -29,14 +29,34 @@
 
   let initPromise = null;
 
-  function cleanText(value) {
-    return typeof value === "string" ? value.trim() : "";
-  }
-
-  function normalizeVisitCount(value) {
-    const number = Number(value);
-    return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
-  }
+  const store = globalThis.LodWrapperStore || {};
+  const cleanText = typeof store.cleanText === "function" ? store.cleanText : (value) => (typeof value === "string" ? value.trim() : "");
+  const normalizeVisitCount = typeof store.normalizeVisitCount === "function" ? store.normalizeVisitCount : (value) => { const number = Number(value); return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0; };
+  const shouldKeepEntry = typeof store.shouldKeepEntry === "function" ? store.shouldKeepEntry : (entry) => Boolean(entry?.favorite || entry?.study || entry?.history);
+  const normalizeEntry = typeof store.normalizeEntry === "function" ? store.normalizeEntry : (entry = {}) => {
+    const id = cleanText(entry.id);
+    const translations = Object.entries(entry.translations || {}).reduce((result, [language, translation]) => { const cleaned = cleanText(translation); if (cleaned) result[language] = cleaned; return result; }, {});
+    return { id, word: cleanText(entry.word), url: cleanText(entry.url), pos: cleanText(entry.pos), inflection: cleanText(entry.inflection), example: cleanText(entry.example), note: cleanText(entry.note), translations, favorite: Boolean(entry.favorite), study: Boolean(entry.study), history: Boolean(entry.history), visitCount: normalizeVisitCount(entry.visitCount), lastVisitedAt: cleanText(entry.lastVisitedAt), createdAt: cleanText(entry.createdAt), updatedAt: cleanText(entry.updatedAt) };
+  };
+  const normalizeSyncLanguages = typeof store.normalizeSyncLanguages === "function" ? store.normalizeSyncLanguages : (value) => {
+    const requested = Array.isArray(value) ? value : DEFAULT_SETTINGS.syncLanguages;
+    const deduped = [];
+    for (const language of requested) { const normalized = cleanText(language).toLowerCase(); if (!SYNC_LANGUAGE_TO_KEY[normalized]) continue; if (deduped.includes(normalized)) continue; deduped.push(normalized); if (deduped.length >= MAX_SYNC_LANGUAGES) break; }
+    return deduped.length ? deduped : [...DEFAULT_SETTINGS.syncLanguages];
+  };
+  const normalizeSettings = typeof store.normalizeSettings === "function" ? store.normalizeSettings : (settings = {}) => ({ ...DEFAULT_SETTINGS, autoMode: Boolean(settings?.autoMode), syncLanguages: normalizeSyncLanguages(settings?.syncLanguages) });
+  const normalizeEntryMap = typeof store.normalizeEntryMap === "function" ? store.normalizeEntryMap : (entryMap = {}) => {
+    const result = {};
+    for (const [entryId, value] of Object.entries(entryMap || {})) { const normalized = normalizeEntry({ id: entryId, ...value }); if (!normalized.id || !normalized.word || !shouldKeepEntry(normalized)) continue; result[normalized.id] = normalized; }
+    return result;
+  };
+  const filterEntryMapTranslations = typeof store.filterEntryMapTranslations === "function" ? store.filterEntryMapTranslations : (entryMap = {}, languages = DEFAULT_SETTINGS.syncLanguages) => {
+    const allowed = new Set(normalizeSyncLanguages(languages)); const filtered = {};
+    for (const [entryId, value] of Object.entries(normalizeEntryMap(entryMap))) { const entry = normalizeEntry({ id: entryId, ...value }); const translations = {}; for (const [language, translation] of Object.entries(entry.translations || {})) { const normalizedLanguage = cleanText(language).toLowerCase(); const cleanedTranslation = cleanText(translation); if (!allowed.has(normalizedLanguage) || !cleanedTranslation) continue; translations[normalizedLanguage] = cleanedTranslation; }
+    if (Object.keys(translations).length) { entry.translations = translations; } else { delete entry.translations; }
+    if (entry.id && entry.word && shouldKeepEntry(entry)) { filtered[entry.id] = entry; } }
+    return filtered;
+  };
 
   function nowUnix() {
     return Math.floor(Date.now() / 1000);
@@ -53,83 +73,7 @@
     return text.length;
   }
 
-  function normalizeEntry(entry = {}) {
-    if (typeof globalThis.LodWrapperStore?.normalizeEntry === "function") {
-      return globalThis.LodWrapperStore.normalizeEntry(entry);
-    }
 
-    const id = cleanText(entry.id);
-    const translations = Object.entries(entry.translations || {}).reduce((result, [language, translation]) => {
-      const cleaned = cleanText(translation);
-      if (cleaned) result[language] = cleaned;
-      return result;
-    }, {});
-
-    return {
-      id,
-      word: cleanText(entry.word),
-      url: cleanText(entry.url),
-      pos: cleanText(entry.pos),
-      inflection: cleanText(entry.inflection),
-      example: cleanText(entry.example),
-      note: cleanText(entry.note),
-      translations,
-      favorite: Boolean(entry.favorite),
-      study: Boolean(entry.study),
-      history: Boolean(entry.history),
-      visitCount: normalizeVisitCount(entry.visitCount),
-      lastVisitedAt: cleanText(entry.lastVisitedAt),
-      createdAt: cleanText(entry.createdAt),
-      updatedAt: cleanText(entry.updatedAt)
-    };
-  }
-
-  function shouldKeepEntry(entry) {
-    return Boolean(entry?.favorite || entry?.study || entry?.history);
-  }
-
-  function normalizeSyncLanguages(value) {
-    if (typeof globalThis.LodWrapperStore?.normalizeSyncLanguages === "function") {
-      return globalThis.LodWrapperStore.normalizeSyncLanguages(value);
-    }
-
-    const requested = Array.isArray(value) ? value : DEFAULT_SETTINGS.syncLanguages;
-    const deduped = [];
-
-    for (const language of requested) {
-      const normalized = cleanText(language).toLowerCase();
-      if (!SYNC_LANGUAGE_TO_KEY[normalized]) continue;
-      if (deduped.includes(normalized)) continue;
-      deduped.push(normalized);
-      if (deduped.length >= MAX_SYNC_LANGUAGES) break;
-    }
-
-    return deduped.length ? deduped : [...DEFAULT_SETTINGS.syncLanguages];
-  }
-
-  function normalizeSettings(settings = {}) {
-    if (typeof globalThis.LodWrapperStore?.normalizeSettings === "function") {
-      return globalThis.LodWrapperStore.normalizeSettings(settings);
-    }
-
-    return {
-      ...DEFAULT_SETTINGS,
-      autoMode: Boolean(settings?.autoMode),
-      syncLanguages: normalizeSyncLanguages(settings?.syncLanguages)
-    };
-  }
-
-  function normalizeEntryMap(entryMap = {}) {
-    const result = {};
-
-    for (const [entryId, value] of Object.entries(entryMap || {})) {
-      const normalized = normalizeEntry({ id: entryId, ...value });
-      if (!normalized.id || !normalized.word || !shouldKeepEntry(normalized)) continue;
-      result[normalized.id] = normalized;
-    }
-
-    return result;
-  }
 
   function getEntryTimestamp(entry = {}) {
     const updated = Date.parse(cleanText(entry.updatedAt));
@@ -145,9 +89,7 @@
   }
 
   function compactUrl(url) {
-    const directId = typeof globalThis.LodWrapperStore?.getIdFromUrl === "function"
-      ? globalThis.LodWrapperStore.getIdFromUrl(url)
-      : "";
+    const directId = typeof store.getIdFromUrl === "function" ? store.getIdFromUrl(url) : "";
     if (directId) return directId;
 
     const trimmed = cleanText(url);
@@ -397,35 +339,6 @@
     }
 
     return merged;
-  }
-
-  function filterEntryMapTranslations(entryMap = {}, languages = DEFAULT_SETTINGS.syncLanguages) {
-    const allowed = new Set(normalizeSyncLanguages(languages));
-    const filtered = {};
-
-    for (const [entryId, value] of Object.entries(normalizeEntryMap(entryMap))) {
-      const entry = normalizeEntry({ id: entryId, ...value });
-      const translations = {};
-
-      for (const [language, translation] of Object.entries(entry.translations || {})) {
-        const normalizedLanguage = cleanText(language).toLowerCase();
-        const cleanedTranslation = cleanText(translation);
-        if (!allowed.has(normalizedLanguage) || !cleanedTranslation) continue;
-        translations[normalizedLanguage] = cleanedTranslation;
-      }
-
-      if (Object.keys(translations).length) {
-        entry.translations = translations;
-      } else {
-        delete entry.translations;
-      }
-
-      if (entry.id && entry.word && shouldKeepEntry(entry)) {
-        filtered[entry.id] = entry;
-      }
-    }
-
-    return filtered;
   }
 
   function buildSyncSettings(settings = DEFAULT_SETTINGS) {
@@ -1177,19 +1090,12 @@
     SYNC_SHARD_SOFT_LIMIT,
     SYNC_ITEM_HARD_LIMIT,
     SYNC_TOTAL_HARD_LIMIT,
+    stableStringify,
     compactEntry,
     expandEntry,
-    compactTranslations,
     expandTranslations,
     shardEntries,
     mergeEntryMaps,
-    packFlags,
-    unpackFlags,
-    compactUrl,
-    expandUrl,
-    isoToUnix,
-    unixToIso,
-    getByteLength,
     getSyncUsageStats,
     SyncAdapter: {
       init,

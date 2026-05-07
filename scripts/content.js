@@ -11,7 +11,7 @@ const { extractCurrentEntry } = LodWrapperArticleReader;
 let bannerController = null;
 
 function isExtensionContextInvalidated(error) {
-  return String(error || "").includes("Extension context invalidated") || String(error || "").includes("Extension updated — refresh the page");
+  return LodWrapperStore.isExtensionContextInvalidated(error) || String(error || "").includes("Extension updated — refresh the page");
 }
 
 function notifyPopup(entry, savedEntry) {

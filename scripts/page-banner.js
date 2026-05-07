@@ -270,12 +270,7 @@
     }
 
     return {
-      getBanner,
-      getBannerNoteInput,
-      setBannerNoteMeta,
-      syncBannerNote,
       statusText,
-      buttonLabel,
       ensureBanner,
       setButtonsBusy,
       handleInvalidatedContext,

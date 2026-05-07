@@ -311,13 +311,10 @@
     escapeHtml,
     formatWhen,
     buildSearchText,
-    getMeaningItems,
     buildMeaningText,
     buildMeaningChipsMarkup,
     buildMeaningRowsMarkup,
     getPrimaryMeaning,
-    buildVisitMeta,
-    buildEntryMarkup,
     buildExportHtml,
     downloadTextFile
   };
