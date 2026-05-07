@@ -498,11 +498,20 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {} } = {}) 
   const LodWrapperStore = {
     STORAGE_KEY: "lodVault.entries",
     LEGACY_STORAGE_KEY: "lodWrapper.entries",
+    FLASHCARD_META_KEY: "lodVault.flashcardMeta",
+    DEFAULT_SETTINGS: { syncLanguages: ["en", "fr", "de"] },
     TRANSLATION_LANGUAGE_LABELS: { ...shared.store.TRANSLATION_LANGUAGE_LABELS },
     escapeHtml: shared.store.escapeHtml,
     buildMeaningRowsMarkup: shared.store.buildMeaningRowsMarkup,
+    getPrimaryMeaning: shared.store.getPrimaryMeaning,
     async getEntries() {
       return currentEntries.map((entry) => structuredClone(entry));
+    },
+    async getFlashcardMeta() {
+      return {};
+    },
+    async recordFlashcardReview() {
+      return {};
     },
     ...storeOverrides
   };
