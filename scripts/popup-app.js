@@ -77,10 +77,15 @@
     }
 
     function setCurrentButtonState(button, active, kind) {
+      const icon = button.querySelector(".toggle-pill-icon");
       if (kind === "favorite") {
-        button.textContent = active ? "★ Favorited" : "☆ Favorite";
+        icon.textContent = active ? "★" : "☆";
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+        button.title = active ? "Remove from favorites" : "Add to favorites";
       } else {
-        button.textContent = active ? "✓ Study list" : "+ Study list";
+        icon.textContent = active ? "●" : "○";
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+        button.title = active ? "Remove from study list" : "Add to study list";
       }
       button.classList.toggle("is-active", active);
     }
@@ -168,7 +173,7 @@
         noteAutosave.clear(textarea);
         textarea.dataset.dirty = "";
         textarea.value = "";
-        setCurrentNoteStatus("Save this word to Favorites or Study to add a note.");
+        setCurrentNoteStatus("Save this word to add a note.");
         return;
       }
 
@@ -334,6 +339,7 @@
           : "Open a word on lod.lu to save it.";
         elements.currentFavorite.disabled = true;
         elements.currentStudy.disabled = true;
+        elements.currentDelete.disabled = true;
         setCurrentButtonState(elements.currentFavorite, false, "favorite");
         setCurrentButtonState(elements.currentStudy, false, "study");
         syncCurrentNoteInput(null);
@@ -349,6 +355,7 @@
         : "Save this word for later.");
       elements.currentFavorite.disabled = false;
       elements.currentStudy.disabled = false;
+      elements.currentDelete.disabled = !savedEntry;
       setCurrentButtonState(elements.currentFavorite, Boolean(savedEntry?.favorite), "favorite");
       setCurrentButtonState(elements.currentStudy, Boolean(savedEntry?.study), "study");
       syncCurrentNoteInput(savedEntry || null);
@@ -446,6 +453,21 @@
       }
     }
 
+    async function deleteCurrentPage() {
+      if (!state.currentEntry) return;
+
+      elements.currentDelete.disabled = true;
+
+      try {
+        await store.removeEntry(state.currentEntry.id);
+        await renderSavedList();
+        const savedEntry = state.currentEntry ? await store.getEntry(state.currentEntry.id) : null;
+        renderCurrentPageCard(savedEntry);
+      } finally {
+        elements.currentDelete.disabled = false;
+      }
+    }
+
     function renderSummary(entries) {
       const favoriteCount = entries.filter((entry) => entry.favorite).length;
       const studyCount = entries.filter((entry) => entry.study).length;
@@ -493,10 +515,10 @@
         <article class="saved-item" data-id="${store.escapeHtml(entry.id)}">
           <div class="saved-item-top">
             <a href="${store.escapeHtml(entry.url)}" target="_blank" rel="noreferrer" class="word-link">${store.escapeHtml(entry.word)}</a>
-            <div class="badges">
-              ${entry.favorite ? '<span class="badge badge-favorite">Favorite</span>' : ""}
-              ${entry.study ? '<span class="badge badge-study">Study</span>' : ""}
-              ${entry.history ? '<span class="badge badge-history">History</span>' : ""}
+            <div class="item-controls">
+              <button type="button" class="toggle-pill toggle-fav ${entry.favorite ? "is-active" : ""}" data-action="toggle-favorite" data-id="${store.escapeHtml(entry.id)}" aria-pressed="${entry.favorite ? "true" : "false"}" title="${entry.favorite ? "Remove from favorites" : "Add to favorites"}"><span class="toggle-pill-icon">${entry.favorite ? "★" : "☆"}</span><span class="toggle-pill-label">Fav</span></button>
+              <button type="button" class="toggle-pill toggle-study ${entry.study ? "is-active" : ""}" data-action="toggle-study" data-id="${store.escapeHtml(entry.id)}" aria-pressed="${entry.study ? "true" : "false"}" title="${entry.study ? "Remove from study list" : "Add to study list"}"><span class="toggle-pill-icon">${entry.study ? "●" : "○"}</span><span class="toggle-pill-label">Study</span></button>
+              <button type="button" class="control-btn control-delete" data-action="remove" data-id="${store.escapeHtml(entry.id)}" aria-label="Delete saved word" title="Delete saved word">×</button>
             </div>
           </div>
           ${entrySubline(entry) ? `<p class="item-meta">${entrySubline(entry)}</p>` : ""}
@@ -506,11 +528,6 @@
           <div class="note-section">
             <label class="note-label" for="note-${store.escapeHtml(entry.id)}">Note</label>
             <textarea id="note-${store.escapeHtml(entry.id)}" class="note-input" data-note-id="${store.escapeHtml(entry.id)}" data-saved-value="${store.escapeHtml(entry.note || "")}" placeholder="Add a note for this word...">${store.escapeHtml(entry.note || "")}</textarea>
-          </div>
-          <div class="item-actions">
-            <button data-action="toggle-favorite" data-id="${store.escapeHtml(entry.id)}" class="mini-button ${entry.favorite ? "is-active" : ""}" aria-label="${entry.favorite ? "Remove from favorites" : "Add to favorites"}" title="${entry.favorite ? "Remove from favorites" : "Add to favorites"}">★</button>
-            <button data-action="toggle-study" data-id="${store.escapeHtml(entry.id)}" class="mini-button ${entry.study ? "is-active" : ""}" aria-label="${entry.study ? "Remove from study list" : "Add to study list"}" title="${entry.study ? "Remove from study list" : "Add to study list"}">📚</button>
-            <button data-action="remove" data-id="${store.escapeHtml(entry.id)}" class="mini-button mini-button-danger" aria-label="Delete saved word" title="Delete saved word">Delete</button>
           </div>
         </article>
       `;
@@ -556,7 +573,7 @@
       if (displayEntries.length > LIST_LIMIT) {
         elements.savedList.innerHTML += hasQuery
           ? `<p class="list-overflow">Showing ${LIST_LIMIT} of ${displayEntries.length} matches. Refine your search to narrow down.</p>`
-          : `<p class="list-overflow">Showing ${LIST_LIMIT} recent words. Type to search or open Preview to browse everything.</p>`;
+          : `<p class="list-overflow">Showing ${LIST_LIMIT} recent words. Type to search or open Vault to browse everything.</p>`;
       }
     }
 
@@ -681,6 +698,7 @@
       elements.currentMeta = document.getElementById("current-meta");
       elements.currentFavorite = document.getElementById("current-favorite");
       elements.currentStudy = document.getElementById("current-study");
+      elements.currentDelete = document.getElementById("current-delete");
       elements.currentNoteInput = document.getElementById("current-note");
       elements.currentNoteStatus = document.getElementById("current-note-status");
       elements.autoModeBadge = document.getElementById("auto-mode-badge");
@@ -711,6 +729,7 @@
 
       elements.currentFavorite.addEventListener("click", () => toggleCurrentPage("favorite"));
       elements.currentStudy.addEventListener("click", () => toggleCurrentPage("study"));
+      elements.currentDelete.addEventListener("click", deleteCurrentPage);
       elements.autoModeToggle.addEventListener("click", toggleAutoMode);
       elements.syncLanguageChips.addEventListener("click", onSyncLanguageChipClick);
       elements.openFlashcards.addEventListener("click", openFlashcards);

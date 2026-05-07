@@ -19,7 +19,7 @@
       </div>
       <div class="header-actions">
         <button id="open-flashcards" class="btn-ghost">Flashcards</button>
-        <button id="open-preview" class="btn-ghost">Preview</button>
+        <button id="open-preview" class="btn-ghost">Vault</button>
         <button id="export-html" class="btn-ghost">HTML</button>
       </div>
     </header>
@@ -55,8 +55,19 @@
       <h2 id="current-word">—</h2>
       <p id="current-meta" class="muted">Open a word on <code>lod.lu/artikel/…</code></p>
       <div class="word-actions">
-        <button id="current-favorite" class="action-btn" disabled>☆ Favorite</button>
-        <button id="current-study" class="action-btn" disabled>+ Study</button>
+        <div class="word-toggles">
+          <button id="current-favorite" class="toggle-pill toggle-fav" disabled aria-pressed="false" aria-label="Favorite" title="Add to favorites">
+            <span class="toggle-pill-icon">☆</span>
+            <span class="toggle-pill-label">Fav</span>
+          </button>
+          <button id="current-study" class="toggle-pill toggle-study" disabled aria-pressed="false" aria-label="Study list" title="Add to study list">
+            <span class="toggle-pill-icon">○</span>
+            <span class="toggle-pill-label">Study</span>
+          </button>
+        </div>
+        <button id="current-delete" class="toggle-delete" disabled aria-label="Remove word" title="Remove saved word">
+          <span class="toggle-delete-icon">×</span>
+        </button>
       </div>
       <div class="note-section current-note-section">
         <label class="note-label" for="current-note">Note</label>

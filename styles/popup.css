@@ -342,8 +342,100 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .word-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   margin-top: 10px;
+}
+
+.word-toggles {
+  display: flex;
+  gap: 6px;
+}
+
+.toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.toggle-pill:hover:enabled {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: var(--text);
+}
+
+.toggle-pill-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.toggle-pill-label {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* favorite pill active */
+.toggle-fav.is-active {
+  background: rgba(230, 197, 96, 0.15);
+  border-color: rgba(230, 197, 96, 0.4);
+  color: #e6c560;
+}
+.toggle-fav.is-active:hover:enabled {
+  background: rgba(230, 197, 96, 0.25);
+  border-color: rgba(230, 197, 96, 0.55);
+  color: #f0d56e;
+}
+.toggle-fav.is-active .toggle-pill-icon {
+  color: #e6c560;
+}
+
+/* study pill active */
+.toggle-study.is-active {
+  background: var(--teal-dim);
+  border-color: rgba(57, 167, 196, 0.4);
+  color: var(--teal-lt);
+}
+.toggle-study.is-active:hover:enabled {
+  background: rgba(57, 167, 196, 0.25);
+  border-color: rgba(57, 167, 196, 0.55);
+  color: var(--teal-lt);
+}
+.toggle-study.is-active .toggle-pill-icon {
+  color: var(--teal-lt);
+}
+
+/* delete button in current word card */
+.toggle-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 300;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.toggle-delete:hover:enabled {
+  background: rgba(230, 57, 70, 0.1);
+  border-color: rgba(230, 57, 70, 0.3);
+  color: var(--danger);
 }
 
 .current-note-section {
@@ -352,31 +444,6 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .current-note-section .helper-text {
   margin-top: 6px;
-}
-
-.action-btn {
-  flex: 1;
-  padding: 8px 12px;
-  font-size: 13px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: var(--text);
-}
-
-.action-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.action-btn.is-active {
-  background: var(--blue);
-  border-color: var(--blue);
-  color: #fff;
-}
-
-.action-btn.is-active:hover {
-  background: var(--blue-h);
-  border-color: var(--blue-h);
 }
 
 /* ── stats row ───────────────────────────────────── */
@@ -491,33 +558,54 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .word-link:hover { color: var(--teal-lt); }
 
-/* ── badges ──────────────────────────────────────── */
-.badges { display: flex; gap: 5px; flex-wrap: wrap; }
+/* ── top-row controls ────────────────────────────── */
+.item-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
 
-.badge {
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 700;
+/* list-item pills inherit the same toggle-pill styles from current word card */
+.saved-item .toggle-pill {
+  padding: 3px 8px;
+  font-size: 11.5px;
+  gap: 3px;
+}
+
+.saved-item .toggle-pill-icon {
+  font-size: 12px;
+}
+
+.control-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
 
-.badge-favorite {
-  background: rgba(253, 215, 120, 0.12);
-  color: #e6c560;
-  border-color: rgba(253, 215, 120, 0.22);
+.control-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.badge-study {
-  background: rgba(57, 167, 196, 0.12);
-  color: var(--teal-lt);
-  border-color: rgba(57, 167, 196, 0.22);
+.control-delete {
+  font-size: 15px;
+  font-weight: 300;
+  margin-left: 2px;
 }
-
-.badge-history {
-  background: rgba(121, 134, 203, 0.12);
-  color: #9ba8d8;
-  border-color: rgba(121, 134, 203, 0.22);
+.control-delete:hover {
+  color: var(--danger);
+  background: rgba(230, 57, 70, 0.1);
 }
 
 /* ── meaning chips ───────────────────────────────── */
@@ -572,42 +660,6 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
 .note-input:focus {
   outline: none;
   border-color: var(--teal);
-}
-
-/* ── item actions ────────────────────────────────── */
-.item-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.mini-button {
-  padding: 5px 9px;
-  font-size: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-solid);
-  color: var(--muted);
-}
-
-.mini-button:hover {
-  border-color: rgba(168, 218, 220, 0.3);
-  color: var(--teal-lt);
-}
-
-.mini-button.is-active {
-  background: var(--blue);
-  border-color: var(--blue);
-  color: #fff;
-}
-
-.mini-button-danger {
-  color: var(--danger);
-  border-color: rgba(230, 57, 70, 0.2);
-}
-
-.mini-button-danger:hover {
-  background: rgba(230, 57, 70, 0.1);
-  border-color: var(--danger);
 }
 
 /* ── pre-search + empty states ──────────────────── */
