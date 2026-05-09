@@ -3,6 +3,7 @@ const meta = document.getElementById("preview-meta");
 const flashcardsButton = document.getElementById("open-flashcards");
 const refreshButton = document.getElementById("refresh-preview");
 const downloadButton = document.getElementById("download-html");
+const downloadAnkiButton = document.getElementById("download-anki");
 let currentPreviewUrl = "";
 let currentSearchQuery = "";
 let currentLang = "";
@@ -17,6 +18,7 @@ flashcardsButton?.addEventListener("click", () => {
   chrome.tabs.create({ url: chrome.runtime.getURL("pages/flashcards.html") });
 });
 downloadButton.addEventListener("click", downloadHtml);
+downloadAnkiButton.addEventListener("click", downloadAnki);
 document.getElementById("lang-filter").addEventListener("change", (e) => {
   currentLang = e.target.value;
   applyLangFilter();
@@ -341,6 +343,14 @@ async function downloadHtml() {
   const html = LodWrapperStore.buildExportHtml(entries);
   const date = new Date().toISOString().slice(0, 10);
   LodWrapperStore.downloadTextFile(`lodvault-export-${date}.html`, html, "text/html");
+}
+
+async function downloadAnki() {
+  let entries = await LodWrapperStore.getEntries();
+  entries = sortEntries(entries, currentSort);
+  const text = LodWrapperStore.buildAnkiExport(entries);
+  const date = new Date().toISOString().slice(0, 10);
+  LodWrapperStore.downloadTextFile(`lodvault-anki-${date}.txt`, text, "text/tab-separated-values");
 }
 
 window.addEventListener("beforeunload", () => {

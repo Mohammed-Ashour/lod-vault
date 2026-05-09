@@ -660,6 +660,13 @@
       store.downloadTextFile(`lodvault-export-${date}.html`, html, "text/html");
     }
 
+    async function exportAnki() {
+      const entries = await store.getEntries();
+      const text = store.buildAnkiExport(entries);
+      const date = new Date().toISOString().slice(0, 10);
+      store.downloadTextFile(`lodvault-anki-${date}.txt`, text, "text/tab-separated-values");
+    }
+
     async function exportJson() {
       const [entries, settings] = await Promise.all([
         store.getEntries(),
@@ -722,6 +729,7 @@
       elements.openFlashcards = document.getElementById("open-flashcards");
       elements.openPreview = document.getElementById("open-preview");
       elements.exportHtml = document.getElementById("export-html");
+      elements.exportAnki = document.getElementById("export-anki");
       elements.exportJson = document.getElementById("export-json");
       elements.importJson = document.getElementById("import-json");
       elements.importJsonFile = document.getElementById("import-json-file");
@@ -743,6 +751,7 @@
       elements.openFlashcards.addEventListener("click", openFlashcards);
       elements.openPreview.addEventListener("click", openPreview);
       elements.exportHtml.addEventListener("click", exportHtml);
+      elements.exportAnki.addEventListener("click", exportAnki);
       elements.exportJson.addEventListener("click", exportJson);
       elements.importJson.addEventListener("click", () => elements.importJsonFile.click());
       elements.importJsonFile.addEventListener("change", importJsonFile);

@@ -487,3 +487,70 @@ test("buildExportHtml renders both sections and can skip the inline search scrip
   assert.match(html, /data-langs="en,fr"/);
   assert.doesNotMatch(html, /input.addEventListener\('input', applySearch\)/);
 });
+
+test("buildAnkiExport produces tab-separated file with Anki headers and entry data", () => {
+  const { store } = loadSharedStore();
+  const text = store.buildAnkiExport([
+    {
+      id: "HAUS1",
+      word: "Haus",
+      pos: "NOUN",
+      url: "https://lod.lu/artikel/HAUS1",
+      favorite: true,
+      inflection: "Haiser",
+      example: "Eis Haus ass grouss.",
+      note: "important word",
+      translations: { en: "house", fr: "maison", de: "Haus" }
+    },
+    {
+      id: "BEEM1",
+      word: "Beem",
+      pos: "NOUN",
+      translations: { en: "trees" }
+    }
+  ]);
+
+  const lines = text.split("\n");
+  assert.equal(lines[0], "#separator:Tab");
+  assert.equal(lines[1], "#html:true");
+  assert.equal(lines[2], "#deck:LODVault");
+  assert.equal(lines[3], "#columns:Word\tPOS\tTranslations\tInflection\tExample\tNote\tURL");
+  assert.match(lines[4], /^Haus\tNOUN\t/);
+  assert.match(lines[4], /house/);
+  assert.match(lines[4], /maison/);
+  assert.match(lines[4], /Haiser/);
+  assert.match(lines[4], /Eis Haus ass grouss\./);
+  assert.match(lines[4], /important word/);
+  assert.match(lines[4], /lod\.lu\/artikel\/HAUS1/);
+  assert.match(lines[5], /^Beem\tNOUN\t/);
+  assert.match(lines[5], /trees/);
+  assert.equal(lines.length, 6);
+});
+
+test("buildAnkiExport escapes HTML in fields", () => {
+  const { store } = loadSharedStore();
+  const text = store.buildAnkiExport([
+    {
+      id: "TEST1",
+      word: "Test<word>",
+      pos: "NOUN",
+      translations: { en: 'a "quoted" thing' }
+    }
+  ]);
+
+  assert.doesNotMatch(text, /Test<word>/);
+  assert.match(text, /Test&lt;word&gt;/);
+  assert.match(text, /&quot;quoted&quot;/);
+});
+
+test("buildAnkiExport skips entries without a word", () => {
+  const { store } = loadSharedStore();
+  const text = store.buildAnkiExport([
+    { id: "EMPTY1", word: "" },
+    { id: "HAUS1", word: "Haus", translations: { en: "house" } }
+  ]);
+
+  const lines = text.split("\n");
+  assert.equal(lines.length, 5); // 4 header lines + 1 data line
+  assert.match(lines[4], /^Haus\t/);
+});

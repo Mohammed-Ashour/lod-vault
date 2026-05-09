@@ -295,6 +295,39 @@
 </html>`;
   }
 
+  function buildAnkiExport(entries) {
+    const normalized = entries.map(normalizeEntry).filter((e) => e.word);
+    const lines = [
+      "#separator:Tab",
+      "#html:true",
+      "#deck:LODVault",
+      "#columns:Word\tPOS\tTranslations\tInflection\tExample\tNote\tURL"
+    ];
+
+    for (const entry of normalized) {
+      const items = getMeaningItems(entry);
+      const translationsHtml = items.length
+        ? items.map((i) => `<div><b>${escapeHtml(i.label)}</b>: ${escapeHtml(i.value)}</div>`).join("")
+        : "";
+      const inflection = entry.inflection ? escapeHtml(entry.inflection) : "";
+      const example = entry.example ? escapeHtml(entry.example) : "";
+      const note = entry.note ? escapeHtml(entry.note) : "";
+      const url = entry.url ? escapeHtml(entry.url) : "";
+
+      lines.push([
+        escapeHtml(entry.word),
+        escapeHtml(entry.pos),
+        translationsHtml,
+        inflection,
+        example,
+        note,
+        url
+      ].join("\t"));
+    }
+
+    return lines.join("\n");
+  }
+
   function downloadTextFile(filename, content, mimeType = "text/plain") {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
@@ -316,6 +349,7 @@
     buildMeaningRowsMarkup,
     getPrimaryMeaning,
     buildExportHtml,
+    buildAnkiExport,
     downloadTextFile
   };
 })();

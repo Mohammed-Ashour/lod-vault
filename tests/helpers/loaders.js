@@ -401,6 +401,9 @@ async function loadPopupScript({
     buildExportHtml(entriesToExport, options) {
       return shared.store.buildExportHtml(entriesToExport, options);
     },
+    buildAnkiExport(entriesToExport) {
+      return shared.store.buildAnkiExport(entriesToExport);
+    },
     downloadTextFile() {},
     ...storeOverrides
   };
