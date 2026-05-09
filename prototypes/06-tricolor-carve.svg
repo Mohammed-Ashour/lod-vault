@@ -1,0 +1,17 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Three bold horizontal bands -->
+  <defs>
+    <clipPath id="cf6">
+      <rect x="16" y="16" width="480" height="480" rx="104"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#cf6)">
+    <rect x="16" y="16" width="480" height="160" fill="#EF3340"/>
+    <rect x="16" y="176" width="480" height="160" fill="#FAFAFA"/>
+    <rect x="16" y="336" width="480" height="160" fill="#00A3E0"/>
+  </g>
+  <!-- L carved as a single white silhouette with subtle shadow -->
+  <path d="M178 110h76v234h146v72H178z" fill="#FFFFFF" fill-opacity="0.95"/>
+  <!-- Subtle inner border for definition -->
+  <rect x="16" y="16" width="480" height="480" rx="104" stroke="#FFFFFF" stroke-opacity="0.15" stroke-width="2" fill="none"/>
+</svg>

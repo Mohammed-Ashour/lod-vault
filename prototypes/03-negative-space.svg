@@ -1,0 +1,6 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Solid dark circle -->
+  <circle cx="256" cy="256" r="240" fill="#0A1E33"/>
+  <!-- L cut out as negative space using white -->
+  <path d="M180 120h80v232h148v76H180z" fill="#FFFFFF"/>
+</svg>
