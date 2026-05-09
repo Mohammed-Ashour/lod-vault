@@ -8,3 +8,4 @@ scripts/test_*.js
 scripts/*demo*.js
 scripts/*demo*.py
 media/
+prototypes/
