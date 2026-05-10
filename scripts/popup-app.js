@@ -87,7 +87,7 @@
 
     async function handleActiveTabChange() {
       await refreshCurrentPage();
-      await renderSavedList();
+      await renderSavedList({ refreshBackups: false });
     }
 
     async function handleTabUpdated(tabId, changeInfo, tab) {
@@ -96,7 +96,7 @@
       if (state.currentTabId && tabId !== state.currentTabId && !changeInfo.url) return;
 
       await refreshCurrentPage();
-      await renderSavedList();
+      await renderSavedList({ refreshBackups: false });
     }
 
     async function handlePageStateMessage(message, sender) {
@@ -112,23 +112,35 @@
         renderCurrentPageCard(savedEntry);
       }
 
-      await renderSavedList();
+      await renderSavedList({ refreshBackups: false });
     }
 
     async function handleStorageChange(changes, areaName) {
       if (areaName !== "local") return;
 
-      const keys = [store.STORAGE_KEY, store.SETTINGS_KEY, store.BACKUP_KEY].filter(Boolean);
-      if (!keys.some((key) => Object.prototype.hasOwnProperty.call(changes || {}, key))) {
+      const hasEntriesChange = Boolean(
+        store.STORAGE_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.STORAGE_KEY)
+      );
+      const hasSettingsChange = Boolean(
+        store.SETTINGS_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.SETTINGS_KEY)
+      );
+      const hasBackupChange = Boolean(
+        store.BACKUP_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.BACKUP_KEY)
+      );
+
+      if (!hasEntriesChange && !hasSettingsChange && !hasBackupChange) {
         return;
       }
 
-      await refreshSettingsState();
-      renderAutoMode();
-      renderSyncLanguages();
-      renderBrowserHistoryImportAction();
-      await renderSavedList();
-      await refreshCurrentPage();
+      if (hasSettingsChange) {
+        await refreshSettingsState();
+      }
+
+      if (hasEntriesChange || hasSettingsChange) {
+        await renderSavedList({ refreshBackups: hasBackupChange });
+      } else if (hasBackupChange) {
+        await refreshBackups();
+      }
     }
 
     function setCurrentButtonState(button, active, kind) {
@@ -587,7 +599,7 @@
         }
 
         await refreshCurrentPage();
-        await renderSavedList();
+        await renderSavedList({ refreshBackups: false });
       } finally {
         elements.autoModeToggle.disabled = false;
       }
@@ -610,7 +622,7 @@
         }
 
         renderCurrentPageCard(response?.entry || null);
-        await renderSavedList();
+        await renderSavedList({ refreshBackups: false });
       } finally {
         button.disabled = false;
       }
@@ -623,7 +635,7 @@
 
       try {
         await store.removeEntry(state.currentEntry.id);
-        await renderSavedList();
+        await renderSavedList({ refreshBackups: false });
         const savedEntry = state.currentEntry ? await store.getEntry(state.currentEntry.id) : null;
         renderCurrentPageCard(savedEntry);
       } finally {
@@ -696,14 +708,17 @@
       `;
     }
 
-    async function renderSavedList() {
+    async function renderSavedList(options = {}) {
+      const shouldRefreshBackups = options.refreshBackups !== false;
       const entries = await store.getEntries();
       state.savedEntries = entries;
       renderSummary(entries);
       renderAutoMode();
       renderSyncLanguages();
       renderList();
-      await refreshBackups();
+      if (shouldRefreshBackups) {
+        await refreshBackups();
+      }
       await syncCurrentCardState();
     }
 
@@ -791,7 +806,7 @@
           await store.toggleList(entry, "study");
         }
 
-        await renderSavedList();
+        await renderSavedList({ refreshBackups: false });
       } finally {
         button.disabled = false;
       }
@@ -934,7 +949,7 @@
       try {
         const result = await store.restoreVaultBackup(backupId);
         await refreshSettingsState();
-        await renderSavedList();
+        await renderSavedList({ refreshBackups: false });
         await refreshCurrentPage();
         await refreshBackups();
         message = `Backup restored · ${result?.entryCount || 0} words in vault.`;
