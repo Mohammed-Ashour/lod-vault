@@ -237,7 +237,8 @@ function loadContentScript({
   html,
   url = "https://lod.lu/artikel/HAUS1",
   title = '„Haus" - LOD',
-  storeOverrides = {}
+  storeOverrides = {},
+  entryPresenterOverrides = null
 } = {}) {
   const dom = new JSDOM(html, { url });
   dom.window.document.title = title;
@@ -307,6 +308,7 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/content.js"), "utf8")}
     HTMLElement: dom.window.HTMLElement,
     chrome,
     LodWrapperStore,
+    LodWrapperEntryPresenter: entryPresenterOverrides,
     console,
     URL: dom.window.URL,
     setTimeout: dom.window.setTimeout.bind(dom.window),

@@ -53,6 +53,24 @@ test("extractCurrentEntry reads the current lod.lu article data", async () => {
   });
 });
 
+test("infoText does not count the primary language in +N for non-default languages", () => {
+  const { api } = loadContentScript({
+    html: samplePageHtml(),
+    entryPresenterOverrides: {
+      getPrimaryMeaning() {
+        return { lang: "pt", label: "Português", value: "casa" };
+      }
+    }
+  });
+
+  const info = api.infoText({
+    pos: "SUBST",
+    translations: { pt: "casa" }
+  });
+
+  assert.equal(info, "SUBST · Português: casa");
+});
+
 test("applyState injects the banner under the heading and updates button state", async () => {
   const { api, dom } = loadContentScript({ html: samplePageHtml() });
 

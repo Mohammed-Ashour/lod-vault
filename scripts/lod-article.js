@@ -7,9 +7,11 @@
         return match ? decodeURIComponent(match[1]) : "";
       };
   const getPrimaryMeaning = globalThis.LodWrapperEntryPresenter?.getPrimaryMeaning || ((entry) => {
-    if (entry?.translations?.en) return { label: "English", value: entry.translations.en };
-    if (entry?.translations?.fr) return { label: "Français", value: entry.translations.fr };
-    if (entry?.translations?.de) return { label: "Deutsch", value: entry.translations.de };
+    if (entry?.translations?.en) return { lang: "en", label: "English", value: entry.translations.en };
+    if (entry?.translations?.fr) return { lang: "fr", label: "Français", value: entry.translations.fr };
+    if (entry?.translations?.de) return { lang: "de", label: "Deutsch", value: entry.translations.de };
+    if (entry?.translations?.pt) return { lang: "pt", label: "Português", value: entry.translations.pt };
+    if (entry?.translations?.nl) return { lang: "nl", label: "Nederlands", value: entry.translations.nl };
     return null;
   });
 
@@ -225,10 +227,20 @@
       parts.push(`${meaning.label}: ${value}`);
     }
 
-    const langMap = { en: "English", fr: "Français", de: "Deutsch" };
-    const primaryLang = Object.keys(langMap).find((k) => langMap[k] === meaning?.label) || "";
+    const labelToLang = {
+      english: "en",
+      français: "fr",
+      francais: "fr",
+      deutsch: "de",
+      português: "pt",
+      portugues: "pt",
+      nederlands: "nl"
+    };
+    const primaryLang = cleanWord(meaning?.lang).toLowerCase()
+      || labelToLang[cleanWord(meaning?.label).toLowerCase()]
+      || "";
     const otherCount = Object.keys(entry?.translations || {}).filter(
-      (lang) => lang !== primaryLang
+      (lang) => cleanWord(lang).toLowerCase() !== primaryLang
     ).length;
     if (otherCount > 0) parts.push(`+${otherCount}`);
 
