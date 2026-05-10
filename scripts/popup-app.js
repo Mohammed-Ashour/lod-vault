@@ -2,6 +2,20 @@
   function createApp(options = {}) {
     const store = options.store || globalThis.LodWrapperStore;
     const chromeApi = options.chrome || chrome;
+    const HISTORY_IMPORT_RANGE_DAYS = Object.freeze({
+      "7d": 7,
+      "30d": 30,
+      "90d": 90,
+      "365d": 365,
+      all: 0
+    });
+    const HISTORY_IMPORT_RANGE_LABELS = Object.freeze({
+      "7d": "the last 7 days",
+      "30d": "the last 30 days",
+      "90d": "the last 90 days",
+      "365d": "the last year",
+      all: "all time"
+    });
 
     const state = {
       currentTabId: null,
@@ -11,11 +25,19 @@
       autoMode: false,
       syncLanguages: [...(store.DEFAULT_SETTINGS?.syncLanguages || ["en", "fr", "de"])],
       syncLanguagesSaving: false,
+      backups: [],
+      backupsLoading: false,
+      restoringBackupId: "",
+      browserHistoryImporting: false,
+      syncNowInProgress: false,
+      historyImportRange: "all",
+      historyImportReport: null,
       currentPageRequestId: 0
     };
 
     const elements = {};
     let initialized = false;
+    const pendingSyncCapacityRefreshTimers = new Set();
 
     const noteAutosave = store.createNoteAutosaveController({
       getTimerKey: (textarea) => textarea === elements.currentNoteInput
@@ -26,7 +48,24 @@
           setCurrentNoteStatus(message);
         }
       },
-      saveNote: (noteId, requestValue) => store.saveNote(noteId, requestValue),
+      saveNote: async (noteId, requestValue) => {
+        try {
+          return await store.saveNote(noteId, requestValue);
+        } catch (error) {
+          const message = String(error || "");
+          const isMissingEntry = message.includes("Entry not found");
+          if (!isMissingEntry || !state.currentEntry || state.currentEntry.id !== noteId) {
+            throw error;
+          }
+
+          const savedEntry = await store.toggleList(state.currentEntry, "study");
+          if (!savedEntry) {
+            throw error;
+          }
+
+          return store.saveNote(noteId, requestValue);
+        }
+      },
       onSaved: async ({ textarea, savedEntry, noteId, changedSinceRequest }) => {
         updateSavedEntryState(savedEntry);
 
@@ -74,6 +113,22 @@
       }
 
       await renderSavedList();
+    }
+
+    async function handleStorageChange(changes, areaName) {
+      if (areaName !== "local") return;
+
+      const keys = [store.STORAGE_KEY, store.SETTINGS_KEY, store.BACKUP_KEY].filter(Boolean);
+      if (!keys.some((key) => Object.prototype.hasOwnProperty.call(changes || {}, key))) {
+        return;
+      }
+
+      await refreshSettingsState();
+      renderAutoMode();
+      renderSyncLanguages();
+      renderBrowserHistoryImportAction();
+      await renderSavedList();
+      await refreshCurrentPage();
     }
 
     function setCurrentButtonState(button, active, kind) {
@@ -162,8 +217,10 @@
 
       textarea.dataset.noteId = noteId;
       textarea.dataset.savedValue = savedValue;
-      textarea.disabled = !savedEntry;
-      textarea.placeholder = savedEntry ? "Add a note for this word..." : "Save this word to add a note...";
+      textarea.disabled = false;
+      textarea.placeholder = savedEntry
+        ? "Add a note for this word..."
+        : "Add a note — saving will add this word to Study...";
 
       if (!isDirty && (!isFocused || !isSameEntry)) {
         textarea.value = savedValue;
@@ -171,9 +228,9 @@
 
       if (!savedEntry) {
         noteAutosave.clear(textarea);
-        textarea.dataset.dirty = "";
-        textarea.value = "";
-        setCurrentNoteStatus("Save this word to add a note.");
+        if (!isDirty) {
+          setCurrentNoteStatus("Add a note to save this word to Study.");
+        }
         return;
       }
 
@@ -213,8 +270,109 @@
       return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     }
 
+    function getSyncNamespace() {
+      return globalThis.LodWrapperSync;
+    }
+
+    function supportsManualSyncNow() {
+      const sync = getSyncNamespace();
+      return Boolean(sync?.SyncAdapter?.pushAll);
+    }
+
+    function setSyncNowStatus(message, tone = "") {
+      if (!elements.syncNowStatus) return;
+      elements.syncNowStatus.textContent = message;
+      elements.syncNowStatus.classList.remove("is-success", "is-error");
+      if (tone === "success") {
+        elements.syncNowStatus.classList.add("is-success");
+      } else if (tone === "error") {
+        elements.syncNowStatus.classList.add("is-error");
+      }
+    }
+
+    function renderSyncNowAction() {
+      if (!elements.syncNowButton) return;
+
+      if (!supportsManualSyncNow()) {
+        elements.syncNowButton.classList.add("is-hidden");
+        setSyncNowStatus("");
+        return;
+      }
+
+      elements.syncNowButton.classList.remove("is-hidden");
+      elements.syncNowButton.disabled = Boolean(
+        state.syncNowInProgress
+        || state.browserHistoryImporting
+        || state.syncLanguagesSaving
+      );
+      elements.syncNowButton.textContent = state.syncNowInProgress ? "Syncing…" : "Sync now";
+    }
+
+    function clearScheduledSyncCapacityRefresh() {
+      for (const timer of pendingSyncCapacityRefreshTimers) {
+        clearTimeout(timer);
+      }
+      pendingSyncCapacityRefreshTimers.clear();
+    }
+
+    function scheduleSyncCapacityRefresh() {
+      clearScheduledSyncCapacityRefresh();
+      const delays = [1000, 3000];
+
+      for (const delay of delays) {
+        const timer = setTimeout(() => {
+          pendingSyncCapacityRefreshTimers.delete(timer);
+          renderSyncCapacity();
+        }, delay);
+        pendingSyncCapacityRefreshTimers.add(timer);
+      }
+    }
+
+    function describeSyncFailure(result = {}) {
+      if (result?.reason === "quota-exceeded") {
+        return "Sync failed: storage quota exceeded. Try fewer sync languages.";
+      }
+      return "Sync failed. Try again.";
+    }
+
+    async function syncNow() {
+      if (state.syncNowInProgress || !supportsManualSyncNow()) return;
+
+      const sync = getSyncNamespace();
+      state.syncNowInProgress = true;
+      renderSyncNowAction();
+      setSyncNowStatus("Syncing now…");
+
+      try {
+        if (typeof sync?.SyncAdapter?.init === "function") {
+          await sync.SyncAdapter.init();
+        }
+
+        const result = await sync.SyncAdapter.pushAll();
+        await renderSyncCapacity();
+        scheduleSyncCapacityRefresh();
+
+        if (result?.ok === false) {
+          setSyncNowStatus(describeSyncFailure(result), "error");
+        } else {
+          const entryCount = Number(result?.entryCount);
+          setSyncNowStatus(
+            Number.isFinite(entryCount)
+              ? `Sync complete · ${entryCount} words pushed.`
+              : "Sync complete.",
+            "success"
+          );
+        }
+      } catch {
+        setSyncNowStatus("Sync failed. Try again.", "error");
+      } finally {
+        state.syncNowInProgress = false;
+        renderSyncNowAction();
+      }
+    }
+
     async function renderSyncCapacity() {
-      const sync = globalThis.LodWrapperSync;
+      const sync = getSyncNamespace();
       if (!sync || !sync.getSyncUsageStats) {
         elements.syncLanguageCapacity.textContent = `Sync: Est. ~${getSyncCapacityHint(state.syncLanguages.length)} words`;
         return;
@@ -279,6 +437,7 @@
       elements.syncLanguageCount.textContent = `${selectedLanguages.length} of ${maxSelected} selected`;
       elements.syncLanguageCapacity.classList.toggle("sync-language-capacity", true);
       renderSyncCapacity();
+      renderSyncNowAction();
     }
 
     async function toggleSyncLanguage(language) {
@@ -544,6 +703,7 @@
       renderAutoMode();
       renderSyncLanguages();
       renderList();
+      await refreshBackups();
       await syncCurrentCardState();
     }
 
@@ -660,12 +820,338 @@
       renderList();
     }
 
+    function supportsBackups() {
+      return typeof store.getVaultBackups === "function"
+        && typeof store.restoreVaultBackup === "function";
+    }
+
+    function setBackupStatus(message, tone = "") {
+      if (!elements.backupStatus) return;
+      elements.backupStatus.textContent = message;
+      elements.backupStatus.classList.remove("is-success", "is-error");
+      if (tone === "success") {
+        elements.backupStatus.classList.add("is-success");
+      } else if (tone === "error") {
+        elements.backupStatus.classList.add("is-error");
+      }
+    }
+
+    function buildBackupItemMarkup(backup) {
+      const backupId = store.escapeHtml(backup.id || "");
+      const count = Number(backup.entryCount) || 0;
+      const countLabel = `${count} word${count === 1 ? "" : "s"}`;
+      const reason = store.escapeHtml((backup.reason || "auto").replace(/-/g, " "));
+      const when = store.escapeHtml(
+        typeof store.formatWhen === "function"
+          ? store.formatWhen(backup.createdAt)
+          : (backup.createdAt || "")
+      );
+      const restoring = state.restoringBackupId && state.restoringBackupId === backup.id;
+      const disabled = restoring || state.backupsLoading;
+
+      return `
+        <article class="backup-item" data-backup-id="${backupId}">
+          <p class="backup-meta">${countLabel} · ${reason}<br>${when}</p>
+          <button type="button" class="backup-restore" data-action="restore-backup" data-backup-id="${backupId}" ${disabled ? "disabled" : ""}>${restoring ? "Restoring…" : "Restore"}</button>
+        </article>
+      `;
+    }
+
+    function renderBackups(statusMessage = "", tone = "") {
+      if (!elements.backupSection || !elements.backupList || !elements.backupStatus) return;
+
+      if (!supportsBackups()) {
+        elements.backupSection.classList.add("is-hidden");
+        return;
+      }
+
+      elements.backupSection.classList.remove("is-hidden");
+      elements.backupList.innerHTML = state.backups.map(buildBackupItemMarkup).join("");
+
+      if (statusMessage) {
+        setBackupStatus(statusMessage, tone);
+        return;
+      }
+
+      if (state.backupsLoading) {
+        setBackupStatus("Loading backups…");
+        return;
+      }
+
+      if (!state.backups.length) {
+        setBackupStatus("No local backups yet.");
+        return;
+      }
+
+      setBackupStatus(`${state.backups.length} local backup snapshot${state.backups.length === 1 ? "" : "s"}.`);
+    }
+
+    async function refreshBackups() {
+      if (!supportsBackups()) {
+        renderBackups();
+        return;
+      }
+
+      state.backupsLoading = true;
+      renderBackups();
+
+      try {
+        const backups = await store.getVaultBackups(8);
+        state.backups = Array.isArray(backups) ? backups : [];
+        state.backupsLoading = false;
+        renderBackups();
+      } catch {
+        state.backups = [];
+        state.backupsLoading = false;
+        renderBackups("Could not load local backups.", "error");
+      }
+    }
+
+    async function onRefreshBackups() {
+      await refreshBackups();
+    }
+
+    async function onBackupListClick(event) {
+      const button = event.target.closest('button[data-action="restore-backup"]');
+      if (!button || button.disabled) return;
+
+      const backupId = button.dataset.backupId || "";
+      const backup = state.backups.find((item) => item.id === backupId);
+      if (!backup) return;
+
+      const count = Number(backup.entryCount) || 0;
+      const confirmed = typeof window?.confirm === "function"
+        ? window.confirm(`Restore this local backup (${count} word${count === 1 ? "" : "s"})?\n\nThis merges into your current vault and keeps existing words.`)
+        : true;
+      if (!confirmed) return;
+
+      state.restoringBackupId = backupId;
+      renderBackups("Restoring backup…");
+
+      let message = "";
+      let tone = "";
+
+      try {
+        const result = await store.restoreVaultBackup(backupId);
+        await refreshSettingsState();
+        await renderSavedList();
+        await refreshCurrentPage();
+        await refreshBackups();
+        message = `Backup restored · ${result?.entryCount || 0} words in vault.`;
+        tone = "success";
+      } catch {
+        message = "Could not restore that backup.";
+        tone = "error";
+      } finally {
+        state.restoringBackupId = "";
+        renderBackups(message, tone);
+      }
+    }
+
     function openFlashcards() {
       chromeApi.tabs.create({ url: chromeApi.runtime.getURL("pages/flashcards.html") });
     }
 
     function openPreview() {
       chromeApi.tabs.create({ url: chromeApi.runtime.getURL("pages/preview.html") });
+    }
+
+    function setSearchStatusFeedback(message, tone = "") {
+      elements.searchStatus.textContent = message;
+      elements.searchStatus.classList.remove("is-success", "is-error");
+
+      if (tone === "success") {
+        elements.searchStatus.classList.add("is-success");
+      } else if (tone === "error") {
+        elements.searchStatus.classList.add("is-error");
+      }
+    }
+
+    function clearSearchStatusToneAfter(delayMs = 4000) {
+      setTimeout(() => {
+        elements.searchStatus.classList.remove("is-success", "is-error");
+      }, delayMs);
+    }
+
+    function normalizeHistoryImportRange(value) {
+      const key = String(value || "");
+      return Object.prototype.hasOwnProperty.call(HISTORY_IMPORT_RANGE_DAYS, key)
+        ? key
+        : "all";
+    }
+
+    function getHistoryImportStartTime(rangeKey) {
+      const normalizedRange = normalizeHistoryImportRange(rangeKey);
+      const days = Number(HISTORY_IMPORT_RANGE_DAYS[normalizedRange]) || 0;
+      if (!days) return 0;
+
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      return Math.max(0, Date.now() - (days * DAY_MS));
+    }
+
+    function getHistoryImportRangeLabel(rangeKey) {
+      const normalizedRange = normalizeHistoryImportRange(rangeKey);
+      return HISTORY_IMPORT_RANGE_LABELS[normalizedRange] || HISTORY_IMPORT_RANGE_LABELS.all;
+    }
+
+    function supportsBrowserHistoryImport() {
+      return typeof store.importBrowserHistory === "function";
+    }
+
+    function renderBrowserHistoryImportAction() {
+      if (!elements.importBrowserHistory) return;
+
+      if (!supportsBrowserHistoryImport()) {
+        elements.importBrowserHistory.classList.add("is-hidden");
+        elements.importHistoryRangeRow?.classList.add("is-hidden");
+        return;
+      }
+
+      elements.importBrowserHistory.classList.remove("is-hidden");
+      elements.importHistoryRangeRow?.classList.remove("is-hidden");
+      elements.importBrowserHistory.disabled = state.browserHistoryImporting;
+      elements.importBrowserHistory.textContent = state.browserHistoryImporting
+        ? "Importing…"
+        : "Import history";
+
+      if (elements.importHistoryRange) {
+        elements.importHistoryRange.value = normalizeHistoryImportRange(state.historyImportRange);
+        elements.importHistoryRange.disabled = state.browserHistoryImporting;
+      }
+
+      renderSyncNowAction();
+    }
+
+    function onHistoryImportRangeChange(event) {
+      state.historyImportRange = normalizeHistoryImportRange(event?.target?.value);
+      renderBrowserHistoryImportAction();
+    }
+
+    function renderHistoryImportReport() {
+      if (!elements.importHistoryReport || !elements.importHistoryReportSummary || !elements.importHistoryReportList) {
+        return;
+      }
+
+      const report = state.historyImportReport;
+      if (!report) {
+        elements.importHistoryReport.classList.add("is-hidden");
+        elements.importHistoryReportSummary.textContent = "";
+        elements.importHistoryReportList.innerHTML = "";
+        return;
+      }
+
+      const scanned = Number(report.scanned) || 0;
+      const imported = Number(report.imported) || 0;
+      const skippedExisting = Number(report.skippedExisting) || 0;
+      const ignored = Number(report.ignored) || 0;
+
+      elements.importHistoryReportSummary.textContent = `Import report (${report.rangeLabel}): scanned ${scanned}, imported ${imported}, already saved ${skippedExisting}, ignored ${ignored}.`;
+
+      const addedEntries = Array.isArray(report.addedEntries) ? report.addedEntries : [];
+      if (!addedEntries.length) {
+        elements.importHistoryReportList.innerHTML = "";
+      } else {
+        const chips = addedEntries
+          .map((entry) => {
+            const label = String(entry?.word || entry?.id || "").trim();
+            return label
+              ? `<span class="history-import-report-item">${store.escapeHtml(label)}</span>`
+              : "";
+          })
+          .filter(Boolean);
+
+        if (imported > addedEntries.length) {
+          chips.push(`<span class="history-import-report-item">+${store.escapeHtml(String(imported - addedEntries.length))} more</span>`);
+        }
+
+        elements.importHistoryReportList.innerHTML = chips.join("");
+      }
+
+      elements.importHistoryReport.classList.remove("is-hidden");
+    }
+
+    async function requestBrowserHistoryPermission() {
+      const permissionsApi = chromeApi.permissions;
+      if (!permissionsApi || typeof permissionsApi.request !== "function") {
+        return true;
+      }
+
+      try {
+        const granted = await permissionsApi.request({ permissions: ["history"] });
+        if (granted) return true;
+      } catch {
+        // Ignore and fallback to contains checks below.
+      }
+
+      if (typeof permissionsApi.contains === "function") {
+        try {
+          return Boolean(await permissionsApi.contains({ permissions: ["history"] }));
+        } catch {
+          return false;
+        }
+      }
+
+      return false;
+    }
+
+    async function importFromBrowserHistory() {
+      if (state.browserHistoryImporting || !supportsBrowserHistoryImport()) return;
+
+      const selectedRange = normalizeHistoryImportRange(elements.importHistoryRange?.value || state.historyImportRange);
+      const rangeLabel = getHistoryImportRangeLabel(selectedRange);
+      const startTime = getHistoryImportStartTime(selectedRange);
+
+      const confirmed = typeof window?.confirm === "function"
+        ? window.confirm(`Import words from browser history on lod.lu (${rangeLabel})?\n\nThis only adds missing words to your vault and never removes existing words.`)
+        : true;
+      if (!confirmed) return;
+
+      state.browserHistoryImporting = true;
+      state.historyImportRange = selectedRange;
+      renderBrowserHistoryImportAction();
+
+      try {
+        const permissionGranted = await requestBrowserHistoryPermission();
+        if (!permissionGranted) {
+          setSearchStatusFeedback("Browser history permission not granted.", "error");
+          return;
+        }
+
+        const result = await store.importBrowserHistory({ maxResults: 20000, startTime });
+        await renderSavedList();
+        await refreshCurrentPage();
+
+        const imported = Number(result?.imported) || 0;
+        const scanned = Number(result?.scanned) || 0;
+        const skippedExisting = Number(result?.skippedExisting) || 0;
+        state.historyImportReport = {
+          rangeLabel,
+          imported,
+          scanned,
+          skippedExisting,
+          ignored: Number(result?.ignored) || 0,
+          addedEntries: Array.isArray(result?.addedEntries) ? result.addedEntries : []
+        };
+        renderHistoryImportReport();
+        scheduleSyncCapacityRefresh();
+
+        if (imported > 0) {
+          setSearchStatusFeedback(
+            `Imported ${imported} new word${imported === 1 ? "" : "s"} from browser history.`,
+            "success"
+          );
+        } else {
+          setSearchStatusFeedback(
+            `No new words found (${scanned} scanned, ${skippedExisting} already saved).`
+          );
+        }
+      } catch {
+        setSearchStatusFeedback("Could not import from browser history.", "error");
+      } finally {
+        state.browserHistoryImporting = false;
+        renderBrowserHistoryImportAction();
+        clearSearchStatusToneAfter();
+      }
     }
 
     async function exportHtml() {
@@ -704,18 +1190,13 @@
         renderSyncLanguages();
         await renderSavedList();
         await refreshCurrentPage();
-        elements.searchStatus.textContent = `Imported ${result.imported} word${result.imported === 1 ? "" : "s"}.`;
-        elements.searchStatus.classList.add("is-success");
-        elements.searchStatus.classList.remove("is-error");
+        scheduleSyncCapacityRefresh();
+        setSearchStatusFeedback(`Imported ${result.imported} word${result.imported === 1 ? "" : "s"}.`, "success");
       } catch {
-        elements.searchStatus.textContent = "Could not import that JSON file.";
-        elements.searchStatus.classList.add("is-error");
-        elements.searchStatus.classList.remove("is-success");
+        setSearchStatusFeedback("Could not import that JSON file.", "error");
       } finally {
         event.target.value = "";
-        setTimeout(() => {
-          elements.searchStatus.classList.remove("is-success", "is-error");
-        }, 4000);
+        clearSearchStatusToneAfter();
       }
     }
 
@@ -742,13 +1223,25 @@
       elements.syncLanguageCapacity = document.getElementById("sync-language-capacity");
       elements.syncCapacityBar = document.getElementById("sync-capacity-bar");
       elements.syncCapacityFill = document.getElementById("sync-capacity-fill");
+      elements.syncNowButton = document.getElementById("sync-now");
+      elements.syncNowStatus = document.getElementById("sync-now-status");
       elements.openFlashcards = document.getElementById("open-flashcards");
       elements.openPreview = document.getElementById("open-preview");
       elements.exportHtml = document.getElementById("export-html");
       elements.exportAnki = document.getElementById("export-anki");
       elements.exportJson = document.getElementById("export-json");
       elements.importJson = document.getElementById("import-json");
+      elements.importBrowserHistory = document.getElementById("import-browser-history");
+      elements.importHistoryRangeRow = document.getElementById("import-history-range-row");
+      elements.importHistoryRange = document.getElementById("import-history-range");
+      elements.importHistoryReport = document.getElementById("import-history-report");
+      elements.importHistoryReportSummary = document.getElementById("import-history-report-summary");
+      elements.importHistoryReportList = document.getElementById("import-history-report-list");
       elements.importJsonFile = document.getElementById("import-json-file");
+      elements.backupSection = document.getElementById("backup-section");
+      elements.backupStatus = document.getElementById("backup-status");
+      elements.backupList = document.getElementById("backup-list");
+      elements.refreshBackups = document.getElementById("refresh-backups");
       elements.searchInput = document.getElementById("search-input");
       elements.searchStatus = document.getElementById("search-status");
       elements.savedList = document.getElementById("saved-list");
@@ -769,12 +1262,15 @@
       });
       elements.autoModeToggle.addEventListener("click", toggleAutoMode);
       elements.syncLanguageChips.addEventListener("click", onSyncLanguageChipClick);
+      elements.syncNowButton?.addEventListener("click", syncNow);
       elements.openFlashcards.addEventListener("click", openFlashcards);
       elements.openPreview.addEventListener("click", openPreview);
       elements.exportHtml.addEventListener("click", exportHtml);
       elements.exportAnki.addEventListener("click", exportAnki);
       elements.exportJson.addEventListener("click", exportJson);
       elements.importJson.addEventListener("click", () => elements.importJsonFile.click());
+      elements.importBrowserHistory?.addEventListener("click", importFromBrowserHistory);
+      elements.importHistoryRange?.addEventListener("change", onHistoryImportRangeChange);
       elements.importJsonFile.addEventListener("change", importJsonFile);
       elements.searchInput.addEventListener("input", onSearchInput);
       elements.currentNoteInput.addEventListener("input", onCurrentNoteInput);
@@ -784,14 +1280,19 @@
       elements.savedList.addEventListener("input", onSavedListInput);
       elements.savedList.addEventListener("change", onSavedListChange);
       elements.savedList.addEventListener("focusout", onSavedListFocusOut);
+      elements.refreshBackups?.addEventListener("click", onRefreshBackups);
+      elements.backupList?.addEventListener("click", onBackupListClick);
 
       chromeApi.tabs.onActivated.addListener(handleActiveTabChange);
       chromeApi.tabs.onUpdated.addListener(handleTabUpdated);
       chromeApi.runtime.onMessage.addListener(handlePageStateMessage);
+      chromeApi.storage?.onChanged?.addListener(handleStorageChange);
 
       await refreshSettingsState();
       renderAutoMode();
       renderSyncLanguages();
+      renderBrowserHistoryImportAction();
+      renderHistoryImportReport();
       await refreshCurrentPage();
       await renderSavedList();
     }
@@ -801,6 +1302,8 @@
       chromeApi.tabs.onActivated.removeListener(handleActiveTabChange);
       chromeApi.tabs.onUpdated.removeListener(handleTabUpdated);
       chromeApi.runtime.onMessage.removeListener(handlePageStateMessage);
+      chromeApi.storage?.onChanged?.removeListener?.(handleStorageChange);
+      clearScheduledSyncCapacityRefresh();
       noteAutosave.destroy();
       initialized = false;
     }

@@ -333,7 +333,8 @@ async function loadPopupScript({
   autoMode = false,
   syncLanguages = ["en", "fr", "de"],
   popupHtml,
-  storeOverrides = {}
+  storeOverrides = {},
+  syncOverrides = null
 } = {}) {
   const shared = loadSharedStore();
   const html = popupHtml || fs.readFileSync(path.join(repoRoot, "pages/popup.html"), "utf8");
@@ -393,6 +394,15 @@ async function loadPopupScript({
       return { id, note: shared.store.normalizeNoteValue(note) };
     },
     async importJson() {},
+    async importBrowserHistory() {
+      return { imported: 0, scanned: 0, skippedExisting: 0, ignored: 0, total: entries.length };
+    },
+    async getVaultBackups() {
+      return [];
+    },
+    async restoreVaultBackup() {
+      return { restored: true, entryCount: entries.length };
+    },
     async getSettings() {
       return { autoMode, syncLanguages: [...syncLanguages] };
     },
@@ -436,6 +446,14 @@ async function loadPopupScript({
         return `chrome-extension://test/${relativePath}`;
       },
       onMessage: runtimeOnMessage
+    },
+    permissions: {
+      async request() {
+        return true;
+      },
+      async contains() {
+        return true;
+      }
     }
   };
 
@@ -461,6 +479,7 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
     HTMLElement: dom.window.HTMLElement,
     chrome,
     LodWrapperStore,
+    LodWrapperSync: syncOverrides || undefined,
     console,
     URL: dom.window.URL,
     Blob,

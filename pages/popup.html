@@ -48,6 +48,10 @@
           </div>
           <p id="sync-language-capacity" class="muted">Sync: 0 / 100 KB used</p>
         </div>
+        <div class="sync-actions-row">
+          <button id="sync-now" class="btn-link sync-now-btn" type="button">Sync now</button>
+          <p id="sync-now-status" class="helper-text muted sync-now-status" aria-live="polite"></p>
+        </div>
       </div>
     </section>
 
@@ -107,9 +111,33 @@
       <div class="tools-row">
         <button id="export-json" class="btn-tool">Export JSON</button>
         <button id="import-json" class="btn-tool">Import JSON</button>
+        <button id="import-browser-history" class="btn-tool">Import history</button>
+      </div>
+      <div id="import-history-range-row" class="history-import-row">
+        <label class="history-import-label" for="import-history-range">History range</label>
+        <select id="import-history-range" class="history-import-select">
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+          <option value="365d">Last year</option>
+          <option value="all" selected>All time</option>
+        </select>
       </div>
       <p id="search-status" class="helper-text muted" aria-live="polite">0 saved words</p>
+      <section id="import-history-report" class="history-import-report is-hidden" aria-live="polite">
+        <p id="import-history-report-summary" class="history-import-report-summary"></p>
+        <div id="import-history-report-list" class="history-import-report-list"></div>
+      </section>
       <input id="import-json-file" type="file" accept="application/json,.json" hidden>
+
+      <section id="backup-section" class="backup-section" aria-labelledby="backup-title">
+        <div class="backup-header">
+          <p id="backup-title" class="section-label">Local backups</p>
+          <button id="refresh-backups" class="btn-link" type="button">Refresh</button>
+        </div>
+        <p id="backup-status" class="helper-text muted">Loading backups…</p>
+        <div id="backup-list" class="backup-list"></div>
+      </section>
     </div>
 
     <div id="saved-list" class="saved-list"></div>
