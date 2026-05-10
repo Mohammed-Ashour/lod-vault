@@ -17,6 +17,7 @@ When you save a word, LODVault stores the following **locally in your browser** 
 - Your personal note for the word (if you add one)
 - Visit count and last visited date (if Auto mode is on)
 - Your Auto mode on/off setting
+- If you manually trigger **Import history**, matching `lod.lu/artikel/*` URLs from your browser history are read once and only missing words are added to your vault
 
 This data never leaves your browser. It is not sent to any server, not shared with any third party, and not accessible to anyone other than you.
 
@@ -56,6 +57,7 @@ All data is stored in `chrome.storage.local` on your device. You can delete it a
 | `tabs` | Detects which LOD article page is currently active so the popup can show the current word |
 | `https://lod.lu/artikel/*` | Injects the save banner into LOD article pages and communicates with the active page |
 | `https://www.lod.lu/artikel/*` | Same as above, for the www subdomain |
+| `history` (optional) | Only when you click **Import history**; reads `lod.lu/artikel/*` visits to add missing words (add-only, non-destructive) |
 
 ---
 

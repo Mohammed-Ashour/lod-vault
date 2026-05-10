@@ -62,6 +62,7 @@ The preview page lists all your saved words with their translations, POS tags, a
 | 👁 **Preview** | Browse your full word list in a clean page — no download needed |
 | 📤 **Export HTML** | Download a standalone, searchable HTML page of your words |
 | 📦 **Export / Import JSON** | Back up and restore your vocabulary |
+| 🕘 **Optional browser history import** | On demand, import missing `lod.lu/artikel/*` words from your browser history (add-only) |
 | ☁️ **Optional browser sync** | Sync a compact copy across Chrome profiles with configurable language selection |
 | 🔒 **Local-first** | `chrome.storage.local` stays authoritative; sync is only a compact replica |
 
@@ -133,6 +134,7 @@ The **LODVault** icon will appear in your browser toolbar.
 - **HTML** — downloads a standalone HTML file you can keep or share
 - **Export JSON** — downloads a full backup of your saved words and extension settings
 - **Import JSON** — restores or merges a previous backup, including supported settings
+- **Import history** — optionally requests browser History permission and adds missing `lod.lu/artikel/*` words into your vault (does not delete or overwrite existing words)
 
 ---
 

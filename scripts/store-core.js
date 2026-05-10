@@ -2,6 +2,9 @@
   const STORAGE_KEY = "lodVault.entries";
   const LEGACY_STORAGE_KEY = "lodWrapper.entries";
   const SETTINGS_KEY = "lodVault.settings";
+  const BACKUP_KEY = "lodVault.backups";
+  const MAX_BACKUP_SNAPSHOTS = 12;
+  const BACKUP_MIN_INTERVAL_MS = 5 * 60 * 1000;
   const DEFAULT_SETTINGS = {
     autoMode: false,
     syncLanguages: ["en", "fr", "de"]
@@ -33,6 +36,8 @@
   const SYNC_KEY_TO_LANGUAGE = Object.freeze(
     Object.fromEntries(Object.entries(SYNC_LANGUAGE_TO_KEY).map(([language, key]) => [key, language]))
   );
+  const BROWSER_HISTORY_IMPORT_QUERY = "lod.lu/artikel/";
+  const BROWSER_HISTORY_IMPORT_MAX_RESULTS = 20000;
 
   function nowIso() {
     return new Date().toISOString();
@@ -53,6 +58,35 @@
       .replace(/\s*kopéiert\b.*$/i, "")
       .replace(/\s*Artikel deelen\b.*$/i, "")
       .trim();
+  }
+
+  function isLodArticleUrl(url) {
+    return /^https:\/\/(?:www\.)?lod\.lu\/artikel\//i.test(cleanText(url));
+  }
+
+  function wordFromArticleId(id) {
+    return cleanText(id)
+      .replace(/[0-9]+$/g, "")
+      .replace(/[_-]+/g, " ")
+      .trim();
+  }
+
+  function wordFromHistoryTitle(title) {
+    const cleaned = cleanWordLabel(title)
+      .replace(/[„“”"']/g, "")
+      .replace(/\s*-\s*LOD\s*$/i, "")
+      .trim();
+    return cleaned;
+  }
+
+  function deriveWordFromHistoryItem(item, id) {
+    const titleWord = wordFromHistoryTitle(item?.title);
+    if (titleWord) return titleWord;
+
+    const fallback = wordFromArticleId(id);
+    if (fallback) return fallback;
+
+    return cleanText(id);
   }
 
   function cleanTranslations(translations = {}) {
@@ -183,20 +217,75 @@
     };
   }
 
+  function shouldKeepEntry(entry) {
+    return Boolean(entry?.favorite || entry?.study || entry?.history);
+  }
+
+  function hasOwnKey(value, key) {
+    return Object.prototype.hasOwnProperty.call(value || {}, key);
+  }
+
+  function hasExplicitListFields(value = {}) {
+    return hasOwnKey(value, "favorite")
+      || hasOwnKey(value, "study")
+      || hasOwnKey(value, "history");
+  }
+
+  function hasLegacySavedMarker(value = {}) {
+    return Boolean(value?.saved || value?.isSaved || value?.savedWord || value?.bookmarked);
+  }
+
+  function shouldRecoverLegacyMembership(rawEntry = {}, normalized = normalizeEntry(rawEntry)) {
+    if (!normalized.id || !normalized.word) return false;
+    if (shouldKeepEntry(normalized)) return false;
+
+    const explicitListFields = hasExplicitListFields(rawEntry);
+    const legacySavedMarker = hasLegacySavedMarker(rawEntry);
+
+    return !explicitListFields || legacySavedMarker;
+  }
+
+  function recoverLegacyMembership(rawEntry = {}, normalized = normalizeEntry(rawEntry)) {
+    if (!shouldRecoverLegacyMembership(rawEntry, normalized)) {
+      return normalized;
+    }
+
+    const recovered = {
+      ...normalized,
+      study: true
+    };
+
+    const historySignal = normalizeVisitCount(rawEntry.visitCount || recovered.visitCount) > 0
+      || Boolean(cleanText(rawEntry.lastVisitedAt || recovered.lastVisitedAt));
+
+    recovered.history = historySignal;
+
+    if (historySignal) {
+      recovered.visitCount = normalizeVisitCount(rawEntry.visitCount || recovered.visitCount) || 1;
+      recovered.lastVisitedAt = cleanText(rawEntry.lastVisitedAt || recovered.lastVisitedAt) || nowIso();
+    } else {
+      delete recovered.visitCount;
+      delete recovered.lastVisitedAt;
+    }
+
+    recovered.createdAt = recovered.createdAt || nowIso();
+    recovered.updatedAt = recovered.updatedAt || nowIso();
+
+    return recovered;
+  }
+
   function normalizeEntryMap(entryMap = {}) {
     const result = {};
 
     for (const [entryId, value] of Object.entries(entryMap || {})) {
-      const normalized = normalizeEntry({ id: entryId, ...value });
-      if (!normalized.id || !normalized.word || !shouldKeepEntry(normalized)) continue;
-      result[normalized.id] = normalized;
+      const rawEntry = { id: entryId, ...(value && typeof value === "object" ? value : {}) };
+      const normalized = normalizeEntry(rawEntry);
+      const recovered = recoverLegacyMembership(rawEntry, normalized);
+      if (!recovered.id || !recovered.word || !shouldKeepEntry(recovered)) continue;
+      result[recovered.id] = recovered;
     }
 
     return result;
-  }
-
-  function shouldKeepEntry(entry) {
-    return Boolean(entry?.favorite || entry?.study || entry?.history);
   }
 
   function mergeEntry(existing, incoming) {
@@ -273,7 +362,9 @@
     const result = {};
 
     for (const [entryId, value] of Object.entries(entryMap || {})) {
-      const filtered = applyTranslationLanguageFilter({ id: entryId, ...value }, languages);
+      const rawEntry = { id: entryId, ...(value && typeof value === "object" ? value : {}) };
+      const recovered = recoverLegacyMembership(rawEntry, normalizeEntry(rawEntry));
+      const filtered = applyTranslationLanguageFilter(recovered, languages);
       if (!filtered.id || !filtered.word || !shouldKeepEntry(filtered)) continue;
       result[filtered.id] = filtered;
     }
@@ -294,9 +385,67 @@
   }
 
   function countStoredEntries(entryMap) {
-    return Object.values(entryMap || {})
-      .map(normalizeEntry)
-      .filter((entry) => entry.id && entry.word && shouldKeepEntry(entry)).length;
+    return Object.keys(normalizeEntryMap(entryMap)).length;
+  }
+
+  function normalizeBackupSnapshots(value = []) {
+    const snapshots = Array.isArray(value) ? value : [];
+    return snapshots
+      .filter((snapshot) => snapshot && typeof snapshot === "object" && snapshot.entries && typeof snapshot.entries === "object")
+      .map((snapshot) => {
+        const normalizedEntries = normalizeEntryMap(snapshot.entries);
+        const createdAt = cleanText(snapshot.createdAt) || nowIso();
+        const reason = cleanText(snapshot.reason) || "auto";
+        const entryCount = countStoredEntries(normalizedEntries);
+        const id = cleanText(snapshot.id) || `${createdAt}:${entryCount}`;
+
+        return {
+          id,
+          createdAt,
+          reason,
+          entryCount,
+          entries: normalizedEntries
+        };
+      })
+      .sort((left, right) => Date.parse(right.createdAt || 0) - Date.parse(left.createdAt || 0));
+  }
+
+  function buildBackupSnapshot(entryMap, reason = "auto") {
+    const normalizedEntries = normalizeEntryMap(entryMap);
+    const createdAt = nowIso();
+    const entryCount = countStoredEntries(normalizedEntries);
+    return {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt,
+      reason: cleanText(reason) || "auto",
+      entryCount,
+      entries: normalizedEntries
+    };
+  }
+
+  function shouldCreateBackupSnapshot(previousMap, nextMap, existingBackups = [], reason = "") {
+    const normalizedReason = cleanText(reason).toLowerCase();
+    const previousCount = countStoredEntries(previousMap);
+    const nextCount = countStoredEntries(nextMap);
+
+    if (!nextCount) return false;
+    if (previousCount !== nextCount) return true;
+
+    if (normalizedReason.startsWith("manual") || normalizedReason.includes("import") || normalizedReason.includes("restore")) {
+      return true;
+    }
+
+    if (stableEntryMapString(previousMap) === stableEntryMapString(nextMap)) {
+      return false;
+    }
+
+    const latestBackup = normalizeBackupSnapshots(existingBackups)[0];
+    if (!latestBackup) return true;
+
+    const latestTimestamp = Date.parse(latestBackup.createdAt || "");
+    if (!Number.isFinite(latestTimestamp)) return true;
+
+    return (Date.now() - latestTimestamp) >= BACKUP_MIN_INTERVAL_MS;
   }
 
   async function getEntryMap() {
@@ -313,9 +462,13 @@
           }
         : current;
       const filtered = filterEntryMapTranslations(combined, settings.syncLanguages);
+      const needsLegacyRecovery = Object.entries(combined || {}).some(([entryId, value]) => {
+        const rawEntry = { id: entryId, ...(value && typeof value === "object" ? value : {}) };
+        return shouldRecoverLegacyMembership(rawEntry, normalizeEntry(rawEntry));
+      });
 
-      if (legacy || stableEntryMapString(combined) !== stableEntryMapString(filtered)) {
-        await chrome.storage.local.set({ [STORAGE_KEY]: filtered });
+      if (legacy || needsLegacyRecovery || stableEntryMapString(combined) !== stableEntryMapString(filtered)) {
+        await saveEntryMap(filtered, { reason: legacy ? "migration-legacy" : "migration-normalize" });
         if (legacy) {
           await chrome.storage.local.remove(LEGACY_STORAGE_KEY);
         }
@@ -330,9 +483,24 @@
     }
   }
 
-  async function saveEntryMap(entryMap) {
+  async function saveEntryMap(entryMap, options = {}) {
+    const reason = cleanText(options.reason) || "mutation";
+
     try {
-      await chrome.storage.local.set({ [STORAGE_KEY]: entryMap });
+      const nextEntryMap = normalizeEntryMap(entryMap);
+      const data = await chrome.storage.local.get([STORAGE_KEY, BACKUP_KEY]);
+      const previousEntryMap = data[STORAGE_KEY] && typeof data[STORAGE_KEY] === "object" ? data[STORAGE_KEY] : {};
+      const previousBackups = normalizeBackupSnapshots(data[BACKUP_KEY]);
+      const changed = stableEntryMapString(previousEntryMap) !== stableEntryMapString(nextEntryMap);
+      const payload = { [STORAGE_KEY]: nextEntryMap };
+
+      if (changed && shouldCreateBackupSnapshot(previousEntryMap, nextEntryMap, previousBackups, reason)) {
+        const nextBackups = [buildBackupSnapshot(nextEntryMap, reason), ...previousBackups]
+          .slice(0, MAX_BACKUP_SNAPSHOTS);
+        payload[BACKUP_KEY] = nextBackups;
+      }
+
+      await chrome.storage.local.set(payload);
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
@@ -394,10 +562,8 @@
     const filteredEntryMap = filterEntryMapTranslations(entryMap, nextSettings.syncLanguages);
 
     try {
-      await chrome.storage.local.set({
-        [SETTINGS_KEY]: nextSettings,
-        [STORAGE_KEY]: filteredEntryMap
-      });
+      await saveEntryMap(filteredEntryMap, { reason: "settings-sync-languages" });
+      await chrome.storage.local.set({ [SETTINGS_KEY]: nextSettings });
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
@@ -455,12 +621,12 @@
 
     if (!shouldKeepEntry(merged)) {
       delete entryMap[normalized.id];
-      await saveEntryMap(entryMap);
+      await saveEntryMap(entryMap, { reason: "toggle-list" });
       return null;
     }
 
     entryMap[normalized.id] = merged;
-    await saveEntryMap(entryMap);
+    await saveEntryMap(entryMap, { reason: "toggle-list" });
     return normalizeEntry(merged);
   }
 
@@ -489,7 +655,7 @@
     merged.createdAt = merged.createdAt || visitedAt;
 
     entryMap[normalized.id] = merged;
-    await saveEntryMap(entryMap);
+    await saveEntryMap(entryMap, { reason: "auto-visit" });
     return normalizeEntry(merged);
   }
 
@@ -513,12 +679,12 @@
 
     if (!shouldKeepEntry(merged)) {
       delete entryMap[id];
-      await saveEntryMap(entryMap);
+      await saveEntryMap(entryMap, { reason: "remove-history" });
       return null;
     }
 
     entryMap[id] = merged;
-    await saveEntryMap(entryMap);
+    await saveEntryMap(entryMap, { reason: "remove-history" });
     return normalizeEntry(merged);
   }
 
@@ -552,7 +718,7 @@
     }
 
     entryMap[normalized.id] = merged;
-    await saveEntryMap(entryMap);
+    await saveEntryMap(entryMap, { reason: "refresh-entry" });
     return normalizeEntry(merged);
   }
 
@@ -576,7 +742,7 @@
     merged.visitCount = normalizeVisitCount(existing.visitCount);
     merged.lastVisitedAt = cleanText(existing.lastVisitedAt);
     entryMap[id] = merged;
-    await saveEntryMap(entryMap);
+    await saveEntryMap(entryMap, { reason: "save-note" });
     return normalizeEntry(merged);
   }
 
@@ -588,7 +754,7 @@
     if (!id) return;
     const entryMap = await getEntryMap();
     delete entryMap[id];
-    await saveEntryMap(entryMap);
+    await saveEntryMap(entryMap, { reason: "manual-remove-entry" });
   }
 
   async function removeEntry(id) {
@@ -687,13 +853,12 @@
 
     const filteredEntryMap = filterEntryMapTranslations(entryMap, effectiveSettings.syncLanguages);
 
+    await saveEntryMap(filteredEntryMap, { reason: "import-json" });
+
     if (importedSettings) {
       await chrome.storage.local.set({
-        [STORAGE_KEY]: filteredEntryMap,
         [SETTINGS_KEY]: effectiveSettings
       });
-    } else {
-      await saveEntryMap(filteredEntryMap);
     }
 
     return { imported, total: countStoredEntries(filteredEntryMap) };
@@ -701,6 +866,238 @@
 
   async function importJson(text) {
     return runStoreMutation("importJson", [text], importJsonDirect);
+  }
+
+  function normalizeHistoryImportOptions(options = {}) {
+    const rawStartTime = Number(options?.startTime);
+    const startTime = Number.isFinite(rawStartTime) && rawStartTime >= 0
+      ? Math.floor(rawStartTime)
+      : 0;
+    const rawMaxResults = Number(options?.maxResults);
+    const maxResults = Number.isFinite(rawMaxResults) && rawMaxResults > 0
+      ? Math.min(Math.floor(rawMaxResults), BROWSER_HISTORY_IMPORT_MAX_RESULTS)
+      : BROWSER_HISTORY_IMPORT_MAX_RESULTS;
+    const text = cleanText(options?.text) || BROWSER_HISTORY_IMPORT_QUERY;
+
+    return {
+      startTime,
+      maxResults,
+      text
+    };
+  }
+
+  function assertBrowserHistoryApiAvailable() {
+    if (typeof chrome?.history?.search !== "function") {
+      throw new Error("Browser history access is unavailable.");
+    }
+  }
+
+  function toVisitedIso(value) {
+    const timestamp = Number(value);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) {
+      return nowIso();
+    }
+
+    return new Date(timestamp).toISOString();
+  }
+
+  async function importBrowserHistoryDirect(options = {}) {
+    assertBrowserHistoryApiAvailable();
+
+    const searchOptions = normalizeHistoryImportOptions(options);
+    const historyItems = await chrome.history.search(searchOptions);
+    const entryMap = await getEntryMap();
+    const settings = await getSettings();
+    let imported = 0;
+    let skippedExisting = 0;
+    let ignored = 0;
+    const addedEntries = [];
+
+    for (const item of Array.isArray(historyItems) ? historyItems : []) {
+      const url = cleanText(item?.url);
+      if (!isLodArticleUrl(url)) {
+        ignored += 1;
+        continue;
+      }
+
+      const id = getIdFromUrl(url);
+      if (!id) {
+        ignored += 1;
+        continue;
+      }
+
+      if (entryMap[id]) {
+        skippedExisting += 1;
+        continue;
+      }
+
+      const lastVisitedAt = toVisitedIso(item?.lastVisitTime);
+      const visitCount = Math.max(normalizeVisitCount(item?.visitCount), 1);
+      const normalized = normalizeEntry({
+        id,
+        word: deriveWordFromHistoryItem(item, id),
+        url,
+        study: true,
+        history: true,
+        visitCount,
+        lastVisitedAt,
+        createdAt: lastVisitedAt,
+        updatedAt: lastVisitedAt
+      });
+
+      if (!normalized.id || !normalized.word || !shouldKeepEntry(normalized)) {
+        ignored += 1;
+        continue;
+      }
+
+      entryMap[id] = applyTranslationLanguageFilter(normalized, settings.syncLanguages);
+      imported += 1;
+      if (addedEntries.length < 20) {
+        addedEntries.push({
+          id: normalized.id,
+          word: normalized.word,
+          url: normalized.url,
+          lastVisitedAt: normalized.lastVisitedAt
+        });
+      }
+    }
+
+    if (imported > 0) {
+      await saveEntryMap(entryMap, { reason: "import-browser-history" });
+    }
+
+    return {
+      imported,
+      scanned: Array.isArray(historyItems) ? historyItems.length : 0,
+      skippedExisting,
+      ignored,
+      total: countStoredEntries(entryMap),
+      addedEntries
+    };
+  }
+
+  async function importBrowserHistory(options) {
+    return runStoreMutation("importBrowserHistory", [options], importBrowserHistoryDirect);
+  }
+
+  function mergeEntriesByCoverage(primaryEntry = {}, secondaryEntry = {}) {
+    const primary = normalizeEntry(primaryEntry);
+    const secondary = normalizeEntry(secondaryEntry);
+
+    const hasHistory = Boolean(primary.history || secondary.history);
+    const latestVisitedAt = [primary.lastVisitedAt, secondary.lastVisitedAt]
+      .map((value) => cleanText(value))
+      .filter(Boolean)
+      .sort((left, right) => Date.parse(right) - Date.parse(left))[0] || "";
+
+    const createdCandidates = [primary.createdAt, secondary.createdAt]
+      .map((value) => cleanText(value))
+      .filter(Boolean)
+      .sort((left, right) => Date.parse(left) - Date.parse(right));
+    const updatedCandidates = [primary.updatedAt, secondary.updatedAt]
+      .map((value) => cleanText(value))
+      .filter(Boolean)
+      .sort((left, right) => Date.parse(right) - Date.parse(left));
+
+    const merged = {
+      ...secondary,
+      ...primary,
+      id: primary.id || secondary.id,
+      word: primary.word || secondary.word,
+      url: primary.url || secondary.url,
+      pos: primary.pos || secondary.pos,
+      inflection: primary.inflection || secondary.inflection,
+      example: primary.example || secondary.example,
+      note: primary.note || secondary.note,
+      translations: {
+        ...(secondary.translations || {}),
+        ...(primary.translations || {})
+      },
+      favorite: Boolean(primary.favorite || secondary.favorite),
+      study: Boolean(primary.study || secondary.study),
+      history: hasHistory,
+      visitCount: hasHistory
+        ? Math.max(normalizeVisitCount(primary.visitCount), normalizeVisitCount(secondary.visitCount), 1)
+        : 0,
+      lastVisitedAt: latestVisitedAt,
+      createdAt: createdCandidates[0] || nowIso(),
+      updatedAt: updatedCandidates[0] || nowIso()
+    };
+
+    if (!Object.keys(merged.translations || {}).length) {
+      delete merged.translations;
+    }
+    if (!merged.visitCount) {
+      delete merged.visitCount;
+    }
+    if (!merged.lastVisitedAt) {
+      delete merged.lastVisitedAt;
+    }
+
+    return normalizeEntry(merged);
+  }
+
+  function mergeVaultVersions(leftMap = {}, rightMap = {}) {
+    const left = normalizeEntryMap(leftMap);
+    const right = normalizeEntryMap(rightMap);
+    const leftCount = Object.keys(left).length;
+    const rightCount = Object.keys(right).length;
+    const primary = leftCount >= rightCount ? left : right;
+    const secondary = primary === left ? right : left;
+    const merged = { ...primary };
+
+    for (const [entryId, secondaryEntry] of Object.entries(secondary)) {
+      if (!merged[entryId]) {
+        merged[entryId] = secondaryEntry;
+        continue;
+      }
+
+      merged[entryId] = mergeEntriesByCoverage(merged[entryId], secondaryEntry);
+    }
+
+    return normalizeEntryMap(merged);
+  }
+
+  async function getVaultBackups(limit = MAX_BACKUP_SNAPSHOTS) {
+    const data = await chrome.storage.local.get([BACKUP_KEY]);
+    const backups = normalizeBackupSnapshots(data[BACKUP_KEY]);
+    const safeLimit = Math.max(1, Number(limit) || MAX_BACKUP_SNAPSHOTS);
+
+    return backups.slice(0, safeLimit).map((snapshot) => ({
+      id: snapshot.id,
+      createdAt: snapshot.createdAt,
+      reason: snapshot.reason,
+      entryCount: snapshot.entryCount
+    }));
+  }
+
+  async function restoreVaultBackupDirect(backupId) {
+    const targetId = cleanText(backupId);
+    if (!targetId) {
+      throw new Error("Missing backup id.");
+    }
+
+    const data = await chrome.storage.local.get([BACKUP_KEY]);
+    const backups = normalizeBackupSnapshots(data[BACKUP_KEY]);
+    const snapshot = backups.find((item) => item.id === targetId);
+
+    if (!snapshot) {
+      throw new Error("Backup not found.");
+    }
+
+    const current = await getEntryMap();
+    const merged = mergeVaultVersions(current, snapshot.entries);
+    await saveEntryMap(merged, { reason: "restore-backup" });
+
+    return {
+      restored: true,
+      entryCount: Object.keys(merged).length,
+      backupId: snapshot.id
+    };
+  }
+
+  async function restoreVaultBackup(backupId) {
+    return runStoreMutation("restoreVaultBackup", [backupId], restoreVaultBackupDirect);
   }
 
   const FLASHCARD_META_KEY = "lodVault.flashcardMeta";
@@ -877,6 +1274,7 @@
     STORAGE_KEY,
     LEGACY_STORAGE_KEY,
     SETTINGS_KEY,
+    BACKUP_KEY,
     FLASHCARD_META_KEY,
     DEFAULT_SETTINGS,
     EXPORT_VERSION,
@@ -913,6 +1311,9 @@
     removeEntry,
     buildJsonExport,
     importJson,
+    importBrowserHistory,
+    getVaultBackups,
+    restoreVaultBackup,
     normalizeFlashcardMeta,
     getFlashcardMeta,
     saveFlashcardMeta,

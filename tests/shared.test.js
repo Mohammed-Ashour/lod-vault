@@ -177,6 +177,63 @@ test("toggleList keeps history entries when study is turned off", async () => {
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.history, true);
 });
 
+test("importBrowserHistory adds only missing words from lod article history", async () => {
+  const { store, storageData, chrome } = loadSharedStore({
+    ["lodVault.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        favorite: true
+      }
+    }
+  });
+
+  chrome.history = {
+    async search() {
+      return [
+        {
+          url: "https://lod.lu/artikel/HAUS1",
+          title: "Haus - LOD",
+          visitCount: 10,
+          lastVisitTime: Date.parse("2025-04-01T09:00:00.000Z")
+        },
+        {
+          url: "https://www.lod.lu/artikel/BEEM1",
+          title: "Beem - LOD",
+          visitCount: 3,
+          lastVisitTime: Date.parse("2025-04-02T09:00:00.000Z")
+        },
+        {
+          url: "https://example.com/not-lod",
+          title: "Ignore me"
+        },
+        {
+          url: "https://lod.lu/artikel/M%C3%84NNCHEN1",
+          title: "",
+          visitCount: 0,
+          lastVisitTime: Date.parse("2025-04-03T09:00:00.000Z")
+        }
+      ];
+    }
+  };
+
+  const result = await store.importBrowserHistory({ maxResults: 200 });
+
+  assert.equal(result.imported, 2);
+  assert.equal(result.scanned, 4);
+  assert.equal(result.skippedExisting, 1);
+  assert.equal(result.ignored, 1);
+  assert.equal(result.total, 3);
+
+  assert.equal(storageData[store.STORAGE_KEY].HAUS1.favorite, true);
+  assert.equal(storageData[store.STORAGE_KEY].BEEM1.study, true);
+  assert.equal(storageData[store.STORAGE_KEY].BEEM1.history, true);
+  assert.equal(storageData[store.STORAGE_KEY].BEEM1.visitCount, 3);
+  assert.equal(storageData[store.STORAGE_KEY]["MÄNNCHEN1"].word, "MÄNNCHEN");
+  assert.equal(storageData[store.STORAGE_KEY]["MÄNNCHEN1"].visitCount, 1);
+});
+
 
 test("getEntries migrates legacy storage automatically", async () => {
   const { store, storageData } = loadSharedStore({
@@ -218,6 +275,66 @@ test("getEntries merges legacy storage into the current key before removing it",
   assert.equal(entries[0].id, "HAUS1");
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.word, "Haus");
   assert.equal("lodWrapper.entries" in storageData, false);
+});
+
+test("getEntries recovers legacy entries with no list flags and persists them", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        visitCount: 2,
+        lastVisitedAt: "2025-01-03T00:00:00.000Z"
+      },
+      BEEM1: {
+        id: "BEEM1",
+        word: "Beem",
+        url: "https://lod.lu/artikel/BEEM1",
+        saved: true
+      }
+    }
+  });
+
+  const entries = await store.getEntries();
+
+  assert.equal(entries.length, 2);
+  assert.equal(entries.find((entry) => entry.id === "HAUS1").study, true);
+  assert.equal(entries.find((entry) => entry.id === "HAUS1").history, true);
+  assert.equal(entries.find((entry) => entry.id === "HAUS1").visitCount, 2);
+  assert.equal(entries.find((entry) => entry.id === "BEEM1").study, true);
+  assert.equal(storageData[store.STORAGE_KEY].HAUS1.study, true);
+  assert.equal(storageData[store.STORAGE_KEY].HAUS1.history, true);
+  assert.equal(storageData[store.STORAGE_KEY].BEEM1.study, true);
+});
+
+test("local backups keep recoverable snapshots and can be restored", async () => {
+  const { store } = loadSharedStore();
+
+  await store.toggleList({
+    id: "HAUS1",
+    word: "Haus",
+    url: "https://lod.lu/artikel/HAUS1"
+  }, "study");
+
+  await store.toggleList({
+    id: "BEEM1",
+    word: "Beem",
+    url: "https://lod.lu/artikel/BEEM1"
+  }, "study");
+
+  const backups = await store.getVaultBackups();
+  assert.ok(backups.length >= 1);
+
+  const targetBackup = backups[0];
+  await store.removeEntry("HAUS1");
+  await store.removeEntry("BEEM1");
+
+  const restore = await store.restoreVaultBackup(targetBackup.id);
+  const restoredEntries = await store.getEntries();
+
+  assert.equal(restore.restored, true);
+  assert.ok(restoredEntries.length >= 2);
 });
 
 test("saveNote updates the note and removeEntry deletes the item", async () => {
