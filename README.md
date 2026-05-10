@@ -66,6 +66,17 @@ The preview page lists all your saved words with their translations, POS tags, a
 | ☁️ **Optional browser sync** | Sync a compact copy across Chrome profiles with configurable language selection |
 | 🔒 **Local-first** | `chrome.storage.local` stays authoritative; sync is only a compact replica |
 
+### What's new in v1.5.0
+
+- Manual **Sync now** action in the popup with live status feedback
+- **Import history** now supports range filters (7d / 30d / 90d / 365d / all time)
+- Post-import **history report** (scanned/imported/skipped/ignored + added word chips)
+- Local **backup snapshots** with restore from popup
+- Sync and storage reliability improvements:
+  - safer fallback when backup snapshots hit local storage quota
+  - improved merge behavior for vault sync
+  - reduced redundant popup refresh cycles
+
 ---
 
 <h2 id="install">Install</h2>
