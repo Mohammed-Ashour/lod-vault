@@ -1,6 +1,6 @@
 <div align="center">
   <img src="icons/icon512-preview.png" width="96" alt="LODVault icon" />
-  <h1>LODVault</h1>
+  <h1>LODVault v1.5.0</h1>
   <p><strong>Your personal vocabulary vault for lod.lu</strong></p>
   <p>
     Save Luxembourgish words as you browse, study with flashcards,<br/>
@@ -65,19 +65,6 @@ The preview page lists all your saved words with their translations, POS tags, a
 | 🕘 **Optional browser history import** | On demand, import missing `lod.lu/artikel/*` words from your browser history (add-only) |
 | ☁️ **Optional browser sync** | Sync a compact copy across Chrome profiles with configurable language selection |
 | 🔒 **Local-first** | `chrome.storage.local` stays authoritative; sync is only a compact replica |
-
-### What's new in v1.5.0
-
-- Manual **Sync now** action in the popup with live status feedback
-- **Import history** now supports range filters (7d / 30d / 90d / 365d / all time)
-- Post-import **history report** (scanned/imported/skipped/ignored + added word chips)
-- Local **backup snapshots** with restore from popup
-- Sync and storage reliability improvements:
-  - safer fallback when backup snapshots hit local storage quota
-  - improved merge behavior for vault sync
-  - reduced redundant popup refresh cycles
-
----
 
 <h2 id="install">Install</h2>
 
