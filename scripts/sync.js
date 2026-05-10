@@ -88,6 +88,22 @@
     return 0;
   }
 
+  function pickLatestIso(...values) {
+    const sorted = values
+      .map((value) => cleanText(value))
+      .filter(Boolean)
+      .sort((left, right) => Date.parse(right) - Date.parse(left));
+    return sorted[0] || "";
+  }
+
+  function pickEarliestIso(...values) {
+    const sorted = values
+      .map((value) => cleanText(value))
+      .filter(Boolean)
+      .sort((left, right) => Date.parse(left) - Date.parse(right));
+    return sorted[0] || "";
+  }
+
   function compactUrl(url) {
     const directId = typeof store.getIdFromUrl === "function" ? store.getIdFromUrl(url) : "";
     if (directId) return directId;
@@ -276,49 +292,45 @@
     return shards;
   }
 
-  function mergeEntryMaps(localEntryMap = {}, remoteEntryMap = {}) {
-    const local = normalizeEntryMap(localEntryMap);
-    const remote = normalizeEntryMap(remoteEntryMap);
-    const merged = {};
-    const entryIds = new Set([...Object.keys(local), ...Object.keys(remote)]);
+  function mergeEntryMaps(primaryEntryMap = {}, secondaryEntryMap = {}) {
+    const primary = normalizeEntryMap(primaryEntryMap);
+    const secondary = normalizeEntryMap(secondaryEntryMap);
+    const merged = { ...primary };
 
-    for (const entryId of entryIds) {
-      const localEntry = local[entryId];
-      const remoteEntry = remote[entryId];
+    for (const [entryId, secondaryEntry] of Object.entries(secondary)) {
+      const primaryEntry = merged[entryId];
 
-      if (!localEntry) {
-        merged[entryId] = remoteEntry;
+      if (!primaryEntry) {
+        merged[entryId] = secondaryEntry;
         continue;
       }
 
-      if (!remoteEntry) {
-        merged[entryId] = localEntry;
-        continue;
-      }
-
-      const localTime = getEntryTimestamp(localEntry);
-      const remoteTime = getEntryTimestamp(remoteEntry);
-      const winner = remoteTime > localTime ? remoteEntry : localEntry;
-      const loser = winner === remoteEntry ? localEntry : remoteEntry;
+      const newest = getEntryTimestamp(secondaryEntry) > getEntryTimestamp(primaryEntry)
+        ? secondaryEntry
+        : primaryEntry;
+      const hasHistory = Boolean(primaryEntry.history || secondaryEntry.history);
       const nextEntry = {
-        ...loser,
-        ...winner,
-        id: winner.id || loser.id,
-        word: winner.word || loser.word,
-        url: winner.url || loser.url,
+        id: primaryEntry.id || secondaryEntry.id,
+        word: primaryEntry.word || secondaryEntry.word,
+        url: primaryEntry.url || secondaryEntry.url,
+        pos: newest.pos || primaryEntry.pos || secondaryEntry.pos,
+        inflection: newest.inflection || primaryEntry.inflection || secondaryEntry.inflection,
+        example: newest.example || primaryEntry.example || secondaryEntry.example,
+        note: newest.note || primaryEntry.note || secondaryEntry.note,
         translations: {
-          ...(loser.translations || {}),
-          ...(winner.translations || {})
+          ...(secondaryEntry.translations || {}),
+          ...(primaryEntry.translations || {}),
+          ...(newest.translations || {})
         },
-        favorite: Boolean(winner.favorite),
-        study: Boolean(winner.study),
-        history: Boolean(winner.history),
-        visitCount: winner.history
-          ? Math.max(normalizeVisitCount(winner.visitCount), 1)
-          : normalizeVisitCount(winner.visitCount),
-        lastVisitedAt: cleanText(winner.lastVisitedAt),
-        createdAt: cleanText(winner.createdAt || loser.createdAt),
-        updatedAt: cleanText(winner.updatedAt || loser.updatedAt)
+        favorite: Boolean(primaryEntry.favorite || secondaryEntry.favorite),
+        study: Boolean(primaryEntry.study || secondaryEntry.study),
+        history: hasHistory,
+        visitCount: hasHistory
+          ? Math.max(normalizeVisitCount(primaryEntry.visitCount), normalizeVisitCount(secondaryEntry.visitCount), 1)
+          : 0,
+        lastVisitedAt: pickLatestIso(primaryEntry.lastVisitedAt, secondaryEntry.lastVisitedAt),
+        createdAt: pickEarliestIso(primaryEntry.createdAt, secondaryEntry.createdAt),
+        updatedAt: pickLatestIso(primaryEntry.updatedAt, secondaryEntry.updatedAt)
       };
 
       if (!Object.keys(nextEntry.translations).length) {
@@ -338,7 +350,21 @@
       }
     }
 
-    return merged;
+    return normalizeEntryMap(merged);
+  }
+
+  function mergeVaultVersionsPreferLarger(leftEntryMap = {}, rightEntryMap = {}) {
+    const left = normalizeEntryMap(leftEntryMap);
+    const right = normalizeEntryMap(rightEntryMap);
+    const leftCount = Object.keys(left).length;
+    const rightCount = Object.keys(right).length;
+
+    if (!leftCount) return right;
+    if (!rightCount) return left;
+
+    const primary = leftCount >= rightCount ? left : right;
+    const secondary = primary === left ? right : left;
+    return mergeEntryMaps(primary, secondary);
   }
 
   function buildSyncSettings(settings = DEFAULT_SETTINGS) {
@@ -448,6 +474,37 @@
     ));
   }
 
+  function hasLegacySyncSavedMarker(syncEntry = {}) {
+    return Boolean(syncEntry?.saved || syncEntry?.isSaved || syncEntry?.savedWord || syncEntry?.bookmarked);
+  }
+
+  function recoverLegacySyncFlags(syncEntry = {}, fallbackFlags = 0) {
+    const baseFlags = Number(fallbackFlags) || 0;
+    if (baseFlags) return baseFlags;
+
+    const explicitBooleanFlags = packFlags(syncEntry);
+    if (explicitBooleanFlags) return explicitBooleanFlags;
+
+    const id = cleanText(syncEntry.i || syncEntry.id);
+    const word = cleanText(syncEntry.w || syncEntry.word);
+    if (!id || !word) return 0;
+
+    const hasExplicitCompactFlags = Object.prototype.hasOwnProperty.call(syncEntry, "a");
+    const hasLegacyBooleanFlags = ["favorite", "study", "history", "fav", "hist"].some((key) => Object.prototype.hasOwnProperty.call(syncEntry, key));
+    const shouldRecover = hasLegacySyncSavedMarker(syncEntry)
+      || (!hasExplicitCompactFlags && !hasLegacyBooleanFlags);
+
+    if (!shouldRecover) {
+      return 0;
+    }
+
+    const hasHistorySignal = normalizeVisitCount(syncEntry.c || syncEntry.visitCount) > 0
+      || Number(syncEntry.l) > 0
+      || Boolean(cleanText(syncEntry.lastVisitedAt));
+
+    return packFlags({ study: true, history: hasHistorySignal });
+  }
+
   function detectSyncMigrationNeed({ rawManifest, rawSettings, shardEntries, hasSyncData, hasRawCompressedShards }) {
     if (!hasSyncData) return false;
     if (!rawManifest || Number(rawManifest.v) !== SYNC_FORMAT_VERSION) return true;
@@ -485,7 +542,7 @@
         e: cleanText(syncEntry.example),
         n: cleanText(syncEntry.note),
         t: normalizeSyncTranslationMap(syncEntry.translations, fallbackLanguages),
-        a: packFlags(syncEntry),
+        a: recoverLegacySyncFlags(syncEntry),
         c: normalizeVisitCount(syncEntry.visitCount),
         l: isoToUnix(syncEntry.lastVisitedAt),
         r: isoToUnix(syncEntry.createdAt),
@@ -511,6 +568,15 @@
         }
       });
 
+      const recoveredFlags = recoverLegacySyncFlags(syncEntry, legacyCompact.a);
+      if (recoveredFlags) {
+        legacyCompact.a = recoveredFlags;
+        if (Boolean(recoveredFlags & 4)) {
+          legacyCompact.c = normalizeVisitCount(legacyCompact.c || syncEntry.visitCount) || 1;
+          legacyCompact.l = Number(legacyCompact.l) || isoToUnix(syncEntry.lastVisitedAt) || nowUnix();
+        }
+      }
+
       return legacyCompact;
     }
 
@@ -528,6 +594,15 @@
 
     if (!Object.keys(compact.t).length) {
       delete compact.t;
+    }
+
+    const recoveredFlags = recoverLegacySyncFlags(syncEntry, compact.a);
+    if (recoveredFlags) {
+      compact.a = recoveredFlags;
+      if (Boolean(recoveredFlags & 4)) {
+        compact.c = normalizeVisitCount(compact.c || syncEntry.c || syncEntry.visitCount) || 1;
+        compact.l = Number(compact.l) || Number(syncEntry.l) || isoToUnix(syncEntry.lastVisitedAt) || nowUnix();
+      }
     }
 
     return compact;
@@ -853,10 +928,11 @@
     const [localState, syncState] = await Promise.all([getLocalState(), getSyncState()]);
     const remoteEntries = buildRemoteEntryMap(syncState.entries, localState.entries);
     const mergedSettings = buildPulledSettings(localState, syncState);
+    const mergedSourceEntries = Object.keys(remoteEntries).length
+      ? mergeVaultVersionsPreferLarger(localState.entries, remoteEntries)
+      : localState.entries;
     const mergedEntries = filterEntryMapTranslations(
-      Object.keys(remoteEntries).length
-        ? mergeEntryMaps(localState.entries, remoteEntries)
-        : localState.entries,
+      mergedSourceEntries,
       mergedSettings.syncLanguages
     );
     const entriesChanged = stableStringify(localState.entries) !== stableStringify(mergedEntries);

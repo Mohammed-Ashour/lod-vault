@@ -237,6 +237,66 @@ test("SyncAdapter.pullAll filters saved local translations to the selected langu
   assert.deepEqual(fixture.storageData["lodVault.settings"].syncLanguages, ["en", "fr"]);
 });
 
+test("SyncAdapter.pullAll prefers the larger vault and only adds from the smaller one", async () => {
+  const fixture = loadSyncScript({
+    local: {
+      "lodVault.entries": {
+        HAUS1: makeLocalEntry({
+          study: true,
+          favorite: false,
+          note: "local note",
+          updatedAt: "2025-01-01T00:00:00.000Z"
+        }),
+        BEEM1: makeLocalEntry({
+          id: "BEEM1",
+          word: "Beem",
+          url: "https://lod.lu/artikel/BEEM1",
+          translations: { en: "tree" },
+          study: true,
+          favorite: false,
+          history: false,
+          updatedAt: "2025-01-02T00:00:00.000Z"
+        }),
+        WASSER1: makeLocalEntry({
+          id: "WASSER1",
+          word: "Waasser",
+          url: "https://lod.lu/artikel/WASSER1",
+          translations: { en: "water" },
+          study: true,
+          favorite: false,
+          history: false,
+          updatedAt: "2025-01-03T00:00:00.000Z"
+        })
+      }
+    },
+    sync: {
+      "lodVault.m": { v: 4, n: 1, a: false, l: ["e", "f"], t: 1714564800, z: 0 },
+      "lodVault.s": { a: false, l: ["en", "fr"] },
+      "lodVault.e.0": [
+        {
+          i: "HAUS1",
+          w: "Haus",
+          u: "HAUS1",
+          n: "remote note",
+          t: { e: "home", f: "maison" },
+          a: 1,
+          o: 1736208000
+        }
+      ]
+    }
+  });
+
+  const result = await fixture.sync.SyncAdapter.pullAll({ repush: false });
+
+  assert.equal(result.ok, true);
+  assert.equal(Object.keys(fixture.storageData["lodVault.entries"]).length, 3);
+  assert.equal(fixture.storageData["lodVault.entries"].HAUS1.study, true);
+  assert.equal(fixture.storageData["lodVault.entries"].HAUS1.favorite, true);
+  assert.equal(fixture.storageData["lodVault.entries"].HAUS1.note, "remote note");
+  assert.equal(fixture.storageData["lodVault.entries"].BEEM1.word, "Beem");
+  assert.equal(fixture.storageData["lodVault.entries"].WASSER1.word, "Waasser");
+});
+
 test("SyncAdapter.pullAll keeps only explicitly selected local languages when local settings already exist", async () => {
   const fixture = loadSyncScript({
     local: {
@@ -360,6 +420,32 @@ test("SyncAdapter.pullAll migrates legacy sync format forward to v4", async () =
   assert.equal(fixture.syncStorageData["lodVault.m"].v, 4);
   assert.deepEqual(fixture.syncStorageData["lodVault.m"].l, ["e", "f"]);
   assert.deepEqual(fixture.syncStorageData["lodVault.s"].l, ["en", "fr"]);
+});
+
+test("SyncAdapter.pullAll recovers legacy sync entries that have no list flags", async () => {
+  const fixture = loadSyncScript({
+    sync: {
+      "lodVault.m": { v: 2, n: 1, a: false, l: ["en", "fr"], t: 1714564800 },
+      "lodVault.s": { a: false, l: ["en", "fr"] },
+      "lodVault.e.0": [
+        {
+          id: "HAUS1",
+          word: "Haus",
+          url: "https://lod.lu/artikel/HAUS1",
+          translations: { en: "house", fr: "maison" },
+          visitCount: 3,
+          lastVisitedAt: "2025-01-06T08:30:00.000Z"
+        }
+      ]
+    }
+  });
+
+  const result = await fixture.sync.SyncAdapter.pullAll({ repush: false });
+
+  assert.equal(result.ok, true);
+  assert.equal(fixture.storageData["lodVault.entries"].HAUS1.study, true);
+  assert.equal(fixture.storageData["lodVault.entries"].HAUS1.history, true);
+  assert.equal(fixture.storageData["lodVault.entries"].HAUS1.visitCount, 3);
 });
 
 test("SyncAdapter.pushAll falls back cleanly when sync quota is exceeded", async () => {

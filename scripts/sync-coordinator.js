@@ -84,12 +84,29 @@
       };
     }
 
-    function getChangedEntryIds(change) {
+    function describeEntryChange(change) {
       const oldMap = change?.oldValue && typeof change.oldValue === "object" ? change.oldValue : {};
       const newMap = change?.newValue && typeof change.newValue === "object" ? change.newValue : {};
       const entryIds = new Set([...Object.keys(oldMap), ...Object.keys(newMap)]);
+      const changedEntryIds = [];
+      const addedEntryIds = [];
+      const removedEntryIds = [];
 
-      return [...entryIds].filter((entryId) => stableStringify(oldMap[entryId]) !== stableStringify(newMap[entryId]));
+      for (const entryId of entryIds) {
+        if (stableStringify(oldMap[entryId]) === stableStringify(newMap[entryId])) continue;
+        changedEntryIds.push(entryId);
+        if (!(entryId in oldMap) && (entryId in newMap)) {
+          addedEntryIds.push(entryId);
+        } else if ((entryId in oldMap) && !(entryId in newMap)) {
+          removedEntryIds.push(entryId);
+        }
+      }
+
+      return {
+        changedEntryIds,
+        addedEntryIds,
+        removedEntryIds
+      };
     }
 
     function getSettingsChangeKind(change) {
@@ -129,13 +146,19 @@
 
       // If only entries changed, check whether a single-entry push is sufficient.
       if (entryChange) {
-        const changedEntryIds = getChangedEntryIds(entryChange);
-        if (changedEntryIds.length === 1) {
-          return { type: "entry", id: changedEntryIds[0] };
+        const entryChangeInfo = describeEntryChange(entryChange);
+        const hasNewWord = entryChangeInfo.addedEntryIds.length > 0;
+
+        if (entryChangeInfo.changedEntryIds.length === 1) {
+          return {
+            type: "entry",
+            id: entryChangeInfo.changedEntryIds[0],
+            immediate: hasNewWord
+          };
         }
         // Multiple entries changed at once — full push is safer.
-        if (changedEntryIds.length > 1) {
-          return { type: "all" };
+        if (entryChangeInfo.changedEntryIds.length > 1) {
+          return { type: "all", immediate: hasNewWord };
         }
         // No net change in entry data (e.g. a timestamp-only update that
         // stableStringify considers equal). Fall through to full push.
@@ -152,20 +175,32 @@
       // No new plan — keep the previous one.
       if (!nextPlan) return previousPlan;
 
+      const immediate = Boolean(previousPlan.immediate || nextPlan.immediate);
+
       // If either plan requires a full push, the merged plan must also be
       // a full push (it's the broadest possible scope).
-      if (previousPlan.type === "all" || nextPlan.type === "all") return { type: "all" };
+      if (previousPlan.type === "all" || nextPlan.type === "all") {
+        return { type: "all", immediate };
+      }
 
       // Two different plan types (e.g. "entry" + "settings") can't be
       // satisfied by a single targeted push — escalate to full.
-      if (previousPlan.type !== nextPlan.type) return { type: "all" };
+      if (previousPlan.type !== nextPlan.type) {
+        return { type: "all", immediate };
+      }
 
       // Two entry pushes targeting different entries can't be merged
       // into a single pushEntry call — escalate to full.
-      if (previousPlan.type === "entry" && previousPlan.id !== nextPlan.id) return { type: "all" };
+      if (previousPlan.type === "entry" && previousPlan.id !== nextPlan.id) {
+        return { type: "all", immediate };
+      }
 
-      // Same type targeting the same entry — the newer plan supersedes.
-      return nextPlan;
+      // Same type targeting the same entry — keep the latest plan and
+      // preserve the immediate signal if any caller requested it.
+      return {
+        ...nextPlan,
+        immediate
+      };
     }
 
     async function initializeSync(reason = "startup") {
@@ -205,6 +240,8 @@
         clearTimeout(pendingLocalPushTimer);
       }
 
+      const delayMs = pendingLocalPushPlan?.immediate ? 0 : pushDebounceMs;
+
       pendingLocalPushTimer = setTimeout(() => {
         pendingLocalPushTimer = null;
         const planToRun = pendingLocalPushPlan || { type: "all" };
@@ -236,7 +273,7 @@
         }).catch((error) => {
           logSyncWarning("Sync push failed", error);
         });
-      }, pushDebounceMs);
+      }, delayMs);
     }
 
     function scheduleSyncPull() {

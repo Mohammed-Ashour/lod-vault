@@ -169,6 +169,37 @@ test("background uses pushEntry for a single-entry local mutation after sync is 
   assert.equal(pushAllCalls, 0);
 });
 
+test("background pushes new words immediately without waiting for debounce", async () => {
+  const background = loadBackgroundScript();
+  let pushEntryId = null;
+
+  background.context.LodWrapperSync.SyncAdapter.init = async () => ({ ok: true, mode: "noop" });
+  background.runtimeOnStartup.dispatch();
+  await wait(0);
+  await wait(0);
+
+  background.context.LodWrapperSync.SyncAdapter.pushEntry = async (id) => {
+    pushEntryId = id;
+    return { ok: true, mode: "entry" };
+  };
+
+  await background.chrome.storage.local.set({
+    "lodVault.entries": {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        study: true,
+        updatedAt: "2025-01-02T00:00:00.000Z"
+      }
+    }
+  });
+
+  await wait(1);
+
+  assert.equal(pushEntryId, "HAUS1");
+});
+
 test("background uses pushSettings for an autoMode-only settings mutation", async () => {
   const background = loadBackgroundScript();
   let pushSettingsCalls = 0;
