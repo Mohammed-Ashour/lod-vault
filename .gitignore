@@ -7,5 +7,6 @@ scripts/__pycache__/
 scripts/test_*.js
 scripts/*demo*.js
 scripts/*demo*.py
+scripts/background-bundle.js
 media/
 prototypes/

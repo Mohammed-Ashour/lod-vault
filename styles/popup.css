@@ -37,6 +37,59 @@ body {
 /* ── shared ──────────────────────────────────────── */
 .is-hidden  { display: none !important; }
 
+/* ── audio button ─────────────────────────────── */
+.audio-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.audio-btn:hover {
+  background: rgba(57, 167, 196, 0.15);
+  border-color: rgba(57, 167, 196, 0.4);
+  color: var(--teal-lt);
+  transform: scale(1.08);
+}
+.audio-btn:active {
+  transform: scale(0.95);
+}
+.audio-btn svg {
+  width: 13px;
+  height: 13px;
+}
+.audio-btn.is-playing {
+  background: rgba(57, 167, 196, 0.2);
+  border-color: rgba(57, 167, 196, 0.5);
+  color: var(--teal);
+  animation: audio-pulse 1s ease-in-out infinite;
+}
+.audio-btn.is-error {
+  background: rgba(230, 57, 70, 0.1);
+  border-color: rgba(230, 57, 70, 0.3);
+  color: var(--danger);
+}
+@keyframes audio-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
+/* ── word row (audio + link) ────────────────────── */
+.word-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .eyebrow,
 .section-label {
   font-size: 10px;
@@ -318,6 +371,13 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
   font-size: 1.1rem;
   font-weight: 700;
   color: #fff;
+  margin-top: 3px;
+}
+
+.current-word-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 3px;
 }
 

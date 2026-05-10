@@ -167,6 +167,42 @@ function injectPreviewStyles(doc) {
       opacity: 0.5;
       cursor: wait;
     }
+    .audio-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+      color: #5f8fa8;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .audio-btn:hover {
+      background: rgba(57,167,196,0.15);
+      border-color: rgba(57,167,196,0.4);
+      color: #a8dadc;
+      transform: scale(1.08);
+    }
+    .audio-btn:active { transform: scale(0.95); }
+    .audio-btn svg { width: 14px; height: 14px; }
+    .audio-btn.is-playing {
+      background: rgba(57,167,196,0.2);
+      border-color: rgba(57,167,196,0.5);
+      color: #39a7c4;
+      animation: audio-pulse 1s ease-in-out infinite;
+    }
+    .audio-btn.is-error {
+      background: rgba(230,57,70,0.1);
+      border-color: rgba(230,57,70,0.3);
+      color: #e63946;
+    }
+    @keyframes audio-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
   `;
   doc.head.appendChild(style);
 }
@@ -210,6 +246,7 @@ function attachPreviewSearch() {
   input.value = currentSearchQuery;
   input.addEventListener("input", applyPreviewFilters);
   attachRemoveButtons(doc);
+  attachAudioButtons(doc);
   applyLangFilter();
   applyPreviewFilters();
 }
@@ -220,6 +257,20 @@ async function handlePreviewToggle(id, listName) {
   const savedEntry = await LodWrapperStore.getEntry(id);
   if (!savedEntry) return;
   await LodWrapperStore.toggleList(savedEntry, listName);
+}
+
+function attachAudioButtons(doc) {
+  const ctrl = LodWrapperStore.createAudioController(doc);
+  doc.addEventListener("click", (event) => {
+    const btn = event.target.closest(".audio-btn");
+    if (!btn) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const id = btn.dataset.audioId;
+    if (!id) return;
+    const url = `https://lod.lu/uploads/OGG/${id.toLowerCase()}.ogg`;
+    ctrl.play(url, btn);
+  });
 }
 
 function attachRemoveButtons(doc) {

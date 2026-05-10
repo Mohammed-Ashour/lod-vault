@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "test": "node --test",
-    "package:release": "bash scripts/build_release_zip.sh"
+    "build:background": "node scripts/build-background.mjs",
+    "package:release": "npm run build:background && bash scripts/build_release_zip.sh"
   },
   "devDependencies": {
     "jsdom": "^26.0.0"

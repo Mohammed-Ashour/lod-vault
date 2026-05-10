@@ -224,7 +224,7 @@ select {
 }
 
 #card-word {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: clamp(2rem, 6vw, 3.4rem);
   line-height: 1.05;
   color: var(--white);
@@ -246,6 +246,9 @@ select {
   margin: 0 0 12px;
   font-size: 1.6rem;
   color: var(--white);
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .answer .chip-row {
@@ -458,6 +461,54 @@ select {
 }
 
 .is-hidden { display: none !important; }
+
+/* ── audio button ─────────────────────────────────── */
+.audio-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--navy-card);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.audio-btn:hover {
+  background: rgba(57, 167, 196, 0.15);
+  border-color: var(--teal);
+  color: var(--teal-light);
+  transform: scale(1.08);
+}
+.audio-btn:active { transform: scale(0.95); }
+.audio-btn svg { width: 15px; height: 15px; }
+.audio-btn.is-playing {
+  background: rgba(57, 167, 196, 0.2);
+  border-color: var(--teal);
+  color: var(--teal);
+  animation: audio-pulse 1s ease-in-out infinite;
+}
+.audio-btn.is-error {
+  background: rgba(230, 57, 70, 0.1);
+  border-color: rgba(230, 57, 70, 0.3);
+  color: #e63946;
+}
+@keyframes audio-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
+/* ── card word row ────────────────────────────────── */
+.card-word-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
 
 button:disabled {
   opacity: 0.5;

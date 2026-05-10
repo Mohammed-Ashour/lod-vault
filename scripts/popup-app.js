@@ -334,6 +334,7 @@
     function renderCurrentPageCard(savedEntry) {
       if (!state.currentEntry) {
         elements.currentWord.textContent = "—";
+        elements.currentAudio.style.display = "none";
         elements.currentMeta.textContent = state.autoMode
           ? "Words are saved automatically while you browse."
           : "Open a word on lod.lu to save it.";
@@ -350,6 +351,9 @@
       const metaParts = [entry.pos, store.buildMeaningText(entry)].filter(Boolean);
 
       elements.currentWord.textContent = state.currentEntry.word;
+      const audioUrl = typeof store.getAudioUrl === "function" ? store.getAudioUrl(entry) : null;
+      elements.currentAudio.style.display = audioUrl ? "" : "none";
+      elements.currentAudio.dataset.audioId = entry.id || "";
       elements.currentMeta.textContent = metaParts.join(" · ") || (state.autoMode
         ? "Auto mode is recording this word."
         : "Save this word for later.");
@@ -514,7 +518,7 @@
       return `
         <article class="saved-item" data-id="${store.escapeHtml(entry.id)}">
           <div class="saved-item-top">
-            <a href="${store.escapeHtml(entry.url)}" target="_blank" rel="noreferrer" class="word-link">${store.escapeHtml(entry.word)}</a>
+            <span class="word-row">${typeof store.buildAudioBtnMarkup === "function" ? store.buildAudioBtnMarkup(entry) : ""}<a href="${store.escapeHtml(entry.url)}" target="_blank" rel="noreferrer" class="word-link">${store.escapeHtml(entry.word)}</a></span>
             <div class="item-controls">
               <button type="button" class="toggle-pill toggle-fav ${entry.favorite ? "is-active" : ""}" data-action="toggle-favorite" data-id="${store.escapeHtml(entry.id)}" aria-pressed="${entry.favorite ? "true" : "false"}" title="${entry.favorite ? "Remove from favorites" : "Add to favorites"}"><span class="toggle-pill-icon">${entry.favorite ? "★" : "☆"}</span><span class="toggle-pill-label">Fav</span></button>
               <button type="button" class="toggle-pill toggle-study ${entry.study ? "is-active" : ""}" data-action="toggle-study" data-id="${store.escapeHtml(entry.id)}" aria-pressed="${entry.study ? "true" : "false"}" title="${entry.study ? "Remove from study list" : "Add to study list"}"><span class="toggle-pill-icon">${entry.study ? "●" : "○"}</span><span class="toggle-pill-label">Study</span></button>
@@ -599,6 +603,17 @@
     }
 
     async function onSavedListClick(event) {
+      const audioBtn = event.target.closest(".audio-btn");
+      if (audioBtn) {
+        event.preventDefault();
+        event.stopPropagation();
+        const entry = findEntry(audioBtn.closest("[data-id]")?.dataset.id);
+        if (entry && typeof store.playLodAudio === "function") {
+          store.playLodAudio(entry);
+        }
+        return;
+      }
+
       const button = event.target.closest("button[data-action]");
       if (!button || button.disabled) return;
 
@@ -710,6 +725,7 @@
 
       elements.currentPageCard = document.getElementById("current-page-card");
       elements.currentWord = document.getElementById("current-word");
+      elements.currentAudio = document.getElementById("current-audio");
       elements.currentMeta = document.getElementById("current-meta");
       elements.currentFavorite = document.getElementById("current-favorite");
       elements.currentStudy = document.getElementById("current-study");
@@ -746,6 +762,11 @@
       elements.currentFavorite.addEventListener("click", () => toggleCurrentPage("favorite"));
       elements.currentStudy.addEventListener("click", () => toggleCurrentPage("study"));
       elements.currentDelete.addEventListener("click", deleteCurrentPage);
+      elements.currentAudio.addEventListener("click", () => {
+        if (state.currentEntry && typeof store.playLodAudio === "function") {
+          store.playLodAudio(state.currentEntry);
+        }
+      });
       elements.autoModeToggle.addEventListener("click", toggleAutoMode);
       elements.syncLanguageChips.addEventListener("click", onSyncLanguageChipClick);
       elements.openFlashcards.addEventListener("click", openFlashcards);

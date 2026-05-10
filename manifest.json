@@ -7,7 +7,8 @@
   "permissions": ["storage", "tabs"],
   "host_permissions": [
     "https://lod.lu/artikel/*",
-    "https://www.lod.lu/artikel/*"
+    "https://www.lod.lu/artikel/*",
+    "https://lod.lu/uploads/*"
   ],
   "action": {
     "default_title": "LODVault",
@@ -24,7 +25,7 @@
     "128": "icons/icon128.png"
   },
   "background": {
-    "service_worker": "scripts/background.js"
+    "service_worker": "scripts/background-bundle.js"
   },
   "content_scripts": [
     {

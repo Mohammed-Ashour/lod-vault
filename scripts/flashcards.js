@@ -29,6 +29,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.sessionProgress = document.getElementById("session-progress");
   elements.flashcard = document.getElementById("flashcard");
   elements.cardWord = document.getElementById("card-word");
+  elements.cardAudio = document.getElementById("card-audio");
   elements.cardType = document.getElementById("card-type");
   elements.cardAnswer = document.getElementById("card-answer");
   elements.prevCard = document.getElementById("prev-card");
@@ -52,8 +53,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.orderMode?.addEventListener("change", onOrderModeChange);
   elements.sessionSize?.addEventListener("change", onSessionSizeChange);
   elements.directionToggle?.addEventListener("click", toggleDirection);
-  elements.flashcard?.addEventListener("click", toggleReveal);
+  elements.flashcard?.addEventListener("click", onFlashcardClick);
   elements.flipCard?.addEventListener("click", toggleReveal);
+  elements.cardAudio?.addEventListener("click", onAudioClick);
   elements.prevCard?.addEventListener("click", showPrevious);
   elements.nextCard?.addEventListener("click", showNext);
   elements.ratingBar?.addEventListener("click", onRatingClick);
@@ -71,7 +73,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   rebuildDeck();
 });
 
-window.addEventListener("unload", () => {
+window.addEventListener("pagehide", () => {
   document.removeEventListener("keydown", onKeyDown);
   chrome.storage?.onChanged?.removeListener?.(handleStorageChange);
 });
@@ -292,6 +294,27 @@ function currentEntry() {
   return state.deck[state.index] || null;
 }
 
+function onAudioClick(event) {
+  event.stopPropagation();
+  const entry = currentEntry();
+  if (entry) {
+    LodWrapperStore.playLodAudio(entry);
+  }
+}
+
+function onFlashcardClick(event) {
+  const audioBtn = event.target.closest(".audio-btn");
+  if (audioBtn) {
+    event.stopPropagation();
+    const entry = currentEntry();
+    if (entry) {
+      LodWrapperStore.playLodAudio(entry);
+    }
+    return;
+  }
+  toggleReveal();
+}
+
 function renderDeck() {
   const entry = currentEntry();
   const count = state.deck.length;
@@ -349,6 +372,14 @@ function renderDeck() {
     }
   }
 
+  if (elements.cardAudio) {
+    const audioUrl = typeof LodWrapperStore.getAudioUrl === "function"
+      ? LodWrapperStore.getAudioUrl(entry)
+      : null;
+    elements.cardAudio.style.display = audioUrl ? "" : "none";
+    elements.cardAudio.dataset.audioId = entry.id || "";
+  }
+
   if (elements.cardAnswer) {
     elements.cardAnswer.innerHTML = buildAnswerMarkup(entry);
   }
@@ -393,7 +424,7 @@ function buildAnswerMarkup(entry) {
     : "";
 
   return `
-    <h3>${LodWrapperStore.escapeHtml(entry.word)}</h3>
+    <h3>${LodWrapperStore.escapeHtml(entry.word)}${LodWrapperStore.buildAudioBtnMarkup ? LodWrapperStore.buildAudioBtnMarkup(entry) : ""}</h3>
     ${chips.length || directionBadge ? `<div class="chip-row">${chips.join("")}${directionBadge}</div>` : ""}
     ${buildMeaningMarkup(entry)}
     ${entry.inflection ? `<p><strong>Inflection:</strong> ${LodWrapperStore.escapeHtml(entry.inflection)}</p>` : ""}

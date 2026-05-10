@@ -37,7 +37,7 @@ mkdir -p "$STAGE_DIR/scripts"
 cp manifest.json "$STAGE_DIR/"
 cp -R icons pages styles "$STAGE_DIR/"
 cp \
-  scripts/background.js \
+  scripts/background-bundle.js \
   scripts/compress.js \
   scripts/content.js \
   scripts/entry-presenter.js \

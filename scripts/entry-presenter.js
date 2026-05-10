@@ -22,6 +22,138 @@
     ? store.normalizeVisitCount
     : (value) => Number(value) > 0 ? Math.floor(Number(value)) : 0;
 
+  function getAudioUrl(entry) {
+    const id = (entry && (entry.id || entry.lod_id) || "").toLowerCase();
+    if (!id) return null;
+    return `https://lod.lu/uploads/OGG/${id}.ogg`;
+  }
+
+  function createAudioController(doc) {
+    doc = doc || globalThis.document;
+    if (!doc) {
+      return { play() {}, stopAll() {} };
+    }
+    const cache = new Map();
+
+    function stopAll() {
+      for (const [, audio] of cache) {
+        audio.pause();
+        audio.currentTime = 0;
+      }
+      doc.querySelectorAll(".audio-btn.is-playing").forEach((b) => b.classList.remove("is-playing"));
+      cache.clear();
+    }
+
+    function play(url, buttonOrId) {
+      let btn;
+      if (typeof buttonOrId === "string") {
+        btn = doc.querySelector(`[data-audio-id="${CSS.escape(buttonOrId)}"]`);
+      } else if (buttonOrId instanceof Element) {
+        btn = buttonOrId;
+      }
+
+      let audio = cache.get(url);
+      if (audio && !audio.paused) {
+        audio.pause();
+        audio.currentTime = 0;
+        cache.delete(url);
+        if (btn) btn.classList.remove("is-playing");
+        return;
+      }
+
+      stopAll();
+
+      audio = new Audio(url);
+      cache.set(url, audio);
+
+      audio.addEventListener("play", () => { if (btn) btn.classList.add("is-playing"); });
+      audio.addEventListener("ended", () => {
+        if (btn) btn.classList.remove("is-playing");
+        cache.delete(url);
+      });
+      audio.addEventListener("error", () => {
+        if (btn) {
+          btn.classList.remove("is-playing");
+          btn.classList.add("is-error");
+        }
+        cache.delete(url);
+      });
+
+      audio.play().catch(() => {
+        if (btn) btn.classList.remove("is-playing");
+        cache.delete(url);
+      });
+    }
+
+    return { play, stopAll };
+  }
+
+  const defaultAudioController = createAudioController();
+
+  function playLodAudio(entry, options = {}) {
+    const url = getAudioUrl(entry);
+    if (!url) return;
+    const ctrl = options.controller || defaultAudioController;
+    ctrl.play(url, entry.id || entry.lod_id || "");
+  }
+
+  function buildAudioBtnMarkup(entry, options = {}) {
+    const id = (entry && (entry.id || entry.lod_id) || "").trim();
+    if (!id) return "";
+    const cssClass = options.cssClass || "audio-btn";
+    const label = options.label || "Play pronunciation";
+    return `<button type="button" class="${escapeHtml(cssClass)}" data-audio-id="${escapeHtml(id)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></button>`;
+  }
+
+  function getAudioBtnCss(options = {}) {
+    const selector = options.selector || ".audio-btn";
+    return `
+    ${selector} {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.05);
+      color: #5f8fa8;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    ${selector}:hover {
+      background: rgba(57, 167, 196, 0.15);
+      border-color: rgba(57, 167, 196, 0.4);
+      color: #a8dadc;
+      transform: scale(1.08);
+    }
+    ${selector}:active {
+      transform: scale(0.95);
+    }
+    ${selector} svg {
+      width: 14px;
+      height: 14px;
+    }
+    ${selector}.is-playing {
+      background: rgba(57, 167, 196, 0.2);
+      border-color: rgba(57, 167, 196, 0.5);
+      color: #39a7c4;
+      animation: audio-pulse 1s ease-in-out infinite;
+    }
+    ${selector}.is-error {
+      background: rgba(230, 57, 70, 0.1);
+      border-color: rgba(230, 57, 70, 0.3);
+      color: #e63946;
+    }
+    @keyframes audio-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }`;
+  }
+
   function escapeHtml(value) {
     return String(value ?? "")
       .replace(/&/g, "&amp;")
@@ -149,10 +281,12 @@
 
     const translationLanguages = getMeaningItems(normalized).map((item) => item.lang);
 
+    const audioBtn = buildAudioBtnMarkup(normalized);
+
     return `
       <article class="entry" data-id="${escapeHtml(normalized.id)}" data-lists="${escapeHtml(activeLists.join(","))}" data-langs="${escapeHtml(translationLanguages.join(","))}" data-search="${escapeHtml(buildSearchText(normalized))}">
         <div class="entry-top">
-          <h3><a href="${escapeHtml(normalized.url)}" target="_blank" rel="noreferrer">${escapeHtml(normalized.word)}</a></h3>
+          <h3>${audioBtn ? "<span class=\"entry-top-word\">" : ""}<a href="${escapeHtml(normalized.url)}" target="_blank" rel="noreferrer">${escapeHtml(normalized.word)}</a>${audioBtn ? "</span>" : ""}${audioBtn}</h3>
           <span class="timestamp">${escapeHtml(formatWhen(normalized.updatedAt || normalized.lastVisitedAt || normalized.createdAt))}</span>
         </div>
         ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
@@ -171,6 +305,31 @@
     const status = document.getElementById('search-status');
     const empty = document.getElementById('search-empty');
     const entries = Array.from(document.querySelectorAll('.entry'));
+    function createAudioController(doc) {
+      const cache = new Map();
+      function stopAll() {
+        for (const [, a] of cache) { a.pause(); a.currentTime = 0; }
+        doc.querySelectorAll('.audio-btn.is-playing').forEach(b => b.classList.remove('is-playing'));
+        cache.clear();
+      }
+      function play(url, btn) {
+        let audio = cache.get(url);
+        if (audio && !audio.paused) {
+          audio.pause(); audio.currentTime = 0; cache.delete(url);
+          btn.classList.remove('is-playing');
+          return;
+        }
+        stopAll();
+        audio = new Audio(url);
+        cache.set(url, audio);
+        audio.addEventListener('play', () => btn.classList.add('is-playing'));
+        audio.addEventListener('ended', () => { btn.classList.remove('is-playing'); cache.delete(url); });
+        audio.addEventListener('error', () => { btn.classList.remove('is-playing'); btn.classList.add('is-error'); cache.delete(url); });
+        audio.play().catch(() => { btn.classList.remove('is-playing'); cache.delete(url); });
+      }
+      return { play, stopAll };
+    }
+    const audioController = createAudioController(document);
 
     function applySearch() {
       const query = (input.value || '').trim().toLowerCase();
@@ -188,9 +347,21 @@
       empty.hidden = visibleCount !== 0 || !query;
     }
 
+    function handleAudioClick(event) {
+      const btn = event.target.closest('.audio-btn');
+      if (!btn) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const id = btn.dataset.audioId;
+      if (!id) return;
+      const url = 'https://lod.lu/uploads/OGG/' + id.toLowerCase() + '.ogg';
+      audioController.play(url, btn);
+    }
+
     input.addEventListener('input', applySearch);
+    document.addEventListener('click', handleAudioClick);
     applySearch();
-  </script>`;
+  <\/script>`;
   }
 
   function buildExportHtml(entries, options = {}) {
@@ -247,9 +418,13 @@
       display: flex; justify-content: space-between;
       align-items: flex-start; gap: 12px; flex-wrap: wrap;
     }
-    .entry-top h3 { font-size: 1rem; font-weight: 700; color: #fff; }
+    .entry-top h3 {
+      font-size: 1rem; font-weight: 700; color: #fff;
+      display: flex; align-items: center; gap: 8px;
+    }
     .entry-top a { color: var(--teal-lt); text-decoration: none; }
     .entry-top a:hover { text-decoration: underline; }
+    .entry-top .entry-top-word { display: inline-flex; align-items: center; gap: 8px; }
     .timestamp { color: var(--muted); font-size: 11.5px; white-space: nowrap; flex-shrink: 0; }
     .chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
     .chip {
@@ -272,6 +447,25 @@
       border-radius: 6px; font-size: 13.5px;
     }
     .empty { color: var(--muted); font-size: 13.5px; padding: 16px 0; }
+    .audio-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; padding: 0;
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 50%;
+      background: rgba(255,255,255,0.05); color: var(--muted); cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+      flex-shrink: 0; line-height: 1;
+    }
+    .audio-btn:hover {
+      background: rgba(57,167,196,0.15); border-color: rgba(57,167,196,0.4); color: var(--teal-lt); transform: scale(1.08);
+    }
+    .audio-btn:active { transform: scale(0.95); }
+    .audio-btn svg { width: 14px; height: 14px; }
+    .audio-btn.is-playing {
+      background: rgba(57,167,196,0.2); border-color: rgba(57,167,196,0.5); color: var(--teal);
+      animation: audio-pulse 1s ease-in-out infinite;
+    }
+    .audio-btn.is-error { background: rgba(230,57,70,0.1); border-color: rgba(230,57,70,0.3); color: #e63946; }
+    @keyframes audio-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
     #search-empty[hidden] { display: none; }
     @media (max-width: 640px) { body { padding: 20px 12px 40px; } }
   </style>
@@ -348,6 +542,11 @@
     buildMeaningChipsMarkup,
     buildMeaningRowsMarkup,
     getPrimaryMeaning,
+    getAudioUrl,
+    createAudioController,
+    playLodAudio,
+    buildAudioBtnMarkup,
+    getAudioBtnCss,
     buildExportHtml,
     buildAnkiExport,
     downloadTextFile
