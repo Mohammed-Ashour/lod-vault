@@ -308,6 +308,32 @@ test("getEntries recovers legacy entries with no list flags and persists them", 
   assert.equal(storageData[store.STORAGE_KEY].BEEM1.study, true);
 });
 
+test("saveEntryMap falls back to entry-only writes when backup snapshot exceeds quota", async () => {
+  const { store, storageData, chrome } = loadSharedStore();
+
+  const originalSet = chrome.storage.local.set;
+  let backupWriteRejected = false;
+
+  chrome.storage.local.set = async (values) => {
+    if (Object.prototype.hasOwnProperty.call(values || {}, store.BACKUP_KEY)) {
+      backupWriteRejected = true;
+      throw new Error("QUOTA_BYTES quota exceeded");
+    }
+    return originalSet(values);
+  };
+
+  const saved = await store.toggleList({
+    id: "HAUS1",
+    word: "Haus",
+    url: "https://lod.lu/artikel/HAUS1"
+  }, "study");
+
+  assert.equal(backupWriteRejected, true);
+  assert.equal(saved.study, true);
+  assert.equal(storageData[store.STORAGE_KEY].HAUS1.study, true);
+  assert.equal(storageData[store.BACKUP_KEY], undefined);
+});
+
 test("local backups keep recoverable snapshots and can be restored", async () => {
   const { store } = loadSharedStore();
 

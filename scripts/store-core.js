@@ -143,6 +143,12 @@
     return String(error || "").includes("Extension context invalidated");
   }
 
+  function isStorageQuotaError(error) {
+    const message = String(error?.message || error || "");
+    const upper = message.toUpperCase();
+    return upper.includes("QUOTA") || upper.includes("MAX_ITEMS") || upper.includes("MAX_WRITE_OPERATIONS");
+  }
+
   function createRefreshPageError() {
     return new Error("Extension updated — refresh the page.");
   }
@@ -493,14 +499,23 @@
       const previousBackups = normalizeBackupSnapshots(data[BACKUP_KEY]);
       const changed = stableEntryMapString(previousEntryMap) !== stableEntryMapString(nextEntryMap);
       const payload = { [STORAGE_KEY]: nextEntryMap };
+      const shouldAttachBackup = changed && shouldCreateBackupSnapshot(previousEntryMap, nextEntryMap, previousBackups, reason);
 
-      if (changed && shouldCreateBackupSnapshot(previousEntryMap, nextEntryMap, previousBackups, reason)) {
+      if (shouldAttachBackup) {
         const nextBackups = [buildBackupSnapshot(nextEntryMap, reason), ...previousBackups]
           .slice(0, MAX_BACKUP_SNAPSHOTS);
         payload[BACKUP_KEY] = nextBackups;
       }
 
-      await chrome.storage.local.set(payload);
+      try {
+        await chrome.storage.local.set(payload);
+      } catch (error) {
+        if (shouldAttachBackup && isStorageQuotaError(error)) {
+          await chrome.storage.local.set({ [STORAGE_KEY]: nextEntryMap });
+          return;
+        }
+        throw error;
+      }
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
