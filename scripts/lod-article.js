@@ -196,13 +196,42 @@
     };
   }
 
+  /**
+   * Full info text for title attribute (POS + all translations).
+   */
+  function infoTextFull(entry) {
+    const parts = [];
+    if (entry?.pos) parts.push(entry.pos);
+    const translations = entry?.translations || {};
+    if (translations.en) parts.push(`English: ${translations.en}`);
+    if (translations.fr) parts.push(`Français: ${translations.fr}`);
+    if (translations.de) parts.push(`Deutsch: ${translations.de}`);
+    return parts.join(" · ");
+  }
+
+  /**
+   * Compact info text for the banner display line.
+   * Shows POS + primary translation (truncated if long) + "+N" for remaining languages.
+   * The full text is available via infoTextFull() for the title attribute.
+   */
   function infoText(entry) {
     const parts = [];
     if (entry?.pos) parts.push(entry.pos);
+
     const meaning = getPrimaryMeaning(entry);
     if (meaning?.label && meaning?.value) {
-      parts.push(`${meaning.label}: ${meaning.value}`);
+      let value = meaning.value;
+      if (value.length > 30) value = value.slice(0, 28) + "…";
+      parts.push(`${meaning.label}: ${value}`);
     }
+
+    const langMap = { en: "English", fr: "Français", de: "Deutsch" };
+    const primaryLang = Object.keys(langMap).find((k) => langMap[k] === meaning?.label) || "";
+    const otherCount = Object.keys(entry?.translations || {}).filter(
+      (lang) => lang !== primaryLang
+    ).length;
+    if (otherCount > 0) parts.push(`+${otherCount}`);
+
     return parts.join(" · ");
   }
 
@@ -214,6 +243,7 @@
     getHeadingElement,
     extractTranslations,
     extractCurrentEntry,
-    infoText
+    infoText,
+    infoTextFull
   };
 })();

@@ -129,7 +129,9 @@ async function handleListToggle(listName) {
 
     const banner = ensureBanner();
     if (banner) {
-      banner.querySelector(".lodw-banner__status").textContent = "Could not save this word";
+      banner.querySelector(".lodw-word").textContent = "Could not save";
+      const infoEl = banner.querySelector(".lodw-info");
+      if (infoEl) infoEl.title = "";
     }
   } finally {
     if (!contextInvalidated) {

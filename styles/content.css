@@ -1,228 +1,272 @@
 /* ─────────────────────────────────────────────────────
-   LODVault content banner — sits inside lod.lu pages
-   Uses LOD's own dark navy palette so it looks native
+   LODVault content banner — Compact Strip design
+   Injected into lod.lu article pages
+
+   Uses !important on layout-critical properties to
+   override LOD's aggressive universal CSS reset which
+   sets margin:0, padding:0, font:inherit, etc. on
+   div, span, section, and all elements.
    ───────────────────────────────────────────────────── */
 
 #lod-wrapper-banner {
-  all: revert;
-  margin: 14px 0 20px;
-  border-radius: 12px;
+  all: initial;
+  display: block;
+  margin: 10px 0 16px !important;
+  padding: 0 !important;
+  border-radius: 10px;
   background: #10243e;
-  border: 1px solid #254062;
-  overflow: hidden;
+  border: 1px solid #1e3d5e;
+  overflow: hidden !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-               Roboto, "Helvetica Neue", Arial, sans-serif;
-  box-shadow: 0 4px 18px rgba(4, 18, 37, 0.28);
+               Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  font-size: 14px !important;
+  line-height: 1.4 !important;
+  color: #ddeef5 !important;
+  box-sizing: border-box !important;
+  box-shadow: 0 2px 8px rgba(4, 18, 37, 0.2);
 }
 
-#lod-wrapper-banner * {
-  box-sizing: border-box;
+#lod-wrapper-banner *,
+#lod-wrapper-banner *::before,
+#lod-wrapper-banner *::after {
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: unset;
+  font: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+  color: inherit !important;
+  vertical-align: baseline !important;
+  text-align: left !important;
 }
 
-#lod-wrapper-banner .lodw-banner__main {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 16px;
-  flex-wrap: wrap;
+/* ── Main row ─────────────────────────────────────── */
+
+#lod-wrapper-banner .lodw-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 10px 14px !important;
+  border-bottom: 1px solid #1a3a58 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
 }
 
-#lod-wrapper-banner .lodw-banner__copy {
-  min-width: 200px;
-  flex: 1;
+/* ── Status dot ────────────────────────────────────── */
+
+#lod-wrapper-banner .lodw-dot {
+  display: inline-block !important;
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 50% !important;
+  background: #5f8fa8 !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  transition: background 0.2s;
 }
 
-#lod-wrapper-banner .lodw-banner__eyebrow {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #39a7c4;
-  margin-bottom: 3px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
+#lod-wrapper-banner .lodw-dot.is-saved {
+  background: #39a7c4 !important;
 }
 
-#lod-wrapper-banner .lodw-auto-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: rgba(57, 167, 196, 0.18);
-  border: 1px solid rgba(57, 167, 196, 0.38);
-  color: #a8dadc;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1.4;
-  animation: auto-badge-pulse 2.5s ease-in-out infinite;
+#lod-wrapper-banner .lodw-dot.is-favorited {
+  background: #ffd166 !important;
 }
 
-#lod-wrapper-banner .lodw-auto-badge::before {
-  content: "";
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #39a7c4;
-  animation: dot-blink 1.8s ease-in-out infinite;
+#lod-wrapper-banner .lodw-dot.is-auto {
+  animation: lodw-dot-pulse 2s ease-in-out infinite !important;
 }
 
-@keyframes auto-badge-pulse {
+@keyframes lodw-dot-pulse {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.7; }
+  50%       { opacity: 0.4; }
 }
 
-@keyframes dot-blink {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.3; }
+/* ── Word ──────────────────────────────────────────── */
+
+#lod-wrapper-banner .lodw-word {
+  display: inline !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
 }
 
-#lod-wrapper-banner .lodw-auto-badge.is-hidden { display: none; }
+/* ── Info text ────────────────────────────────────── */
 
-#lod-wrapper-banner .lodw-banner__status {
-  font-size: 15px;
-  font-weight: 700;
-  color: #ffffff;
-  line-height: 1.2;
+#lod-wrapper-banner .lodw-info {
+  display: block !important;
+  font-size: 12.5px !important;
+  color: #a8dadc !important;
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
 }
 
-#lod-wrapper-banner .lodw-banner__info {
-  margin-top: 3px;
-  font-size: 12.5px;
-  line-height: 1.4;
-  color: #a8dadc;
+/* ── Actions ──────────────────────────────────────── */
+
+#lod-wrapper-banner .lodw-actions {
+  display: flex !important;
+  gap: 6px !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
 }
 
-#lod-wrapper-banner .lodw-banner__actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-#lod-wrapper-banner .lodw-banner__note {
-  padding: 0 16px 14px;
-}
-
-#lod-wrapper-banner .lodw-note__label {
-  display: block;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #5f8fa8;
-}
-
-#lod-wrapper-banner .lodw-note__input {
-  display: block;
-  width: 100%;
-  margin-top: 6px;
-  min-height: 64px;
-  resize: vertical;
-  padding: 9px 10px;
-  border-radius: 8px;
-  border: 1px solid #254062;
-  background: rgba(255, 255, 255, 0.04);
-  color: #ddeef5;
-  font: inherit;
-  line-height: 1.45;
-}
-
-#lod-wrapper-banner .lodw-note__input::placeholder {
-  color: #5f8fa8;
-}
-
-#lod-wrapper-banner .lodw-note__input:focus {
-  outline: none;
-  border-color: #39a7c4;
-}
-
-#lod-wrapper-banner .lodw-note__input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-#lod-wrapper-banner .lodw-note__meta {
-  margin-top: 6px;
-  font-size: 11.5px;
-  color: #5f8fa8;
-}
-
-#lod-wrapper-banner .lodw-note__meta[data-tone="saving"] {
-  color: #a8dadc;
-}
-
-#lod-wrapper-banner .lodw-note__meta[data-tone="success"] {
-  color: #a8dadc;
-}
-
-#lod-wrapper-banner .lodw-note__meta[data-tone="error"] {
-  color: #f29ba2;
-}
-
+#lod-wrapper-banner .lodw-actions button,
 #lod-wrapper-banner button {
-  border: 1px solid #2d5f80;
-  background: #1b3250;
-  color: #a8dadc;
-  border-radius: 8px;
-  padding: 9px 14px;
-  font-size: 12.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-  white-space: nowrap;
+  display: inline-block !important;
+  border: 1px solid #2d5f80 !important;
+  background: #1b3250 !important;
+  color: #a8dadc !important;
+  border-radius: 6px !important;
+  padding: 5px 10px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: background 0.15s, border-color 0.15s, color 0.15s !important;
+  white-space: nowrap !important;
+  line-height: 1.4 !important;
+  flex-shrink: 0 !important;
+  text-align: center !important;
 }
 
 #lod-wrapper-banner button:hover {
-  background: #254062;
-  border-color: #39a7c4;
-  color: #ffffff;
+  background: #254062 !important;
+  border-color: #39a7c4 !important;
+  color: #ffffff !important;
 }
 
 #lod-wrapper-banner button.is-active {
-  background: #457b9d;
-  border-color: #457b9d;
-  color: #ffffff;
+  background: #457b9d !important;
+  border-color: #457b9d !important;
+  color: #ffffff !important;
 }
 
 #lod-wrapper-banner button.is-active:hover {
-  background: #3c6b89;
-  border-color: #3c6b89;
+  background: #39a7c4 !important;
+  border-color: #39a7c4 !important;
 }
 
 #lod-wrapper-banner button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
 }
 
-/* ── warning state (extension updated) ────────────── */
+/* ── Note row ──────────────────────────────────────── */
+
+#lod-wrapper-banner .lodw-note-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 14px !important;
+}
+
+#lod-wrapper-banner .lodw-note-icon {
+  display: inline !important;
+  color: #5f8fa8 !important;
+  font-size: 13px !important;
+  flex-shrink: 0 !important;
+}
+
+#lod-wrapper-banner .lodw-note-input {
+  display: block !important;
+  flex: 1 !important;
+  min-height: 32px !important;
+  max-height: 120px !important;
+  resize: vertical !important;
+  padding: 6px 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid #254062 !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: #ddeef5 !important;
+  font-size: 12.5px !important;
+  line-height: 1.4 !important;
+  width: auto !important;
+}
+
+#lod-wrapper-banner .lodw-note-input::placeholder {
+  color: #5f8fa8 !important;
+  opacity: 1 !important;
+}
+
+#lod-wrapper-banner .lodw-note-input:focus {
+  outline: none !important;
+  border-color: #39a7c4 !important;
+}
+
+#lod-wrapper-banner .lodw-note-input:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+/* ── Meta ─────────────────────────────────────────── */
+
+#lod-wrapper-banner .lodw-meta {
+  display: block !important;
+  padding: 0 14px 8px !important;
+  font-size: 11px !important;
+  color: #5f8fa8 !important;
+}
+
+#lod-wrapper-banner .lodw-meta[data-tone="saving"] {
+  color: #a8dadc !important;
+}
+
+#lod-wrapper-banner .lodw-meta[data-tone="success"] {
+  color: #a8dadc !important;
+}
+
+#lod-wrapper-banner .lodw-meta[data-tone="error"] {
+  color: #f29ba2 !important;
+}
+
+/* ── Warning state (extension updated) ────────────── */
+
 #lod-wrapper-banner.is-warning {
-  background: #2d1018;
-  border-color: #7a2030;
+  background: #2d1018 !important;
+  border-color: #7a2030 !important;
 }
 
-#lod-wrapper-banner.is-warning .lodw-banner__eyebrow {
-  color: #f29ba2;
+#lod-wrapper-banner.is-warning .lodw-dot {
+  background: #f29ba2 !important;
 }
 
-#lod-wrapper-banner.is-warning .lodw-banner__status {
-  color: #ffffff;
+#lod-wrapper-banner.is-warning .lodw-word {
+  color: #f29ba2 !important;
 }
 
-#lod-wrapper-banner.is-warning .lodw-banner__info {
-  color: #f29ba2;
+#lod-wrapper-banner.is-warning .lodw-info {
+  color: #f29ba2 !important;
 }
+
+/* ── Mobile ───────────────────────────────────────── */
 
 @media (max-width: 600px) {
-  #lod-wrapper-banner .lodw-banner__main {
-    flex-direction: column;
-    align-items: stretch;
+  #lod-wrapper-banner .lodw-row {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
   }
 
-  #lod-wrapper-banner .lodw-banner__actions button {
-    flex: 1;
+  #lod-wrapper-banner .lodw-info {
+    order: 10 !important;
+    flex-basis: calc(100% - 30px) !important;
+  }
+
+  #lod-wrapper-banner .lodw-actions {
+    width: 100% !important;
+    flex-basis: 100% !important;
+    order: 20 !important;
+  }
+
+  #lod-wrapper-banner .lodw-actions button {
+    flex: 1 !important;
+    text-align: center !important;
   }
 }

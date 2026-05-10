@@ -24,6 +24,10 @@
       isBlocked: () => isContextInvalidated(),
       setStatus: (_textarea, message, tone = "") => setBannerNoteMeta(message, tone),
       saveNote: (noteId, requestValue) => store.saveNote(noteId, requestValue),
+      getIdleMessage: () => "Auto-saves",
+      getSavingMessage: () => "Saving…",
+      getSavedMessage: ({ savedEntry, changedSinceRequest }) => changedSinceRequest ? "Saving…" : savedEntry?.note ? "Saved" : "Cleared",
+      getErrorMessage: () => "Could not save",
       onSaved: async ({ textarea, savedEntry }) => {
         const sourceEntry = getCurrentEntry() || { id: textarea.dataset.noteId || savedEntry?.id || "", url: location.href };
         lastRenderKey = "";
@@ -49,11 +53,11 @@
     }
 
     function getBannerNoteInput() {
-      return getBanner()?.querySelector(".lodw-note__input") || null;
+      return getBanner()?.querySelector(".lodw-note-input") || null;
     }
 
     function setBannerNoteMeta(message, tone = "") {
-      const meta = getBanner()?.querySelector(".lodw-note__meta");
+      const meta = getBanner()?.querySelector(".lodw-meta");
       if (!meta) return;
       meta.textContent = message;
       meta.dataset.tone = tone;
@@ -73,10 +77,10 @@
         bannerNoteController.clear(textarea);
         textarea.value = "";
         textarea.dataset.noteId = "";
-        textarea.dataset.savedValue = "";
+        textarea.dataset.savedValue = "",
         textarea.dataset.dirty = "";
         textarea.disabled = true;
-        textarea.placeholder = "Save to Favorites or Study to add a note...";
+        textarea.placeholder = "Open a word to add a note.";
         setBannerNoteMeta("Open a word to add a note.");
         return;
       }
@@ -84,8 +88,8 @@
       textarea.dataset.noteId = noteId;
       textarea.dataset.savedValue = savedValue;
       textarea.placeholder = savedEntry
-        ? "Add a note for this word..."
-        : "Save to Favorites or Study to add a note...";
+        ? "Add a note…"
+        : "Save to enable notes…";
       textarea.disabled = !savedEntry || isContextInvalidated();
 
       if (!isDirty && (!isFocused || !isSameEntry)) {
@@ -96,34 +100,25 @@
         bannerNoteController.clear(textarea);
         textarea.dataset.dirty = "";
         textarea.value = "";
-        setBannerNoteMeta("Save to Favorites or Study to enable notes.");
+        setBannerNoteMeta("Save to enable notes.");
         return;
       }
 
       if (!isDirty) {
-        setBannerNoteMeta(savedValue ? "Saved with this word." : "Add a short note — it saves automatically.");
+        setBannerNoteMeta(savedValue ? "Saved" : "Auto-saves");
       }
     }
 
     function statusText(savedEntry) {
-      if (!savedEntry) return "Not saved yet";
-
-      const labels = [];
-      if (savedEntry.favorite) labels.push("Favorites");
-      if (savedEntry.study) labels.push("Study");
-      if (savedEntry.history) labels.push("History");
-
-      if (!labels.length) return "Not saved yet";
-      if (labels.length === 1) return `Saved in ${labels[0]}`;
-      if (labels.length === 2) return `Saved in ${labels[0]} and ${labels[1]}`;
-      return `Saved in ${labels[0]}, ${labels[1]}, and ${labels[2]}`;
+      if (!savedEntry) return "Not saved";
+      return "Saved";
     }
 
     function buttonLabel(listName, active) {
       if (listName === "favorite") {
-        return active ? "★ Favorited" : "☆ Save to Favorites";
+        return active ? "★ Favorited" : "☆ Favorite";
       }
-      return active ? "✓ In Study" : "+ Add to Study";
+      return active ? "✓ Study" : "+ Study";
     }
 
     function ensureBanner() {
@@ -135,47 +130,62 @@
         banner = document.createElement("section");
         banner.id = BANNER_ID;
         banner.innerHTML = `
-          <div class="lodw-banner__main">
-            <div class="lodw-banner__copy">
-              <div class="lodw-banner__eyebrow">
-                LODVault
-                <span class="lodw-auto-badge is-hidden">Auto</span>
-              </div>
-              <div class="lodw-banner__status"></div>
-              <div class="lodw-banner__info"></div>
-            </div>
-            <div class="lodw-banner__actions">
+          <div class="lodw-row">
+            <span class="lodw-dot"></span>
+            <span class="lodw-word"></span>
+            <span class="lodw-info"></span>
+            <div class="lodw-actions">
               <button type="button" data-list="favorite"></button>
               <button type="button" data-list="study"></button>
             </div>
           </div>
-          <div class="lodw-banner__note">
-            <label class="lodw-note__label" for="lodw-note-input">Note</label>
-            <textarea id="lodw-note-input" class="lodw-note__input" rows="2" placeholder="Save to Favorites or Study to add a note..." disabled></textarea>
-            <div class="lodw-note__meta">Save to Favorites or Study to enable notes.</div>
+          <div class="lodw-note-row">
+            <span class="lodw-note-icon">📝</span>
+            <textarea id="lodw-note-input" class="lodw-note-input" rows="1" placeholder="Save to enable notes…" disabled></textarea>
           </div>
+          <div class="lodw-meta">Save to enable notes.</div>
         `;
 
+        // Force truncation styles via inline setProperty so no external CSS can override.
+        // The LOD page uses display:flex on #app which can cause the banner (as a flex
+        // descendant) to size to content width, preventing text-overflow: ellipsis.
+        const s = banner.style;
+        s.setProperty("width", "100%", "important");
+        s.setProperty("min-width", "0", "important");
+        s.setProperty("max-width", "100%", "important");
+        s.setProperty("overflow", "hidden", "important");
+        s.setProperty("box-sizing", "border-box", "important");
+
+        const row = banner.querySelector(".lodw-row");
+        row.style.setProperty("overflow", "hidden", "important");
+        row.style.setProperty("min-width", "0", "important");
+
+        const infoEl = banner.querySelector(".lodw-info");
+        infoEl.style.setProperty("overflow", "hidden", "important");
+        infoEl.style.setProperty("text-overflow", "ellipsis", "important");
+        infoEl.style.setProperty("white-space", "nowrap", "important");
+        infoEl.style.setProperty("min-width", "0", "important");
+
         banner.addEventListener("input", (event) => {
-          const textarea = event.target.closest(".lodw-note__input");
+          const textarea = event.target.closest(".lodw-note-input");
           if (!textarea) return;
           bannerNoteController.markDirty(textarea);
         });
 
         banner.addEventListener("change", (event) => {
-          const textarea = event.target.closest(".lodw-note__input");
+          const textarea = event.target.closest(".lodw-note-input");
           if (!textarea) return;
           bannerNoteController.commit(textarea);
         });
 
         banner.addEventListener("focusout", (event) => {
-          const textarea = event.target.closest(".lodw-note__input");
+          const textarea = event.target.closest(".lodw-note-input");
           if (!textarea) return;
           bannerNoteController.commit(textarea);
         });
 
         banner.addEventListener("keydown", (event) => {
-          const textarea = event.target.closest(".lodw-note__input");
+          const textarea = event.target.closest(".lodw-note-input");
           if (!textarea) return;
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             event.preventDefault();
@@ -204,8 +214,12 @@
       if (!banner) return;
 
       banner.classList.add("is-warning");
-      banner.querySelector(".lodw-banner__status").textContent = "Extension updated — refresh page";
-      banner.querySelector(".lodw-banner__info").textContent = "Reload this page to re-enable save actions.";
+      banner.querySelector(".lodw-word").textContent = "Extension updated";
+      const infoEl = banner.querySelector(".lodw-info");
+      infoEl.textContent = "Reload this page to re-enable.";
+      infoEl.title = "";
+      const dot = banner.querySelector(".lodw-dot");
+      if (dot) dot.className = "lodw-dot";
       const noteInput = getBannerNoteInput();
       if (noteInput) {
         bannerNoteController.clear(noteInput);
@@ -249,11 +263,25 @@
 
       banner.style.display = "block";
       banner.classList.remove("is-warning");
-      banner.querySelector(".lodw-banner__status").textContent = statusText(savedEntry);
-      banner.querySelector(".lodw-banner__info").textContent = articleReader.infoText?.(entry) || "Save this word to your personal lists.";
+      banner.querySelector(".lodw-word").textContent = entry.word || "";
+      const infoEl = banner.querySelector(".lodw-info");
+      const infoDisplay = articleReader.infoText?.(entry) || "";
+      const infoTitle = articleReader.infoTextFull?.(entry) || infoDisplay;
+      infoEl.textContent = infoDisplay;
+      infoEl.title = infoTitle;
 
-      const autoBadge = banner.querySelector(".lodw-auto-badge");
-      if (autoBadge) autoBadge.classList.toggle("is-hidden", !getCurrentAutoMode());
+      const dot = banner.querySelector(".lodw-dot");
+      if (dot) {
+        dot.className = "lodw-dot";
+        if (savedEntry?.favorite) {
+          dot.classList.add("is-favorited");
+        } else if (savedEntry) {
+          dot.classList.add("is-saved");
+        }
+        if (getCurrentAutoMode()) {
+          dot.classList.add("is-auto");
+        }
+      }
 
       for (const button of banner.querySelectorAll("button[data-list]")) {
         const isFavorite = button.dataset.list === "favorite";
