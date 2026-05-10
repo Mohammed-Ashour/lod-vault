@@ -22,7 +22,7 @@
 
 <img src="docs/screenshots/popup.png" width="380" alt="LODVault popup showing auto mode, sync language selector, and current word" />
 
-The popup shows your saved word count, lets you toggle **Auto mode**, pick **sync languages**, and manage the word you are currently reading.
+The popup shows your saved word count, lets you toggle **Auto mode**, pick **sync languages**, run **Sync now**, import from browser history with a date range, restore local backups, and manage the word you are currently reading.
 
 ---
 
@@ -56,14 +56,16 @@ The preview page lists all your saved words with their translations, POS tags, a
 |---|---|
 | 📌 **Save words** | Favorite or add to Study directly from any LOD article page |
 | 🤖 **Auto mode** | Automatically record every visited LOD article into Study and History |
-| 📝 **Notes** | Write your own note for each saved word |
+| 🔊 **Pronunciation audio** | Play LOD pronunciation audio from the popup and saved-word list |
+| 📝 **Notes** | Write your own note for each saved word (auto-saved) |
 | 🔍 **Search** | Filter your saved words in the popup |
 | 🃏 **Flashcards** | Review your saved words with a simple flashcard mode |
 | 👁 **Preview** | Browse your full word list in a clean page — no download needed |
-| 📤 **Export HTML** | Download a standalone, searchable HTML page of your words |
-| 📦 **Export / Import JSON** | Back up and restore your vocabulary |
-| 🕘 **Optional browser history import** | On demand, import missing `lod.lu/artikel/*` words from your browser history (add-only) |
-| ☁️ **Optional browser sync** | Sync a compact copy across Chrome profiles with configurable language selection |
+| 📤 **Export HTML / Anki** | Download standalone HTML or Anki-ready text export |
+| 📦 **Export / Import JSON** | Back up and restore your vocabulary and supported settings |
+| 🕘 **Optional browser history import** | On demand, import missing `lod.lu/artikel/*` words from history (add-only), with selectable date range and import report |
+| 💾 **Local backups** | Keep local vault snapshots and restore them from the popup |
+| ☁️ **Optional browser sync** | Sync a compact copy across Chrome profiles with configurable language selection, capacity indicator, and manual **Sync now** |
 | 🔒 **Local-first** | `chrome.storage.local` stays authoritative; sync is only a compact replica |
 
 <h2 id="install">Install</h2>
@@ -119,8 +121,10 @@ The **LODVault** icon will appear in your browser toolbar.
 ### Manage your words
 - Click the **LODVault icon** in your browser toolbar to open the popup
 - Turn **Auto mode** on if you want every visited LOD article to be added to **Study** and **History** automatically
-- Choose up to **3 sync languages** in the popup if you want a smaller synced copy across browsers
-- Search, add notes, toggle lists, or delete words from there
+- Choose up to **3 sync languages** for sync payload size control and use **Sync now** when you want an immediate push
+- Use **Import history** with a date range (7d / 30d / 90d / 365d / all time) to add missing LOD words
+- Review the import report, manage local backup snapshots, and restore a snapshot if needed
+- Search, play pronunciation audio, add notes, toggle lists, or delete words from there
 
 ### Study with flashcards
 - Click **Flashcards** in the popup
@@ -130,6 +134,7 @@ The **LODVault** icon will appear in your browser toolbar.
 ### Preview and export
 - **Preview** — opens a live, searchable page of your saved words in a new tab
 - **HTML** — downloads a standalone HTML file you can keep or share
+- **Anki** — downloads a tab-separated text file ready for Anki import
 - **Export JSON** — downloads a full backup of your saved words and extension settings
 - **Import JSON** — restores or merges a previous backup, including supported settings
 - **Import history** — optionally requests browser History permission and adds missing `lod.lu/artikel/*` words into your vault (does not delete or overwrite existing words)
