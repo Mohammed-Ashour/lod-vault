@@ -682,6 +682,12 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
   gap: 8px;
 }
 
+.backup-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .btn-link {
   padding: 4px 8px;
   font-size: 11.5px;
@@ -721,19 +727,38 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
   line-height: 1.35;
 }
 
-.backup-restore {
+.backup-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
+}
+
+.backup-restore,
+.backup-delete {
   padding: 5px 9px;
   font-size: 11.5px;
   background: var(--surface);
   border: 1px solid var(--border-solid);
-  color: var(--teal-lt);
   border-radius: 6px;
+}
+
+.backup-restore {
+  color: var(--teal-lt);
 }
 
 .backup-restore:hover {
   border-color: var(--teal);
   color: #fff;
+}
+
+.backup-delete {
+  color: #f2a3aa;
+}
+
+.backup-delete:hover {
+  border-color: #f2a3aa;
+  color: #ffd5da;
 }
 
 /* ── saved list ──────────────────────────────────── */

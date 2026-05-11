@@ -3,7 +3,7 @@
   const LEGACY_STORAGE_KEY = "lodWrapper.entries";
   const SETTINGS_KEY = "lodVault.settings";
   const BACKUP_KEY = "lodVault.backups";
-  const MAX_BACKUP_SNAPSHOTS = 12;
+  const MAX_BACKUP_SNAPSHOTS = 3;
   const BACKUP_MIN_INTERVAL_MS = 5 * 60 * 1000;
   const DEFAULT_SETTINGS = {
     autoMode: false,
@@ -489,33 +489,10 @@
     }
   }
 
-  async function saveEntryMap(entryMap, options = {}) {
-    const reason = cleanText(options.reason) || "mutation";
-
+  async function saveEntryMap(entryMap) {
     try {
       const nextEntryMap = normalizeEntryMap(entryMap);
-      const data = await chrome.storage.local.get([STORAGE_KEY, BACKUP_KEY]);
-      const previousEntryMap = data[STORAGE_KEY] && typeof data[STORAGE_KEY] === "object" ? data[STORAGE_KEY] : {};
-      const previousBackups = normalizeBackupSnapshots(data[BACKUP_KEY]);
-      const changed = stableEntryMapString(previousEntryMap) !== stableEntryMapString(nextEntryMap);
-      const payload = { [STORAGE_KEY]: nextEntryMap };
-      const shouldAttachBackup = changed && shouldCreateBackupSnapshot(previousEntryMap, nextEntryMap, previousBackups, reason);
-
-      if (shouldAttachBackup) {
-        const nextBackups = [buildBackupSnapshot(nextEntryMap, reason), ...previousBackups]
-          .slice(0, MAX_BACKUP_SNAPSHOTS);
-        payload[BACKUP_KEY] = nextBackups;
-      }
-
-      try {
-        await chrome.storage.local.set(payload);
-      } catch (error) {
-        if (shouldAttachBackup && isStorageQuotaError(error)) {
-          await chrome.storage.local.set({ [STORAGE_KEY]: nextEntryMap });
-          return;
-        }
-        throw error;
-      }
+      await chrome.storage.local.set({ [STORAGE_KEY]: nextEntryMap });
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
@@ -1073,10 +1050,57 @@
     return normalizeEntryMap(merged);
   }
 
+  async function createVaultBackupDirect(reason = "manual") {
+    const data = await chrome.storage.local.get([STORAGE_KEY, BACKUP_KEY]);
+    const entryMap = normalizeEntryMap(data[STORAGE_KEY]);
+    const entryCount = countStoredEntries(entryMap);
+
+    if (!entryCount) {
+      return {
+        created: false,
+        backupId: "",
+        entryCount: 0,
+        remaining: normalizeBackupSnapshots(data[BACKUP_KEY]).length,
+        reason: cleanText(reason) || "manual"
+      };
+    }
+
+    const previousBackups = normalizeBackupSnapshots(data[BACKUP_KEY]);
+    const latestBackup = previousBackups[0];
+    if (latestBackup && stableEntryMapString(latestBackup.entries) === stableEntryMapString(entryMap)) {
+      return {
+        created: false,
+        backupId: latestBackup.id,
+        entryCount,
+        remaining: previousBackups.length,
+        reason: latestBackup.reason || cleanText(reason) || "manual"
+      };
+    }
+
+    const nextSnapshot = buildBackupSnapshot(entryMap, cleanText(reason) || "manual");
+    const nextBackups = [nextSnapshot, ...previousBackups]
+      .slice(0, MAX_BACKUP_SNAPSHOTS);
+
+    await chrome.storage.local.set({ [BACKUP_KEY]: nextBackups });
+
+    return {
+      created: true,
+      backupId: nextSnapshot.id,
+      entryCount,
+      remaining: nextBackups.length,
+      reason: nextSnapshot.reason
+    };
+  }
+
+  async function createVaultBackup(reason = "manual") {
+    return runStoreMutation("createVaultBackup", [reason], createVaultBackupDirect);
+  }
+
   async function getVaultBackups(limit = MAX_BACKUP_SNAPSHOTS) {
     const data = await chrome.storage.local.get([BACKUP_KEY]);
     const backups = normalizeBackupSnapshots(data[BACKUP_KEY]);
-    const safeLimit = Math.max(1, Number(limit) || MAX_BACKUP_SNAPSHOTS);
+    const requestedLimit = Math.max(1, Number(limit) || MAX_BACKUP_SNAPSHOTS);
+    const safeLimit = Math.min(MAX_BACKUP_SNAPSHOTS, requestedLimit);
 
     return backups.slice(0, safeLimit).map((snapshot) => ({
       id: snapshot.id,
@@ -1113,6 +1137,41 @@
 
   async function restoreVaultBackup(backupId) {
     return runStoreMutation("restoreVaultBackup", [backupId], restoreVaultBackupDirect);
+  }
+
+  async function deleteVaultBackupDirect(backupId) {
+    const targetId = cleanText(backupId);
+    if (!targetId) {
+      throw new Error("Missing backup id.");
+    }
+
+    const data = await chrome.storage.local.get([BACKUP_KEY]);
+    const backups = normalizeBackupSnapshots(data[BACKUP_KEY]);
+    const nextBackups = backups.filter((item) => item.id !== targetId);
+
+    if (nextBackups.length === backups.length) {
+      return {
+        deleted: false,
+        backupId: targetId,
+        remaining: backups.length
+      };
+    }
+
+    if (nextBackups.length) {
+      await chrome.storage.local.set({ [BACKUP_KEY]: nextBackups });
+    } else {
+      await chrome.storage.local.remove(BACKUP_KEY);
+    }
+
+    return {
+      deleted: true,
+      backupId: targetId,
+      remaining: nextBackups.length
+    };
+  }
+
+  async function deleteVaultBackup(backupId) {
+    return runStoreMutation("deleteVaultBackup", [backupId], deleteVaultBackupDirect);
   }
 
   const FLASHCARD_META_KEY = "lodVault.flashcardMeta";
@@ -1327,8 +1386,10 @@
     buildJsonExport,
     importJson,
     importBrowserHistory,
+    createVaultBackup,
     getVaultBackups,
     restoreVaultBackup,
+    deleteVaultBackup,
     normalizeFlashcardMeta,
     getFlashcardMeta,
     saveFlashcardMeta,

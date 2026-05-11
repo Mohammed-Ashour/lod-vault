@@ -322,3 +322,66 @@ test("popup renders backup snapshots and restores selected backup", async () => 
   assert.deepEqual(restored, ["b1"]);
   assert.match(dom.window.document.getElementById("backup-status").textContent, /Backup restored/);
 });
+
+test("popup can delete a selected backup snapshot", async () => {
+  let backups = [
+    { id: "b1", createdAt: "2025-01-01T10:00:00.000Z", reason: "auto-visit", entryCount: 20 },
+    { id: "b2", createdAt: "2025-01-01T09:00:00.000Z", reason: "import-json", entryCount: 17 }
+  ];
+  const deleted = [];
+
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(3),
+    storeOverrides: {
+      async getVaultBackups() {
+        return backups;
+      },
+      async deleteVaultBackup(backupId) {
+        deleted.push(backupId);
+        backups = backups.filter((item) => item.id !== backupId);
+        return { deleted: true, backupId, remaining: backups.length };
+      }
+    }
+  });
+
+  dom.window.confirm = () => true;
+
+  const deleteBtn = dom.window.document.querySelector('button[data-action="delete-backup"][data-backup-id="b1"]');
+  deleteBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(deleted, ["b1"]);
+  assert.equal(dom.window.document.querySelector('article.backup-item[data-backup-id="b1"]'), null);
+  assert.match(dom.window.document.getElementById("backup-status").textContent, /Backup deleted/);
+});
+
+test("popup creates a manual backup from the backup header", async () => {
+  let backups = [];
+  const created = [];
+
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(3),
+    storeOverrides: {
+      async getVaultBackups() {
+        return backups;
+      },
+      async createVaultBackup(reason) {
+        created.push(reason);
+        backups = [
+          { id: "manual-1", createdAt: "2026-05-11T21:36:00.000Z", reason: "manual-popup", entryCount: 3 }
+        ];
+        return { created: true, backupId: "manual-1", entryCount: 3, remaining: 1, reason: "manual-popup" };
+      }
+    }
+  });
+
+  const createBtn = dom.window.document.getElementById("create-backup");
+  createBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(created, ["manual-popup"]);
+  assert.equal(dom.window.document.querySelectorAll(".backup-item").length, 1);
+  assert.match(dom.window.document.getElementById("backup-status").textContent, /Backup created/);
+});

@@ -402,8 +402,14 @@ async function loadPopupScript({
     async getVaultBackups() {
       return [];
     },
+    async createVaultBackup() {
+      return { created: true, entryCount: entries.length, remaining: 1 };
+    },
     async restoreVaultBackup() {
       return { restored: true, entryCount: entries.length };
+    },
+    async deleteVaultBackup() {
+      return { deleted: true, remaining: 0 };
     },
     async getSettings() {
       return { autoMode, syncLanguages: [...syncLanguages] };

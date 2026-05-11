@@ -27,7 +27,9 @@
       syncLanguagesSaving: false,
       backups: [],
       backupsLoading: false,
+      creatingBackup: false,
       restoringBackupId: "",
+      deletingBackupId: "",
       browserHistoryImporting: false,
       syncNowInProgress: false,
       historyImportRange: "all",
@@ -840,6 +842,14 @@
         && typeof store.restoreVaultBackup === "function";
     }
 
+    function supportsBackupCreate() {
+      return typeof store.createVaultBackup === "function";
+    }
+
+    function supportsBackupDelete() {
+      return typeof store.deleteVaultBackup === "function";
+    }
+
     function setBackupStatus(message, tone = "") {
       if (!elements.backupStatus) return;
       elements.backupStatus.textContent = message;
@@ -862,12 +872,18 @@
           : (backup.createdAt || "")
       );
       const restoring = state.restoringBackupId && state.restoringBackupId === backup.id;
-      const disabled = restoring || state.backupsLoading;
+      const deleting = state.deletingBackupId && state.deletingBackupId === backup.id;
+      const disabled = restoring || deleting || state.backupsLoading || state.creatingBackup;
 
       return `
         <article class="backup-item" data-backup-id="${backupId}">
           <p class="backup-meta">${countLabel} · ${reason}<br>${when}</p>
-          <button type="button" class="backup-restore" data-action="restore-backup" data-backup-id="${backupId}" ${disabled ? "disabled" : ""}>${restoring ? "Restoring…" : "Restore"}</button>
+          <div class="backup-actions">
+            <button type="button" class="backup-restore" data-action="restore-backup" data-backup-id="${backupId}" ${disabled ? "disabled" : ""}>${restoring ? "Restoring…" : "Restore"}</button>
+            ${supportsBackupDelete()
+              ? `<button type="button" class="backup-delete" data-action="delete-backup" data-backup-id="${backupId}" ${disabled ? "disabled" : ""}>${deleting ? "Deleting…" : "Delete"}</button>`
+              : ""}
+          </div>
         </article>
       `;
     }
@@ -881,6 +897,26 @@
       }
 
       elements.backupSection.classList.remove("is-hidden");
+
+      const controlsDisabled = state.backupsLoading
+        || state.creatingBackup
+        || Boolean(state.restoringBackupId)
+        || Boolean(state.deletingBackupId);
+
+      if (elements.refreshBackups) {
+        elements.refreshBackups.disabled = controlsDisabled;
+      }
+
+      if (elements.createBackup) {
+        if (supportsBackupCreate()) {
+          elements.createBackup.classList.remove("is-hidden");
+          elements.createBackup.disabled = controlsDisabled;
+          elements.createBackup.textContent = state.creatingBackup ? "Creating…" : "Create snapshot";
+        } else {
+          elements.createBackup.classList.add("is-hidden");
+        }
+      }
+
       elements.backupList.innerHTML = state.backups.map(buildBackupItemMarkup).join("");
 
       if (statusMessage) {
@@ -911,7 +947,7 @@
       renderBackups();
 
       try {
-        const backups = await store.getVaultBackups(8);
+        const backups = await store.getVaultBackups(3);
         state.backups = Array.isArray(backups) ? backups : [];
         state.backupsLoading = false;
         renderBackups();
@@ -922,43 +958,114 @@
       }
     }
 
+    async function onCreateBackup() {
+      if (!supportsBackupCreate()) return;
+
+      state.creatingBackup = true;
+      renderBackups("Creating snapshot…");
+
+      let message = "";
+      let tone = "";
+
+      try {
+        const result = await store.createVaultBackup("manual-popup");
+        await refreshBackups();
+
+        if (result?.created) {
+          message = `Backup created · ${result?.entryCount || 0} words saved.`;
+          tone = "success";
+        } else if ((result?.entryCount || 0) === 0) {
+          message = "No saved words yet to back up.";
+          tone = "";
+        } else {
+          message = "Latest backup is already up to date.";
+          tone = "";
+        }
+      } catch {
+        message = "Could not create a backup.";
+        tone = "error";
+      } finally {
+        state.creatingBackup = false;
+        renderBackups(message, tone);
+      }
+    }
+
     async function onRefreshBackups() {
       await refreshBackups();
     }
 
     async function onBackupListClick(event) {
-      const button = event.target.closest('button[data-action="restore-backup"]');
+      const button = event.target.closest("button[data-action]");
       if (!button || button.disabled) return;
+
+      const action = button.dataset.action || "";
+      if (action !== "restore-backup" && action !== "delete-backup") return;
 
       const backupId = button.dataset.backupId || "";
       const backup = state.backups.find((item) => item.id === backupId);
       if (!backup) return;
 
       const count = Number(backup.entryCount) || 0;
-      const confirmed = typeof window?.confirm === "function"
-        ? window.confirm(`Restore this local backup (${count} word${count === 1 ? "" : "s"})?\n\nThis merges into your current vault and keeps existing words.`)
-        : true;
-      if (!confirmed) return;
 
-      state.restoringBackupId = backupId;
-      renderBackups("Restoring backup…");
+      if (action === "restore-backup") {
+        const confirmed = typeof window?.confirm === "function"
+          ? window.confirm(`Restore this local backup (${count} word${count === 1 ? "" : "s"})?\n\nThis merges into your current vault and keeps existing words.`)
+          : true;
+        if (!confirmed) return;
+
+        state.restoringBackupId = backupId;
+        renderBackups("Restoring backup…");
+
+        let message = "";
+        let tone = "";
+
+        try {
+          const result = await store.restoreVaultBackup(backupId);
+          await refreshSettingsState();
+          await renderSavedList({ refreshBackups: false });
+          await refreshCurrentPage();
+          await refreshBackups();
+          message = `Backup restored · ${result?.entryCount || 0} words in vault.`;
+          tone = "success";
+        } catch {
+          message = "Could not restore that backup.";
+          tone = "error";
+        } finally {
+          state.restoringBackupId = "";
+          renderBackups(message, tone);
+        }
+
+        return;
+      }
+
+      if (!supportsBackupDelete()) return;
+
+      const confirmedDelete = typeof window?.confirm === "function"
+        ? window.confirm(`Delete this local backup (${count} word${count === 1 ? "" : "s"})?\n\nThis cannot be undone.`)
+        : true;
+      if (!confirmedDelete) return;
+
+      state.deletingBackupId = backupId;
+      renderBackups("Deleting backup…");
 
       let message = "";
       let tone = "";
 
       try {
-        const result = await store.restoreVaultBackup(backupId);
-        await refreshSettingsState();
-        await renderSavedList({ refreshBackups: false });
-        await refreshCurrentPage();
+        const result = await store.deleteVaultBackup(backupId);
         await refreshBackups();
-        message = `Backup restored · ${result?.entryCount || 0} words in vault.`;
-        tone = "success";
+        if (result?.deleted) {
+          message = "Backup deleted.";
+          tone = "success";
+        } else {
+          message = "Backup already removed.";
+          tone = "";
+        }
       } catch {
-        message = "Could not restore that backup.";
+        message = "Could not delete that backup.";
         tone = "error";
       } finally {
-        state.restoringBackupId = "";
+        state.deletingBackupId = "";
         renderBackups(message, tone);
       }
     }
@@ -1256,6 +1363,7 @@
       elements.backupSection = document.getElementById("backup-section");
       elements.backupStatus = document.getElementById("backup-status");
       elements.backupList = document.getElementById("backup-list");
+      elements.createBackup = document.getElementById("create-backup");
       elements.refreshBackups = document.getElementById("refresh-backups");
       elements.searchInput = document.getElementById("search-input");
       elements.searchStatus = document.getElementById("search-status");
@@ -1295,6 +1403,7 @@
       elements.savedList.addEventListener("input", onSavedListInput);
       elements.savedList.addEventListener("change", onSavedListChange);
       elements.savedList.addEventListener("focusout", onSavedListFocusOut);
+      elements.createBackup?.addEventListener("click", onCreateBackup);
       elements.refreshBackups?.addEventListener("click", onRefreshBackups);
       elements.backupList?.addEventListener("click", onBackupListClick);
 

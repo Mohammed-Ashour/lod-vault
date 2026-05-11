@@ -308,16 +308,15 @@ test("getEntries recovers legacy entries with no list flags and persists them", 
   assert.equal(storageData[store.STORAGE_KEY].BEEM1.study, true);
 });
 
-test("saveEntryMap falls back to entry-only writes when backup snapshot exceeds quota", async () => {
+test("saveEntryMap writes entries without touching backup snapshots", async () => {
   const { store, storageData, chrome } = loadSharedStore();
 
   const originalSet = chrome.storage.local.set;
-  let backupWriteRejected = false;
+  let backupWrites = 0;
 
   chrome.storage.local.set = async (values) => {
     if (Object.prototype.hasOwnProperty.call(values || {}, store.BACKUP_KEY)) {
-      backupWriteRejected = true;
-      throw new Error("QUOTA_BYTES quota exceeded");
+      backupWrites += 1;
     }
     return originalSet(values);
   };
@@ -328,7 +327,7 @@ test("saveEntryMap falls back to entry-only writes when backup snapshot exceeds 
     url: "https://lod.lu/artikel/HAUS1"
   }, "study");
 
-  assert.equal(backupWriteRejected, true);
+  assert.equal(backupWrites, 0);
   assert.equal(saved.study, true);
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.study, true);
   assert.equal(storageData[store.BACKUP_KEY], undefined);
@@ -349,6 +348,9 @@ test("local backups keep recoverable snapshots and can be restored", async () =>
     url: "https://lod.lu/artikel/BEEM1"
   }, "study");
 
+  const created = await store.createVaultBackup("manual-test");
+  assert.equal(created.created, true);
+
   const backups = await store.getVaultBackups();
   assert.ok(backups.length >= 1);
 
@@ -361,6 +363,32 @@ test("local backups keep recoverable snapshots and can be restored", async () =>
 
   assert.equal(restore.restored, true);
   assert.ok(restoredEntries.length >= 2);
+});
+
+test("local backups can be deleted", async () => {
+  const { store } = loadSharedStore();
+
+  await store.toggleList({
+    id: "HAUS1",
+    word: "Haus",
+    url: "https://lod.lu/artikel/HAUS1"
+  }, "study");
+
+  await store.toggleList({
+    id: "BEEM1",
+    word: "Beem",
+    url: "https://lod.lu/artikel/BEEM1"
+  }, "study");
+
+  await store.createVaultBackup("manual-test");
+  const backups = await store.getVaultBackups();
+  assert.ok(backups.length >= 1);
+
+  const deleted = await store.deleteVaultBackup(backups[0].id);
+  const remaining = await store.getVaultBackups();
+
+  assert.equal(deleted.deleted, true);
+  assert.equal(remaining.some((item) => item.id === backups[0].id), false);
 });
 
 test("saveNote updates the note and removeEntry deletes the item", async () => {

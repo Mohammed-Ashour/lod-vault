@@ -133,7 +133,10 @@
       <section id="backup-section" class="backup-section" aria-labelledby="backup-title">
         <div class="backup-header">
           <p id="backup-title" class="section-label">Local backups</p>
-          <button id="refresh-backups" class="btn-link" type="button">Refresh</button>
+          <div class="backup-header-actions">
+            <button id="create-backup" class="btn-link" type="button">Create snapshot</button>
+            <button id="refresh-backups" class="btn-link" type="button">Refresh</button>
+          </div>
         </div>
         <p id="backup-status" class="helper-text muted">Loading backups…</p>
         <div id="backup-list" class="backup-list"></div>
