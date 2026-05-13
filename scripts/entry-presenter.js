@@ -229,6 +229,36 @@
       .join("");
   }
 
+  function buildMeaningCollapsibleMarkup(entry, options = {}) {
+    const items = getMeaningItems(entry);
+    if (!items.length) return "";
+
+    const toggleClass = options.toggleClass || "meaning-toggle";
+    const panelClass = options.panelClass || "meaning-expand";
+    const rowClass = options.rowClass || "meaning-row";
+    const labelClass = options.labelClass || "meaning-label";
+    const valueClass = options.valueClass || "meaning-value";
+
+    const count = items.length;
+    const countLabel = `${count} translation${count === 1 ? "" : "s"}`;
+
+    const primaryText = items[0] ? `${items[0].chipLabel}: ${items[0].value}` : "";
+
+    const rows = items.map((item) =>
+      `<div class="${escapeHtml(rowClass)}">`
+      + `<span class="${escapeHtml(labelClass)}" data-lang="${escapeHtml(item.lang)}">${escapeHtml(item.chipLabel)}</span>`
+      + `<span class="${escapeHtml(valueClass)}">${escapeHtml(item.value)}</span>`
+      + `</div>`
+    ).join("");
+
+    return `<button type="button" class="${escapeHtml(toggleClass)}" aria-expanded="false">`
+      + `<span class="meaning-toggle-arrow">&#x25B6;</span>`
+      + `<span class="meaning-toggle-text">${escapeHtml(primaryText)}</span>`
+      + `<span class="meaning-toggle-count">${escapeHtml(countLabel)}</span>`
+      + `</button>`
+      + `<div class="${escapeHtml(panelClass)}">${rows}</div>`;
+  }
+
   function getPrimaryMeaning(entry, preferredLanguages = ["en", "fr", "de"]) {
     const normalized = normalizeEntry(entry);
     for (const lang of preferredLanguages) {
@@ -275,9 +305,13 @@
     if (normalized.study) chips.push('<span class="chip chip-list-study">Study</span>');
     if (normalized.history) chips.push('<span class="chip chip-list-history">History</span>');
 
-    for (const item of getMeaningItems(normalized)) {
-      chips.push(`<span class="chip" data-lang="${item.lang}">${escapeHtml(`${item.chipLabel}: ${item.value}`)}</span>`);
-    }
+    const translationsMarkup = buildMeaningCollapsibleMarkup(normalized, {
+      toggleClass: "meaning-toggle",
+      panelClass: "meaning-expand",
+      rowClass: "meaning-row",
+      labelClass: "meaning-label",
+      valueClass: "meaning-value"
+    });
 
     const translationLanguages = getMeaningItems(normalized).map((item) => item.lang);
 
@@ -290,6 +324,7 @@
           <span class="timestamp">${escapeHtml(formatWhen(normalized.updatedAt || normalized.lastVisitedAt || normalized.createdAt))}</span>
         </div>
         ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
+        ${translationsMarkup}
         ${buildVisitMeta(normalized) ? `<p class="visit-meta">${escapeHtml(buildVisitMeta(normalized))}</p>` : ""}
         ${normalized.inflection ? `<p class="detail"><strong>Inflection:</strong> ${escapeHtml(normalized.inflection)}</p>` : ""}
         ${normalized.example ? `<blockquote>${escapeHtml(normalized.example)}</blockquote>` : ""}
@@ -358,8 +393,20 @@
       audioController.play(url, btn);
     }
 
+    function handleToggleClick(event) {
+      const toggle = event.target.closest('.meaning-toggle');
+      if (!toggle) return;
+      const isOpen = toggle.getAttribute('aria-expanded') === 'true';
+      toggle.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+      const panel = toggle.nextElementSibling;
+      if (panel && panel.classList.contains('meaning-expand')) {
+        panel.classList.toggle('is-open', !isOpen);
+      }
+    }
+
     input.addEventListener('input', applySearch);
     document.addEventListener('click', handleAudioClick);
+    document.addEventListener('click', handleToggleClick);
     applySearch();
   <\/script>`;
   }
@@ -435,6 +482,77 @@
     .chip-list-favorite{ background: rgba(253,215,120,0.10); color: #e6c560;        border-color: rgba(253,215,120,0.20); }
     .chip-list-study   { background: rgba(57,167,196,0.12);  color: var(--teal-lt); border-color: rgba(57,167,196,0.22); }
     .chip-list-history { background: rgba(121,134,203,0.10); color: #9ba8d8;        border-color: rgba(121,134,203,0.20); }
+    .meaning-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 4px 10px;
+      font-size: 11.5px;
+      font-weight: 600;
+      font-family: inherit;
+      background: rgba(57,167,196,0.08);
+      border: 1px solid rgba(57,167,196,0.18);
+      border-radius: 999px;
+      color: var(--teal-lt);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .meaning-toggle:hover { background: rgba(57,167,196,0.16); }
+    .meaning-toggle-arrow {
+      font-size: 9px;
+      transition: transform 0.2s;
+    }
+    .meaning-toggle[aria-expanded="true"] .meaning-toggle-arrow { transform: rotate(90deg); }
+    .meaning-toggle-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 200px;
+    }
+    .meaning-toggle-count {
+      font-size: 10px;
+      opacity: 0.7;
+      margin-left: 2px;
+    }
+    .meaning-expand {
+      display: none;
+      margin-top: 6px;
+      padding: 8px 12px;
+      background: rgba(57,167,196,0.05);
+      border: 1px solid rgba(57,167,196,0.12);
+      border-radius: 6px;
+    }
+    .meaning-expand.is-open { display: block; }
+    .meaning-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 3px 0;
+    }
+    .meaning-row + .meaning-row { border-top: 1px solid var(--border); padding-top: 5px; }
+    .meaning-label {
+      flex-shrink: 0;
+      min-width: 26px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-align: left;
+      line-height: 1.35;
+      color: var(--teal-lt);
+    }
+    .meaning-label[data-lang="en"] { color: #7dd4a8; }
+    .meaning-label[data-lang="fr"] { color: #f2a3aa; }
+    .meaning-label[data-lang="de"] { color: #f0d56e; }
+    .meaning-label[data-lang="pt"] { color: #c4a8f0; }
+    .meaning-label[data-lang="nl"] { color: #f0a86e; }
+    .meaning-value {
+      font-size: 12.5px;
+      color: var(--text);
+      line-height: 1.35;
+      min-width: 0;
+    }
     .visit-meta, .detail { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
     blockquote {
       margin-top: 10px; padding: 10px 14px;
@@ -541,6 +659,7 @@
     buildMeaningText,
     buildMeaningChipsMarkup,
     buildMeaningRowsMarkup,
+    buildMeaningCollapsibleMarkup,
     getPrimaryMeaning,
     getAudioUrl,
     createAudioController,

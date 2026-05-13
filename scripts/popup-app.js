@@ -511,6 +511,7 @@
         elements.currentMeta.textContent = state.autoMode
           ? "Words are saved automatically while you browse."
           : "Open a word on lod.lu to save it.";
+        elements.currentMeanings.innerHTML = "";
         elements.currentFavorite.disabled = true;
         elements.currentStudy.disabled = true;
         elements.currentDelete.disabled = true;
@@ -521,15 +522,17 @@
       }
 
       const entry = savedEntry || state.currentEntry;
-      const metaParts = [entry.pos, store.buildMeaningText(entry)].filter(Boolean);
+      const posText = entry.pos || "";
+      const meaningMarkup = store.buildMeaningCollapsibleMarkup(entry);
 
       elements.currentWord.textContent = state.currentEntry.word;
       const audioUrl = typeof store.getAudioUrl === "function" ? store.getAudioUrl(entry) : null;
       elements.currentAudio.style.display = audioUrl ? "" : "none";
       elements.currentAudio.dataset.audioId = entry.id || "";
-      elements.currentMeta.textContent = metaParts.join(" · ") || (state.autoMode
+      elements.currentMeta.textContent = posText || (state.autoMode
         ? "Auto mode is recording this word."
         : "Save this word for later.");
+      elements.currentMeanings.innerHTML = meaningMarkup || "";
       elements.currentFavorite.disabled = false;
       elements.currentStudy.disabled = false;
       elements.currentDelete.disabled = !savedEntry;
@@ -700,7 +703,7 @@
           </div>
           ${entrySubline(entry) ? `<p class="item-meta">${entrySubline(entry)}</p>` : ""}
           ${lastVisitedText}
-          ${store.buildMeaningChipsMarkup(entry) ? `<div class="item-meanings">${store.buildMeaningChipsMarkup(entry)}</div>` : ""}
+          ${(() => { const mk = store.buildMeaningCollapsibleMarkup(entry); return mk ? `<div class="item-meanings">${mk}</div>` : ""; })()}
           ${entry.example ? `<p class="item-example">${store.escapeHtml(entry.example)}</p>` : ""}
           <div class="note-section">
             <label class="note-label" for="note-${store.escapeHtml(entry.id)}">Note</label>
@@ -779,7 +782,26 @@
       return state.savedEntries.find((entry) => entry.id === id) || null;
     }
 
+    function onMeaningToggleClick(event) {
+      const toggleBtn = event.target.closest(".meaning-toggle");
+      if (!toggleBtn) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const isOpen = toggleBtn.getAttribute("aria-expanded") === "true";
+      toggleBtn.setAttribute("aria-expanded", isOpen ? "false" : "true");
+      const panel = toggleBtn.nextElementSibling;
+      if (panel && panel.classList.contains("meaning-expand")) {
+        panel.classList.toggle("is-open", !isOpen);
+      }
+    }
+
     async function onSavedListClick(event) {
+      const toggleBtn = event.target.closest(".meaning-toggle");
+      if (toggleBtn) {
+        onMeaningToggleClick(event);
+        return;
+      }
+
       const audioBtn = event.target.closest(".audio-btn");
       if (audioBtn) {
         event.preventDefault();
@@ -1330,6 +1352,7 @@
       elements.currentWord = document.getElementById("current-word");
       elements.currentAudio = document.getElementById("current-audio");
       elements.currentMeta = document.getElementById("current-meta");
+      elements.currentMeanings = document.getElementById("current-meanings");
       elements.currentFavorite = document.getElementById("current-favorite");
       elements.currentStudy = document.getElementById("current-study");
       elements.currentDelete = document.getElementById("current-delete");
@@ -1378,6 +1401,7 @@
       elements.currentFavorite.addEventListener("click", () => toggleCurrentPage("favorite"));
       elements.currentStudy.addEventListener("click", () => toggleCurrentPage("study"));
       elements.currentDelete.addEventListener("click", deleteCurrentPage);
+      elements.currentPageCard.addEventListener("click", onMeaningToggleClick);
       elements.currentAudio.addEventListener("click", () => {
         if (state.currentEntry && typeof store.playLodAudio === "function") {
           store.playLodAudio(state.currentEntry);

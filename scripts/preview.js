@@ -247,6 +247,7 @@ function attachPreviewSearch() {
   input.addEventListener("input", applyPreviewFilters);
   attachRemoveButtons(doc);
   attachAudioButtons(doc);
+  attachMeaningToggles(doc);
   applyLangFilter();
   applyPreviewFilters();
 }
@@ -270,6 +271,21 @@ function attachAudioButtons(doc) {
     if (!id) return;
     const url = `https://lod.lu/uploads/OGG/${id.toLowerCase()}.ogg`;
     ctrl.play(url, btn);
+  });
+}
+
+function attachMeaningToggles(doc) {
+  doc.addEventListener("click", (event) => {
+    const toggle = event.target.closest(".meaning-toggle");
+    if (!toggle) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const isOpen = toggle.getAttribute("aria-expanded") === "true";
+    toggle.setAttribute("aria-expanded", isOpen ? "false" : "true");
+    const panel = toggle.nextElementSibling;
+    if (panel && panel.classList.contains("meaning-expand")) {
+      panel.classList.toggle("is-open", !isOpen);
+    }
   });
 }
 

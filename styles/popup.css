@@ -844,20 +844,104 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
   background: rgba(230, 57, 70, 0.1);
 }
 
-/* ── meaning chips ───────────────────────────────── */
+/* ── meaning collapsible ─────────────────────────── */
 .item-meta, .item-example, .item-meanings { margin-top: 5px; }
 
-.item-meanings { display: flex; gap: 5px; flex-wrap: wrap; }
+.item-meanings { margin-top: 6px; }
 
-.meaning-chip {
+.meaning-toggle {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  gap: 5px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(57, 167, 196, 0.08);
+  border: 1px solid rgba(57, 167, 196, 0.18);
   border-radius: 999px;
-  background: rgba(57, 167, 196, 0.1);
-  border: 1px solid rgba(57, 167, 196, 0.2);
   color: var(--teal-lt);
-  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  line-height: 1.45;
+}
+
+.meaning-toggle:hover {
+  background: rgba(57, 167, 196, 0.16);
+  border-color: rgba(57, 167, 196, 0.3);
+}
+
+.meaning-toggle-arrow {
+  font-size: 9px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.meaning-toggle[aria-expanded="true"] .meaning-toggle-arrow {
+  transform: rotate(90deg);
+}
+
+.meaning-toggle-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.meaning-toggle-count {
+  font-size: 10px;
+  opacity: 0.65;
+  margin-left: 1px;
+}
+
+.meaning-expand {
+  display: none;
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: rgba(57, 167, 196, 0.05);
+  border: 1px solid rgba(57, 167, 196, 0.12);
+  border-radius: 8px;
+}
+
+.meaning-expand.is-open {
+  display: block;
+}
+
+.meaning-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.meaning-row + .meaning-row {
+  border-top: 1px solid var(--border);
+  padding-top: 5px;
+}
+
+.meaning-label {
+  flex-shrink: 0;
+  min-width: 26px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 1px 0;
+  border-radius: 3px;
+  line-height: 1.35;
+}
+
+.meaning-label[data-lang="en"] { color: #7dd4a8; }
+.meaning-label[data-lang="fr"] { color: #f2a3aa; }
+.meaning-label[data-lang="de"] { color: #f0d56e; }
+.meaning-label[data-lang="pt"] { color: #c4a8f0; }
+.meaning-label[data-lang="nl"] { color: #f0a86e; }
+
+.meaning-value {
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.35;
+  min-width: 0;
 }
 
 .item-example {
