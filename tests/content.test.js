@@ -35,6 +35,10 @@ function samplePageHtml() {
   `;
 }
 
+async function wait(ms = 0) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 test("extractCurrentEntry reads the current lod.lu article data", async () => {
   const { api } = loadContentScript({ html: samplePageHtml() });
 
@@ -51,6 +55,25 @@ test("extractCurrentEntry reads the current lod.lu article data", async () => {
     fr: "maison",
     de: "Haus"
   });
+});
+
+test("content script can recover when URL changes to article without history events", async () => {
+  const { dom } = loadContentScript({
+    html: samplePageHtml(),
+    url: "https://lod.lu/"
+  });
+
+  const initialBanner = dom.window.document.getElementById("lod-wrapper-banner");
+  assert.ok(!initialBanner || initialBanner.style.display === "none");
+
+  dom.reconfigure({ url: "https://lod.lu/artikel/HAUS1" });
+  dom.window.document.body.appendChild(dom.window.document.createElement("div"));
+
+  await wait(150);
+
+  const banner = dom.window.document.getElementById("lod-wrapper-banner");
+  assert.ok(banner);
+  assert.equal(banner.querySelector(".lodw-word").textContent, "Haus");
 });
 
 test("infoText does not count the primary language in +N for non-default languages", () => {
