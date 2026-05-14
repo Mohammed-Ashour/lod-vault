@@ -57,6 +57,16 @@ test("extractCurrentEntry reads the current lod.lu article data", async () => {
   });
 });
 
+test("content script stays idle on non-article pages", async () => {
+  const { dom, context } = loadContentScript({
+    html: samplePageHtml(),
+    url: "https://lod.lu/"
+  });
+
+  await context.refreshUI();
+  assert.equal(dom.window.document.getElementById("lod-wrapper-banner"), null);
+});
+
 test("content script can recover when URL changes to article without history events", async () => {
   const { dom } = loadContentScript({
     html: samplePageHtml(),

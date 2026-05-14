@@ -59,6 +59,17 @@ const {
   applyState
 } = bannerController;
 
+function isLikelyArticlePage(url = location.href) {
+  return /https?:\/\/(?:www\.)?lod\.lu\/artikel\/[^/?#]+/i.test(String(url || ""));
+}
+
+function hideBannerIfPresent() {
+  const banner = document.getElementById(BANNER_ID);
+  if (banner) {
+    banner.style.display = "none";
+  }
+}
+
 async function maybeAutoRecord(entry, savedEntry, autoMode = currentAutoMode) {
   if (!autoMode) {
     lastAutoRecordKey = "";
@@ -76,6 +87,13 @@ async function maybeAutoRecord(entry, savedEntry, autoMode = currentAutoMode) {
 
 async function refreshUI() {
   if (contextInvalidated) return;
+
+  if (!isLikelyArticlePage()) {
+    bannerController.clearRenderKey();
+    hideBannerIfPresent();
+    notifyPopup(null, null);
+    return;
+  }
 
   try {
     const entry = extractCurrentEntry();
@@ -144,6 +162,7 @@ function installDomObserver() {
   if (domObserver || typeof MutationObserver === "undefined") return;
 
   domObserver = new MutationObserver(() => {
+    if (!isLikelyArticlePage()) return;
     if (LodWrapperArticleReader.getHeadingElement()) scheduleRefresh(80);
   });
 
