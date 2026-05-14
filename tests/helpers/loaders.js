@@ -364,6 +364,7 @@ async function loadPopupScript({
     buildSearchText: shared.store.buildSearchText,
     buildMeaningText: shared.store.buildMeaningText,
     buildMeaningChipsMarkup: shared.store.buildMeaningChipsMarkup,
+    buildMeaningCollapsibleMarkup: shared.store.buildMeaningCollapsibleMarkup,
     async getAutoMode() {
       return autoMode;
     },
