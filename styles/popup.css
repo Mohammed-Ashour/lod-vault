@@ -335,16 +335,19 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
 .sync-actions-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
 }
 
-.sync-now-btn {
+.sync-now-btn,
+.sync-pull-btn {
   flex-shrink: 0;
 }
 
-.sync-now-status {
-  margin-top: 0;
+.sync-now-status,
+.sync-health-status {
+  margin-top: 6px;
   font-size: 11.5px;
 }
 
@@ -667,6 +670,7 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .helper-text.is-success { color: #7dd4a8; }
 .helper-text.is-error { color: #f29ba2; }
+.helper-text.is-warning { color: #f0d56e; }
 
 /* ── local backups ──────────────────────────────── */
 .backup-section {

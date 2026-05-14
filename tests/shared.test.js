@@ -38,7 +38,6 @@ test("normalizeEntry trims values and derives id from the url", () => {
   assert.equal(entry.history, false);
 });
 
-
 test("settings default to auto mode off with default sync languages and can be updated", async () => {
   const { store, storageData } = loadSharedStore();
 
@@ -74,6 +73,52 @@ test("setSyncLanguages rewrites existing saved translations to the selected lang
 
   assert.deepEqual(Array.from(await store.setSyncLanguages(["en", "de"])), ["en", "de"]);
   assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, { en: "house", de: "Haus" });
+});
+
+test("setAutoMode updates cached settings immediately even when storage change events are delayed", async () => {
+  const { store, flushStorageEvents } = loadSharedStore({}, { asyncStorageEvents: true });
+
+  assert.equal((await store.getSettings()).autoMode, false);
+  await store.setAutoMode(true);
+  assert.equal((await store.getSettings()).autoMode, true);
+
+  await flushStorageEvents();
+  assert.equal((await store.getSettings()).autoMode, true);
+});
+
+test("setSyncLanguages updates cached settings immediately even when storage change events are delayed", async () => {
+  const { store, flushStorageEvents } = loadSharedStore({}, { asyncStorageEvents: true });
+
+  assert.deepEqual(Array.from((await store.getSettings()).syncLanguages), ["en", "fr", "de"]);
+  await store.setSyncLanguages(["pt", "nl"]);
+  assert.deepEqual(Array.from((await store.getSettings()).syncLanguages), ["pt", "nl"]);
+
+  await flushStorageEvents();
+  assert.deepEqual(Array.from((await store.getSettings()).syncLanguages), ["pt", "nl"]);
+});
+
+test("importJson updates cached settings immediately even when storage change events are delayed", async () => {
+  const { store, flushStorageEvents } = loadSharedStore({}, { asyncStorageEvents: true });
+
+  await store.getSettings();
+  await store.importJson(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    settings: {
+      autoMode: true,
+      syncLanguages: ["nl"]
+    },
+    entries: []
+  }));
+
+  const immediateSettings = await store.getSettings();
+  assert.equal(immediateSettings.autoMode, true);
+  assert.deepEqual(Array.from(immediateSettings.syncLanguages), ["nl"]);
+
+  await flushStorageEvents();
+  const settledSettings = await store.getSettings();
+  assert.equal(settledSettings.autoMode, true);
+  assert.deepEqual(Array.from(settledSettings.syncLanguages), ["nl"]);
 });
 
 test("toggleList saves a new entry and removes it when the last active list is toggled off", async () => {

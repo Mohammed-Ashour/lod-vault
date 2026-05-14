@@ -39,6 +39,59 @@
   const BROWSER_HISTORY_IMPORT_QUERY = "lod.lu/artikel/";
   const BROWSER_HISTORY_IMPORT_MAX_RESULTS = 20000;
 
+  let storeCacheListenerInstalled = false;
+  let cachedEntryMap = null;
+  let cachedSettings = null;
+
+  function invalidateStoreCache(options = {}) {
+    const invalidateEntries = options.entryMap !== false;
+    const invalidateSettings = options.settings !== false;
+
+    if (invalidateEntries) {
+      cachedEntryMap = null;
+    }
+
+    if (invalidateSettings) {
+      cachedSettings = null;
+    }
+  }
+
+  function cloneSettings(settings = DEFAULT_SETTINGS) {
+    const normalized = normalizeSettings(settings);
+    return {
+      ...normalized,
+      syncLanguages: [...normalized.syncLanguages]
+    };
+  }
+
+  function ensureStoreCacheListener() {
+    if (storeCacheListenerInstalled) return;
+    if (!chrome?.storage?.onChanged?.addListener) return;
+
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName !== "local") return;
+
+      if (Object.prototype.hasOwnProperty.call(changes || {}, STORAGE_KEY)
+        || Object.prototype.hasOwnProperty.call(changes || {}, LEGACY_STORAGE_KEY)) {
+        invalidateStoreCache({ entryMap: true, settings: false });
+      }
+
+      if (Object.prototype.hasOwnProperty.call(changes || {}, SETTINGS_KEY)) {
+        const settingsChange = changes?.[SETTINGS_KEY] || {};
+        const previousSyncLanguages = normalizeSettings(settingsChange.oldValue || {}).syncLanguages;
+        const nextSyncLanguages = normalizeSettings(settingsChange.newValue || {}).syncLanguages;
+        const syncLanguagesChanged = JSON.stringify(previousSyncLanguages) !== JSON.stringify(nextSyncLanguages);
+
+        invalidateStoreCache({
+          entryMap: syncLanguagesChanged,
+          settings: true
+        });
+      }
+    });
+
+    storeCacheListenerInstalled = true;
+  }
+
   function nowIso() {
     return new Date().toISOString();
   }
@@ -333,10 +386,7 @@
     return merged;
   }
 
-  function entriesMatchForStorage(left, right) {
-    const current = normalizeEntry(left);
-    const next = normalizeEntry(right);
-
+  function entriesMatchNormalized(current = {}, next = {}) {
     return current.id === next.id
       && current.word === next.word
       && current.url === next.url
@@ -353,6 +403,12 @@
       && JSON.stringify(current.translations || {}) === JSON.stringify(next.translations || {});
   }
 
+  function entriesMatchForStorage(left, right) {
+    const current = normalizeEntry(left);
+    const next = normalizeEntry(right);
+    return entriesMatchNormalized(current, next);
+  }
+
   function applyTranslationLanguageFilter(entry = {}, languages = DEFAULT_SETTINGS.syncLanguages) {
     const normalized = normalizeEntry(entry);
     normalized.translations = filterTranslationsByLanguages(normalized.translations, languages);
@@ -364,18 +420,54 @@
     return normalized;
   }
 
-  function filterEntryMapTranslations(entryMap = {}, languages = DEFAULT_SETTINGS.syncLanguages) {
+  function filterEntryMapTranslationsWithMeta(entryMap = {}, languages = DEFAULT_SETTINGS.syncLanguages) {
+    const source = entryMap && typeof entryMap === "object" ? entryMap : {};
     const result = {};
+    let changed = false;
+    let needsLegacyRecovery = false;
 
-    for (const [entryId, value] of Object.entries(entryMap || {})) {
+    for (const [entryId, value] of Object.entries(source)) {
       const rawEntry = { id: entryId, ...(value && typeof value === "object" ? value : {}) };
-      const recovered = recoverLegacyMembership(rawEntry, normalizeEntry(rawEntry));
+      const normalized = normalizeEntry(rawEntry);
+      const recoveredFromLegacy = shouldRecoverLegacyMembership(rawEntry, normalized);
+      const recovered = recoveredFromLegacy
+        ? recoverLegacyMembership(rawEntry, normalized)
+        : normalized;
       const filtered = applyTranslationLanguageFilter(recovered, languages);
-      if (!filtered.id || !filtered.word || !shouldKeepEntry(filtered)) continue;
+
+      if (recoveredFromLegacy) {
+        needsLegacyRecovery = true;
+      }
+
+      if (!filtered.id || !filtered.word || !shouldKeepEntry(filtered)) {
+        changed = true;
+        continue;
+      }
+
       result[filtered.id] = filtered;
+
+      if (filtered.id !== entryId || !entriesMatchNormalized(recovered, filtered)) {
+        changed = true;
+      }
     }
 
-    return result;
+    if (!changed) {
+      const sourceKeys = Object.keys(source);
+      const resultKeys = Object.keys(result);
+      if (sourceKeys.length !== resultKeys.length) {
+        changed = true;
+      }
+    }
+
+    return {
+      entryMap: result,
+      changed,
+      needsLegacyRecovery
+    };
+  }
+
+  function filterEntryMapTranslations(entryMap = {}, languages = DEFAULT_SETTINGS.syncLanguages) {
+    return filterEntryMapTranslationsWithMeta(entryMap, languages).entryMap;
   }
 
   function stableEntryMapString(entryMap = {}) {
@@ -455,6 +547,12 @@
   }
 
   async function getEntryMap() {
+    ensureStoreCacheListener();
+
+    if (cachedEntryMap) {
+      return cachedEntryMap;
+    }
+
     try {
       const data = await chrome.storage.local.get([STORAGE_KEY, LEGACY_STORAGE_KEY, SETTINGS_KEY]);
       const current = data[STORAGE_KEY] && typeof data[STORAGE_KEY] === "object" ? data[STORAGE_KEY] : {};
@@ -467,22 +565,25 @@
             ...current
           }
         : current;
-      const filtered = filterEntryMapTranslations(combined, settings.syncLanguages);
-      const needsLegacyRecovery = Object.entries(combined || {}).some(([entryId, value]) => {
-        const rawEntry = { id: entryId, ...(value && typeof value === "object" ? value : {}) };
-        return shouldRecoverLegacyMembership(rawEntry, normalizeEntry(rawEntry));
-      });
+      const {
+        entryMap: filtered,
+        changed,
+        needsLegacyRecovery
+      } = filterEntryMapTranslationsWithMeta(combined, settings.syncLanguages);
 
-      if (legacy || needsLegacyRecovery || stableEntryMapString(combined) !== stableEntryMapString(filtered)) {
+      if (legacy || needsLegacyRecovery || changed) {
         await saveEntryMap(filtered, { reason: legacy ? "migration-legacy" : "migration-normalize" });
         if (legacy) {
           await chrome.storage.local.remove(LEGACY_STORAGE_KEY);
         }
       }
 
-      return filtered;
+      cachedSettings = settings;
+      cachedEntryMap = filtered;
+      return cachedEntryMap;
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
+        invalidateStoreCache();
         return {};
       }
       throw error;
@@ -490,10 +591,14 @@
   }
 
   async function saveEntryMap(entryMap) {
+    ensureStoreCacheListener();
+
     try {
       const nextEntryMap = normalizeEntryMap(entryMap);
       await chrome.storage.local.set({ [STORAGE_KEY]: nextEntryMap });
+      cachedEntryMap = nextEntryMap;
     } catch (error) {
+      invalidateStoreCache({ entryMap: true, settings: false });
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
       }
@@ -502,12 +607,20 @@
   }
 
   async function getSettings() {
+    ensureStoreCacheListener();
+
+    if (cachedSettings) {
+      return cloneSettings(cachedSettings);
+    }
+
     try {
       const data = await chrome.storage.local.get([SETTINGS_KEY]);
-      return normalizeSettings(data[SETTINGS_KEY] || {});
+      cachedSettings = normalizeSettings(data[SETTINGS_KEY] || {});
+      return cloneSettings(cachedSettings);
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
-        return { ...DEFAULT_SETTINGS };
+        invalidateStoreCache({ entryMap: false, settings: true });
+        return cloneSettings(DEFAULT_SETTINGS);
       }
       throw error;
     }
@@ -524,14 +637,16 @@
   }
 
   async function setAutoModeDirect(enabled) {
-    const nextSettings = {
+    const nextSettings = normalizeSettings({
       ...(await getSettings()),
       autoMode: Boolean(enabled)
-    };
+    });
 
     try {
       await chrome.storage.local.set({ [SETTINGS_KEY]: nextSettings });
+      cachedSettings = nextSettings;
     } catch (error) {
+      invalidateStoreCache({ entryMap: false, settings: true });
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
       }
@@ -556,7 +671,9 @@
     try {
       await saveEntryMap(filteredEntryMap, { reason: "settings-sync-languages" });
       await chrome.storage.local.set({ [SETTINGS_KEY]: nextSettings });
+      cachedSettings = nextSettings;
     } catch (error) {
+      invalidateStoreCache({ entryMap: false, settings: true });
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
       }
@@ -848,9 +965,18 @@
     await saveEntryMap(filteredEntryMap, { reason: "import-json" });
 
     if (importedSettings) {
-      await chrome.storage.local.set({
-        [SETTINGS_KEY]: effectiveSettings
-      });
+      try {
+        await chrome.storage.local.set({
+          [SETTINGS_KEY]: effectiveSettings
+        });
+        cachedSettings = effectiveSettings;
+      } catch (error) {
+        invalidateStoreCache({ entryMap: false, settings: true });
+        if (isExtensionContextInvalidated(error)) {
+          throw createRefreshPageError();
+        }
+        throw error;
+      }
     }
 
     return { imported, total: countStoredEntries(filteredEntryMap) };

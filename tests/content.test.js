@@ -86,6 +86,57 @@ test("content script can recover when URL changes to article without history eve
   assert.equal(banner.querySelector(".lodw-word").textContent, "Haus");
 });
 
+test("content script refreshes when article details hydrate after the heading already exists", async () => {
+  const html = `
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta property="og:title" content="Haus - LOD">
+      </head>
+      <body>
+        <main>
+          <h1>Haus kopéiert</h1>
+          <section class="microstructures"></section>
+        </main>
+      </body>
+    </html>
+  `;
+  const { dom, sentRuntimeMessages } = loadContentScript({ html });
+
+  await wait(50);
+
+  const initialBanner = dom.window.document.getElementById("lod-wrapper-banner");
+  assert.ok(initialBanner);
+  assert.equal(initialBanner.querySelector(".lodw-info").textContent.trim(), "");
+  const initialMessageCount = sentRuntimeMessages.filter((message) => message.type === "lod-wrapper:page-state-changed").length;
+
+  const meta = dom.window.document.createElement("meta");
+  meta.setAttribute("name", "description");
+  meta.setAttribute("content", "noun");
+  dom.window.document.head.appendChild(meta);
+
+  const targetLanguages = dom.window.document.createElement("div");
+  targetLanguages.className = "targetLanguages";
+  targetLanguages.innerHTML = `
+    <div class="en"><span class="content">house</span></div>
+    <div class="fr"><span class="content">maison</span></div>
+  `;
+  dom.window.document.querySelector(".microstructures").appendChild(targetLanguages);
+
+  await wait(180);
+
+  const banner = dom.window.document.getElementById("lod-wrapper-banner");
+  assert.match(banner.querySelector(".lodw-info").textContent, /English: house/);
+
+  const pageStateMessages = sentRuntimeMessages.filter((message) => message.type === "lod-wrapper:page-state-changed");
+  assert.ok(pageStateMessages.length > initialMessageCount);
+  assert.equal(pageStateMessages.at(-1).entry.pos, "noun");
+  assert.deepEqual({ ...pageStateMessages.at(-1).entry.translations }, {
+    en: "house",
+    fr: "maison"
+  });
+});
+
 test("infoText does not count the primary language in +N for non-default languages", () => {
   const { api } = loadContentScript({
     html: samplePageHtml(),

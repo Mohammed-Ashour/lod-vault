@@ -32,6 +32,7 @@
       deletingBackupId: "",
       browserHistoryImporting: false,
       syncNowInProgress: false,
+      syncPullInProgress: false,
       historyImportRange: "all",
       historyImportReport: null,
       currentPageRequestId: 0
@@ -118,6 +119,18 @@
     }
 
     async function handleStorageChange(changes, areaName) {
+      if (areaName === "sync") {
+        const hasSyncVaultChange = Object.keys(changes || {}).some((key) => (
+          key === "lodVault.m"
+          || key === "lodVault.s"
+          || key.startsWith("lodVault.e.")
+        ));
+        if (hasSyncVaultChange) {
+          await refreshSyncHealth();
+        }
+        return;
+      }
+
       if (areaName !== "local") return;
 
       const hasEntriesChange = Boolean(
@@ -293,33 +306,153 @@
       return Boolean(sync?.SyncAdapter?.pushAll);
     }
 
+    function supportsManualSyncPull() {
+      const sync = getSyncNamespace();
+      return Boolean(sync?.SyncAdapter?.pullAll);
+    }
+
+    function supportsSyncHealthInspection() {
+      return typeof chromeApi?.storage?.sync?.get === "function";
+    }
+
+    function getSyncKeySummary(syncStorage = {}) {
+      const keys = Object.keys(syncStorage || {}).filter((key) => (
+        key === "lodVault.m"
+        || key === "lodVault.s"
+        || key.startsWith("lodVault.e.")
+      ));
+      const shardKeyCount = keys.filter((key) => key.startsWith("lodVault.e.")).length;
+
+      return {
+        keyCount: keys.length,
+        shardKeyCount
+      };
+    }
+
     function setSyncNowStatus(message, tone = "") {
       if (!elements.syncNowStatus) return;
       elements.syncNowStatus.textContent = message;
-      elements.syncNowStatus.classList.remove("is-success", "is-error");
+      elements.syncNowStatus.classList.remove("is-success", "is-error", "is-warning");
       if (tone === "success") {
         elements.syncNowStatus.classList.add("is-success");
       } else if (tone === "error") {
         elements.syncNowStatus.classList.add("is-error");
+      } else if (tone === "warning") {
+        elements.syncNowStatus.classList.add("is-warning");
+      }
+    }
+
+    function setSyncHealthStatus(message, tone = "") {
+      if (!elements.syncHealthStatus) return;
+      elements.syncHealthStatus.textContent = message;
+      elements.syncHealthStatus.classList.remove("is-success", "is-error", "is-warning");
+      if (!message) {
+        elements.syncHealthStatus.classList.add("is-hidden");
+        return;
+      }
+
+      elements.syncHealthStatus.classList.remove("is-hidden");
+      if (tone === "success") {
+        elements.syncHealthStatus.classList.add("is-success");
+      } else if (tone === "error") {
+        elements.syncHealthStatus.classList.add("is-error");
+      } else if (tone === "warning") {
+        elements.syncHealthStatus.classList.add("is-warning");
+      }
+    }
+
+    async function refreshSyncHealth() {
+      if (!supportsSyncHealthInspection() || !elements.syncHealthStatus) return;
+      if (state.syncNowInProgress || state.syncPullInProgress) return;
+
+      try {
+        const syncStorage = await chromeApi.storage.sync.get(null);
+        const summary = getSyncKeySummary(syncStorage);
+        const hasSyncMetadata = summary.keyCount > 0;
+        let remoteEntryCount = Number.NaN;
+
+        const sync = getSyncNamespace();
+        if (typeof sync?.getSyncUsageStats === "function") {
+          try {
+            const stats = await sync.getSyncUsageStats();
+            remoteEntryCount = Number(stats?.entryCount);
+          } catch {
+            remoteEntryCount = Number.NaN;
+          }
+        }
+
+        const hasSyncWords = Number.isFinite(remoteEntryCount)
+          ? remoteEntryCount > 0
+          : summary.shardKeyCount > 0;
+        const localCount = Number(state.savedEntries?.length || 0);
+
+        if (hasSyncWords && localCount === 0) {
+          setSyncHealthStatus("Synced words found, but your local vault is empty. Click Pull synced data.", "warning");
+          return;
+        }
+
+        if (hasSyncMetadata && !hasSyncWords && localCount === 0) {
+          setSyncHealthStatus("Sync is connected, but no words are stored in sync yet.", "warning");
+          return;
+        }
+
+        if (!hasSyncMetadata && localCount > 0) {
+          setSyncHealthStatus("No synced vault backup found yet. Click Sync now to upload this vault.", "warning");
+          return;
+        }
+
+        if (hasSyncMetadata && !hasSyncWords && localCount > 0) {
+          setSyncHealthStatus("Sync has no words yet. Click Sync now to upload this vault.", "warning");
+          return;
+        }
+
+        setSyncHealthStatus("");
+      } catch {
+        setSyncHealthStatus("Could not read sync status.", "error");
       }
     }
 
     function renderSyncNowAction() {
       if (!elements.syncNowButton) return;
 
-      if (!supportsManualSyncNow()) {
+      const canSyncNow = supportsManualSyncNow();
+      const canSyncPull = supportsManualSyncPull();
+
+      if (!canSyncNow) {
         elements.syncNowButton.classList.add("is-hidden");
+      } else {
+        elements.syncNowButton.classList.remove("is-hidden");
+      }
+
+      if (elements.syncPullButton) {
+        if (!canSyncPull) {
+          elements.syncPullButton.classList.add("is-hidden");
+        } else {
+          elements.syncPullButton.classList.remove("is-hidden");
+        }
+      }
+
+      if (!canSyncNow && !canSyncPull) {
         setSyncNowStatus("");
         return;
       }
 
-      elements.syncNowButton.classList.remove("is-hidden");
-      elements.syncNowButton.disabled = Boolean(
+      const controlsBusy = Boolean(
         state.syncNowInProgress
+        || state.syncPullInProgress
         || state.browserHistoryImporting
         || state.syncLanguagesSaving
       );
-      elements.syncNowButton.textContent = state.syncNowInProgress ? "Syncing…" : "Sync now";
+
+      if (canSyncNow) {
+        elements.syncNowButton.disabled = controlsBusy;
+        elements.syncNowButton.textContent = state.syncNowInProgress ? "Syncing…" : "Sync now";
+      }
+
+      if (canSyncPull && elements.syncPullButton) {
+        elements.syncPullButton.disabled = controlsBusy;
+        elements.syncPullButton.textContent = state.syncPullInProgress ? "Pulling…" : "Pull synced data";
+      }
     }
 
     function clearScheduledSyncCapacityRefresh() {
@@ -382,6 +515,59 @@
       } finally {
         state.syncNowInProgress = false;
         renderSyncNowAction();
+        await refreshSyncHealth();
+      }
+    }
+
+    async function pullSyncedData() {
+      if (state.syncPullInProgress || !supportsManualSyncPull()) return;
+
+      const sync = getSyncNamespace();
+      const beforeCount = Number(state.savedEntries?.length || 0);
+      state.syncPullInProgress = true;
+      renderSyncNowAction();
+      setSyncNowStatus("Pulling synced data…");
+
+      try {
+        const result = await sync.SyncAdapter.pullAll({ repush: false });
+        await refreshSettingsState();
+        await renderSavedList({ refreshBackups: false });
+        await refreshCurrentPage();
+        await renderSyncCapacity();
+        scheduleSyncCapacityRefresh();
+
+        const afterCount = Number(state.savedEntries?.length || 0);
+        const pulledCount = Math.max(0, afterCount - beforeCount);
+
+        if (result?.ok === false) {
+          setSyncNowStatus("Pull failed. Could not load synced data.", "error");
+        } else if (result?.partialRead) {
+          setSyncNowStatus(
+            `Pull completed with warnings · ${afterCount} words loaded (sync data was partial).`,
+            "warning"
+          );
+        } else if (pulledCount > 0) {
+          setSyncNowStatus(
+            `Pull complete · +${pulledCount} word${pulledCount === 1 ? "" : "s"} from sync (${afterCount} total).`,
+            "success"
+          );
+        } else if (result?.changed === false) {
+          setSyncNowStatus(
+            `Pull complete · no changes (${afterCount} words in vault).`,
+            "success"
+          );
+        } else {
+          setSyncNowStatus(
+            `Pull complete · synced updates applied (${afterCount} words in vault).`,
+            "success"
+          );
+        }
+      } catch {
+        setSyncNowStatus("Pull failed. Could not load synced data.", "error");
+      } finally {
+        state.syncPullInProgress = false;
+        renderSyncNowAction();
+        await refreshSyncHealth();
       }
     }
 
@@ -720,6 +906,7 @@
       renderSummary(entries);
       renderAutoMode();
       renderSyncLanguages();
+      await refreshSyncHealth();
       renderList();
       if (shouldRefreshBackups) {
         await refreshBackups();
@@ -1369,7 +1556,9 @@
       elements.syncCapacityBar = document.getElementById("sync-capacity-bar");
       elements.syncCapacityFill = document.getElementById("sync-capacity-fill");
       elements.syncNowButton = document.getElementById("sync-now");
+      elements.syncPullButton = document.getElementById("sync-pull");
       elements.syncNowStatus = document.getElementById("sync-now-status");
+      elements.syncHealthStatus = document.getElementById("sync-health-status");
       elements.openFlashcards = document.getElementById("open-flashcards");
       elements.openPreview = document.getElementById("open-preview");
       elements.exportHtml = document.getElementById("export-html");
@@ -1410,6 +1599,7 @@
       elements.autoModeToggle.addEventListener("click", toggleAutoMode);
       elements.syncLanguageChips.addEventListener("click", onSyncLanguageChipClick);
       elements.syncNowButton?.addEventListener("click", syncNow);
+      elements.syncPullButton?.addEventListener("click", pullSyncedData);
       elements.openFlashcards.addEventListener("click", openFlashcards);
       elements.openPreview.addEventListener("click", openPreview);
       elements.exportHtml.addEventListener("click", exportHtml);

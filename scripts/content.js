@@ -5,6 +5,9 @@ let domObserver = null;
 let locationHooksInstalled = false;
 let lastAutoRecordKey = "";
 let currentAutoMode = false;
+let lastPopupStateKey = "";
+let observerLastUrl = location.href;
+let observerHadHeading = Boolean(LodWrapperArticleReader.getHeadingElement());
 
 const { extractCurrentEntry } = LodWrapperArticleReader;
 
@@ -14,13 +17,49 @@ function isExtensionContextInvalidated(error) {
   return LodWrapperStore.isExtensionContextInvalidated(error) || String(error || "").includes("Extension updated — refresh the page");
 }
 
+function serializePopupEntryState(entry) {
+  if (!entry) return null;
+
+  return {
+    id: entry.id || "",
+    word: entry.word || "",
+    url: entry.url || "",
+    pos: entry.pos || "",
+    inflection: entry.inflection || "",
+    example: entry.example || "",
+    note: entry.note || "",
+    favorite: Boolean(entry.favorite),
+    study: Boolean(entry.study),
+    history: Boolean(entry.history),
+    visitCount: Number(entry.visitCount || 0),
+    lastVisitedAt: entry.lastVisitedAt || "",
+    updatedAt: entry.updatedAt || "",
+    translations: Object.fromEntries(
+      Object.entries(entry.translations || {})
+        .map(([language, value]) => [language, value || ""])
+        .sort(([left], [right]) => left.localeCompare(right))
+    )
+  };
+}
+
+function buildPopupStateKey(entry, savedEntry) {
+  return JSON.stringify({
+    entry: serializePopupEntryState(entry),
+    savedEntry: serializePopupEntryState(savedEntry)
+  });
+}
+
 function notifyPopup(entry, savedEntry) {
+  const nextKey = buildPopupStateKey(entry, savedEntry);
+  if (nextKey === lastPopupStateKey) return;
+
   try {
     chrome.runtime.sendMessage({
       type: "lod-wrapper:page-state-changed",
       entry: entry || null,
       savedEntry: savedEntry || null
     });
+    lastPopupStateKey = nextKey;
   } catch {
     // Ignore when no extension page is listening.
   }
@@ -29,6 +68,7 @@ function notifyPopup(entry, savedEntry) {
 function handleInvalidatedContext() {
   if (contextInvalidated) return;
   contextInvalidated = true;
+  lastPopupStateKey = "";
 
   if (refreshDebounce) {
     clearTimeout(refreshDebounce);
@@ -158,11 +198,47 @@ async function handleListToggle(listName) {
   }
 }
 
+function matchesArticleMutationNode(node) {
+  if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+
+  return Boolean(
+    node.matches?.('h1, .microstructures, .targetLanguages, .examples, .inflection, meta[name="description"]')
+    || node.querySelector?.('h1, .microstructures, .targetLanguages, .examples, .inflection, meta[name="description"]')
+    || node.closest?.("main")
+  );
+}
+
+function mutationTouchesArticleContent(mutation) {
+  if (matchesArticleMutationNode(mutation?.target)) {
+    return true;
+  }
+
+  for (const node of mutation?.addedNodes || []) {
+    if (matchesArticleMutationNode(node)) return true;
+  }
+
+  for (const node of mutation?.removedNodes || []) {
+    if (matchesArticleMutationNode(node)) return true;
+  }
+
+  return false;
+}
+
 function installDomObserver() {
   if (domObserver || typeof MutationObserver === "undefined") return;
 
-  domObserver = new MutationObserver(() => {
-    if (LodWrapperArticleReader.getHeadingElement()) scheduleRefresh(80);
+  domObserver = new MutationObserver((mutations) => {
+    const nextUrl = location.href;
+    const hasHeading = Boolean(LodWrapperArticleReader.getHeadingElement());
+    const urlChanged = nextUrl !== observerLastUrl;
+    const headingAppeared = !observerHadHeading && hasHeading;
+    const articleContentChanged = hasHeading && mutations.some((mutation) => mutationTouchesArticleContent(mutation));
+
+    observerLastUrl = nextUrl;
+    observerHadHeading = hasHeading;
+
+    if (!urlChanged && !headingAppeared && !articleContentChanged) return;
+    scheduleRefresh(urlChanged ? 0 : 80);
   });
 
   domObserver.observe(document.documentElement, {
@@ -191,6 +267,9 @@ function installLocationHooks() {
   window.addEventListener("lod-wrapper:locationchange", () => {
     bannerController.clearRenderKey();
     lastAutoRecordKey = "";
+    lastPopupStateKey = "";
+    observerLastUrl = location.href;
+    observerHadHeading = Boolean(LodWrapperArticleReader.getHeadingElement());
     scheduleRefresh(0);
   });
 }

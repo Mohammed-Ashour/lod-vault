@@ -153,6 +153,51 @@ test("popup sync-now button pushes local vault to sync and updates status", asyn
   assert.match(dom.window.document.getElementById("sync-now-status").textContent, /Sync complete/);
 });
 
+test("popup pull-synced-data button pulls without triggering sync init side effects", async () => {
+  let initCalls = 0;
+  let pullAllCalls = 0;
+
+  const { dom } = await loadPopupScript({
+    entries: [],
+    syncOverrides: {
+      SYNC_TOTAL_HARD_LIMIT: 102400,
+      async getSyncUsageStats() {
+        return {
+          bytesUsed: 2048,
+          bytesTotal: 102400,
+          bytesRemaining: 100352,
+          percentUsed: 2,
+          entryCount: 4,
+          shardCount: 1,
+          estimatedRemaining: 600
+        };
+      },
+      SyncAdapter: {
+        async init() {
+          initCalls += 1;
+          return { ok: true };
+        },
+        async pullAll() {
+          pullAllCalls += 1;
+          return { ok: true, changed: true, entryCount: 4 };
+        }
+      }
+    }
+  });
+
+  const button = dom.window.document.getElementById("sync-pull");
+  button.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(initCalls, 0);
+  assert.equal(pullAllCalls, 1);
+  const syncStatus = dom.window.document.getElementById("sync-now-status");
+  assert.match(syncStatus.textContent, /Pull complete/);
+  assert.equal(syncStatus.classList.contains("is-success"), true);
+});
+
 test("popup imports browser history on user action after requesting permission", async () => {
   const importCalls = [];
 

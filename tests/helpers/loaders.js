@@ -43,13 +43,23 @@ const COMPRESSION_GLOBALS = typeof CompressionStream !== "undefined"
   ? { CompressionStream, DecompressionStream, ReadableStream: globalThis.ReadableStream, WritableStream: globalThis.WritableStream }
   : {};
 
-function createChromeStorage(initialData = {}) {
+function createChromeStorage(initialData = {}, options = {}) {
   const hasAreas = Boolean(initialData && ("local" in initialData || "sync" in initialData));
   const data = {
     local: structuredClone(hasAreas ? (initialData.local || {}) : initialData),
     sync: structuredClone(hasAreas ? (initialData.sync || {}) : {})
   };
   const onChanged = createChromeEvent();
+  const asyncOnChanged = Boolean(options?.asyncOnChanged);
+
+  function dispatchChanges(changes, areaName) {
+    if (!Object.keys(changes).length) return;
+    if (asyncOnChanged) {
+      setTimeout(() => onChanged.dispatch(changes, areaName), 0);
+      return;
+    }
+    onChanged.dispatch(changes, areaName);
+  }
 
   function cloneForStore(value) {
     return value === undefined ? undefined : structuredClone(value);
@@ -100,9 +110,7 @@ function createChromeStorage(initialData = {}) {
           changes[key] = { oldValue, newValue: cloneForStore(newValue) };
         }
 
-        if (Object.keys(changes).length) {
-          onChanged.dispatch(changes, areaName);
-        }
+        dispatchChanges(changes, areaName);
       },
       async remove(keys) {
         const list = Array.isArray(keys) ? keys : [keys];
@@ -114,9 +122,7 @@ function createChromeStorage(initialData = {}) {
           delete areaData[key];
         }
 
-        if (Object.keys(changes).length) {
-          onChanged.dispatch(changes, areaName);
-        }
+        dispatchChanges(changes, areaName);
       }
     };
   }
@@ -138,8 +144,10 @@ function createChromeStorage(initialData = {}) {
   };
 }
 
-function loadSharedStore(initialStorage = {}) {
-  const { chrome, data } = createChromeStorage(initialStorage);
+function loadSharedStore(initialStorage = {}, options = {}) {
+  const { chrome, data } = createChromeStorage(initialStorage, {
+    asyncOnChanged: Boolean(options?.asyncStorageEvents)
+  });
   const context = {
     chrome,
     console,
@@ -177,7 +185,10 @@ function loadSharedStore(initialStorage = {}) {
     storageData: data.local,
     syncStorageData: data.sync,
     fullStorageData: data,
-    context
+    context,
+    async flushStorageEvents() {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
   };
 }
 
@@ -244,12 +255,17 @@ function loadContentScript({
   dom.window.document.title = title;
 
   let messageListener = null;
+  const sentRuntimeMessages = [];
   const chrome = {
     runtime: {
       onMessage: {
         addListener(listener) {
           messageListener = listener;
         }
+      },
+      async sendMessage(message) {
+        sentRuntimeMessages.push(structuredClone(message));
+        return { ok: true };
       }
     }
   };
@@ -324,6 +340,7 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/content.js"), "utf8")}
     api: context.__contentTest,
     chrome,
     LodWrapperStore,
+    sentRuntimeMessages,
     getMessageListener: () => messageListener,
     context
   };
