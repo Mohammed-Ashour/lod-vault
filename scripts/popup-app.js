@@ -25,11 +25,10 @@
       autoMode: false,
       syncLanguages: [...(store.DEFAULT_SETTINGS?.syncLanguages || ["en", "fr", "de"])],
       syncLanguagesSaving: false,
-      backups: [],
-      backupsLoading: false,
-      creatingBackup: false,
-      restoringBackupId: "",
-      deletingBackupId: "",
+      portableBackupMeta: {
+        lastExportedAt: "",
+        entryCount: 0
+      },
       browserHistoryImporting: false,
       syncNowInProgress: false,
       syncPullInProgress: false,
@@ -41,6 +40,20 @@
     const elements = {};
     let initialized = false;
     const pendingSyncCapacityRefreshTimers = new Set();
+
+    function normalizePortableBackupMeta(meta = {}) {
+      if (typeof store.normalizePortableBackupMeta === "function") {
+        return store.normalizePortableBackupMeta(meta);
+      }
+
+      const lastExportedAt = typeof meta?.lastExportedAt === "string" ? meta.lastExportedAt : "";
+      const timestamp = Date.parse(lastExportedAt);
+
+      return {
+        lastExportedAt: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : "",
+        entryCount: Math.max(0, Number(meta?.entryCount) || 0)
+      };
+    }
 
     const noteAutosave = store.createNoteAutosaveController({
       getTimerKey: (textarea) => textarea === elements.currentNoteInput
@@ -90,7 +103,7 @@
 
     async function handleActiveTabChange() {
       await refreshCurrentPage();
-      await renderSavedList({ refreshBackups: false });
+      await renderSavedList();
     }
 
     async function handleTabUpdated(tabId, changeInfo, tab) {
@@ -99,7 +112,7 @@
       if (state.currentTabId && tabId !== state.currentTabId && !changeInfo.url) return;
 
       await refreshCurrentPage();
-      await renderSavedList({ refreshBackups: false });
+      await renderSavedList();
     }
 
     async function handlePageStateMessage(message, sender) {
@@ -115,7 +128,7 @@
         renderCurrentPageCard(savedEntry);
       }
 
-      await renderSavedList({ refreshBackups: false });
+      await renderSavedList();
     }
 
     async function handleStorageChange(changes, areaName) {
@@ -140,14 +153,14 @@
       const hasSettingsChange = Boolean(
         store.SETTINGS_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.SETTINGS_KEY)
       );
-      const hasBackupChange = Boolean(
-        store.BACKUP_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.BACKUP_KEY)
+      const hasPortableBackupChange = Boolean(
+        store.PORTABLE_BACKUP_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.PORTABLE_BACKUP_KEY)
       );
       const hasHistoryImportStateChange = Boolean(
         store.HISTORY_IMPORT_STATE_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.HISTORY_IMPORT_STATE_KEY)
       );
 
-      if (!hasEntriesChange && !hasSettingsChange && !hasBackupChange && !hasHistoryImportStateChange) {
+      if (!hasEntriesChange && !hasSettingsChange && !hasPortableBackupChange && !hasHistoryImportStateChange) {
         return;
       }
 
@@ -159,10 +172,12 @@
         await refreshHistoryImportState();
       }
 
+      if (hasPortableBackupChange) {
+        await refreshPortableBackupMeta();
+      }
+
       if (hasEntriesChange || hasSettingsChange) {
-        await renderSavedList({ refreshBackups: hasBackupChange });
-      } else if (hasBackupChange) {
-        await refreshBackups();
+        await renderSavedList();
       }
     }
 
@@ -598,7 +613,7 @@
             return;
           }
           await refreshSettingsState();
-          await renderSavedList({ refreshBackups: false });
+          await renderSavedList();
           await refreshCurrentPage();
         }
 
@@ -643,7 +658,7 @@
       try {
         const result = await sync.SyncAdapter.pullAll({ repush: false });
         await refreshSettingsState();
-        await renderSavedList({ refreshBackups: false });
+        await renderSavedList();
         await refreshCurrentPage();
         await renderSyncCapacity();
         scheduleSyncCapacityRefresh();
@@ -933,7 +948,7 @@
         }
 
         await refreshCurrentPage();
-        await renderSavedList({ refreshBackups: false });
+        await renderSavedList();
       } finally {
         elements.autoModeToggle.disabled = false;
       }
@@ -956,7 +971,7 @@
         }
 
         renderCurrentPageCard(response?.entry || null);
-        await renderSavedList({ refreshBackups: false });
+        await renderSavedList();
       } finally {
         button.disabled = false;
       }
@@ -969,7 +984,7 @@
 
       try {
         await store.removeEntry(state.currentEntry.id);
-        await renderSavedList({ refreshBackups: false });
+        await renderSavedList();
         const savedEntry = state.currentEntry ? await store.getEntry(state.currentEntry.id) : null;
         renderCurrentPageCard(savedEntry);
       } finally {
@@ -997,6 +1012,125 @@
         return `${totalCount} saved word${totalCount === 1 ? "" : "s"} · showing ${visibleCount} recent`;
       }
       return `${filteredCount} match${filteredCount === 1 ? "" : "es"} · ${totalCount} total`;
+    }
+
+    function getEntryChangeTimestamp(entry = {}) {
+      return Math.max(
+        Date.parse(entry?.updatedAt || "") || 0,
+        Date.parse(entry?.lastVisitedAt || "") || 0,
+        Date.parse(entry?.createdAt || "") || 0
+      );
+    }
+
+    function getLatestVaultChangeTimestamp(entries = []) {
+      return entries.reduce((latest, entry) => Math.max(latest, getEntryChangeTimestamp(entry)), 0);
+    }
+
+    function setPortableBackupStatus(message, options = {}) {
+      if (!elements.portableBackupStatus) return;
+
+      const tone = options.tone || "";
+      const chipLabel = options.chipLabel || "";
+      const showAction = Boolean(options.showAction);
+      const visualTone = tone || "neutral";
+
+      elements.portableBackupStatus.textContent = message;
+      elements.portableBackupStatus.classList.remove("is-success", "is-error", "is-warning");
+      if (tone === "success") {
+        elements.portableBackupStatus.classList.add("is-success");
+      } else if (tone === "error") {
+        elements.portableBackupStatus.classList.add("is-error");
+      } else if (tone === "warning") {
+        elements.portableBackupStatus.classList.add("is-warning");
+      }
+
+      if (elements.portableBackupCard) {
+        elements.portableBackupCard.classList.remove("is-success", "is-warning", "is-error", "is-neutral");
+        elements.portableBackupCard.classList.add(`is-${visualTone}`);
+      }
+
+      if (elements.portableBackupChip) {
+        elements.portableBackupChip.textContent = chipLabel;
+        elements.portableBackupChip.classList.remove("is-success", "is-warning", "is-error", "is-neutral");
+        elements.portableBackupChip.classList.add(`is-${visualTone}`);
+      }
+
+      if (elements.portableBackupNowButton) {
+        elements.portableBackupNowButton.classList.toggle("is-hidden", !showAction);
+      }
+    }
+
+    function describePortableBackupStatus() {
+      const meta = normalizePortableBackupMeta(state.portableBackupMeta);
+      const exportedAt = meta.lastExportedAt;
+      const backupCount = Math.max(0, Number(meta.entryCount) || 0);
+      const currentCount = Math.max(0, Number(state.savedEntries?.length) || 0);
+      const hasEntries = currentCount > 0;
+
+      if (!exportedAt) {
+        return hasEntries
+          ? {
+              message: "Portable backup: not created yet. Click Backup JSON before uninstalling or switching versions.",
+              tone: "warning",
+              chipLabel: "Never",
+              showAction: true
+            }
+          : {
+              message: "Portable backup: create a JSON backup when you want a file you can restore later.",
+              tone: "",
+              chipLabel: "Never",
+              showAction: false
+            };
+      }
+
+      const when = typeof store.formatWhen === "function"
+        ? store.formatWhen(exportedAt)
+        : exportedAt;
+      const latestVaultChange = getLatestVaultChangeTimestamp(state.savedEntries);
+      const exportTimestamp = Date.parse(exportedAt) || 0;
+      const hasUnsavedChanges = latestVaultChange > exportTimestamp || backupCount !== currentCount;
+      const countLabel = `${backupCount} word${backupCount === 1 ? "" : "s"}`;
+
+      if (hasUnsavedChanges) {
+        return {
+          message: `Last portable backup: ${when} · ${countLabel}. Newer local changes are not included yet.`,
+          tone: "warning",
+          chipLabel: "Needs backup",
+          showAction: true
+        };
+      }
+
+      return {
+        message: `Last portable backup: ${when} · ${countLabel}. This backup survives uninstall.`,
+        tone: "success",
+        chipLabel: "Up to date",
+        showAction: false
+      };
+    }
+
+    function renderPortableBackupStatus() {
+      const nextState = describePortableBackupStatus();
+      setPortableBackupStatus(nextState.message, nextState);
+    }
+
+    async function refreshPortableBackupMeta() {
+      if (typeof store.getPortableBackupMeta !== "function") {
+        state.portableBackupMeta = normalizePortableBackupMeta({});
+        renderPortableBackupStatus();
+        return;
+      }
+
+      try {
+        state.portableBackupMeta = normalizePortableBackupMeta(await store.getPortableBackupMeta());
+        renderPortableBackupStatus();
+      } catch {
+        state.portableBackupMeta = normalizePortableBackupMeta({});
+        setPortableBackupStatus("Portable backup status unavailable.", {
+          tone: "error",
+          chipLabel: "Status",
+          showAction: false
+        });
+      }
     }
 
     function entrySubline(entry) {
@@ -1042,8 +1176,7 @@
       `;
     }
 
-    async function renderSavedList(options = {}) {
-      const shouldRefreshBackups = options.refreshBackups !== false;
+    async function renderSavedList() {
       const entries = await store.getEntries();
       state.savedEntries = entries;
       renderSummary(entries);
@@ -1051,9 +1184,7 @@
       renderSyncLanguages();
       await refreshSyncHealth();
       renderList();
-      if (shouldRefreshBackups) {
-        await refreshBackups();
-      }
+      renderPortableBackupStatus();
       await syncCurrentCardState();
     }
 
@@ -1160,7 +1291,7 @@
           await store.toggleList(entry, "study");
         }
 
-        await renderSavedList({ refreshBackups: false });
+        await renderSavedList();
       } finally {
         button.disabled = false;
       }
@@ -1187,239 +1318,6 @@
     function onSearchInput(event) {
       state.searchQuery = event.target.value || "";
       renderList();
-    }
-
-    function supportsBackups() {
-      return typeof store.getVaultBackups === "function"
-        && typeof store.restoreVaultBackup === "function";
-    }
-
-    function supportsBackupCreate() {
-      return typeof store.createVaultBackup === "function";
-    }
-
-    function supportsBackupDelete() {
-      return typeof store.deleteVaultBackup === "function";
-    }
-
-    function setBackupStatus(message, tone = "") {
-      if (!elements.backupStatus) return;
-      elements.backupStatus.textContent = message;
-      elements.backupStatus.classList.remove("is-success", "is-error");
-      if (tone === "success") {
-        elements.backupStatus.classList.add("is-success");
-      } else if (tone === "error") {
-        elements.backupStatus.classList.add("is-error");
-      }
-    }
-
-    function buildBackupItemMarkup(backup) {
-      const backupId = store.escapeHtml(backup.id || "");
-      const count = Number(backup.entryCount) || 0;
-      const countLabel = `${count} word${count === 1 ? "" : "s"}`;
-      const reason = store.escapeHtml((backup.reason || "auto").replace(/-/g, " "));
-      const when = store.escapeHtml(
-        typeof store.formatWhen === "function"
-          ? store.formatWhen(backup.createdAt)
-          : (backup.createdAt || "")
-      );
-      const restoring = state.restoringBackupId && state.restoringBackupId === backup.id;
-      const deleting = state.deletingBackupId && state.deletingBackupId === backup.id;
-      const disabled = restoring || deleting || state.backupsLoading || state.creatingBackup;
-
-      return `
-        <article class="backup-item" data-backup-id="${backupId}">
-          <p class="backup-meta">${countLabel} · ${reason}<br>${when}</p>
-          <div class="backup-actions">
-            <button type="button" class="backup-restore" data-action="restore-backup" data-backup-id="${backupId}" ${disabled ? "disabled" : ""}>${restoring ? "Restoring…" : "Restore"}</button>
-            ${supportsBackupDelete()
-              ? `<button type="button" class="backup-delete" data-action="delete-backup" data-backup-id="${backupId}" ${disabled ? "disabled" : ""}>${deleting ? "Deleting…" : "Delete"}</button>`
-              : ""}
-          </div>
-        </article>
-      `;
-    }
-
-    function renderBackups(statusMessage = "", tone = "") {
-      if (!elements.backupSection || !elements.backupList || !elements.backupStatus) return;
-
-      if (!supportsBackups()) {
-        elements.backupSection.classList.add("is-hidden");
-        return;
-      }
-
-      elements.backupSection.classList.remove("is-hidden");
-
-      const controlsDisabled = state.backupsLoading
-        || state.creatingBackup
-        || Boolean(state.restoringBackupId)
-        || Boolean(state.deletingBackupId);
-
-      if (elements.refreshBackups) {
-        elements.refreshBackups.disabled = controlsDisabled;
-      }
-
-      if (elements.createBackup) {
-        if (supportsBackupCreate()) {
-          elements.createBackup.classList.remove("is-hidden");
-          elements.createBackup.disabled = controlsDisabled;
-          elements.createBackup.textContent = state.creatingBackup ? "Creating…" : "Create snapshot";
-        } else {
-          elements.createBackup.classList.add("is-hidden");
-        }
-      }
-
-      elements.backupList.innerHTML = state.backups.map(buildBackupItemMarkup).join("");
-
-      if (statusMessage) {
-        setBackupStatus(statusMessage, tone);
-        return;
-      }
-
-      if (state.backupsLoading) {
-        setBackupStatus("Loading backups…");
-        return;
-      }
-
-      if (!state.backups.length) {
-        setBackupStatus("No local backups yet.");
-        return;
-      }
-
-      setBackupStatus(`${state.backups.length} local backup snapshot${state.backups.length === 1 ? "" : "s"}.`);
-    }
-
-    async function refreshBackups() {
-      if (!supportsBackups()) {
-        renderBackups();
-        return;
-      }
-
-      state.backupsLoading = true;
-      renderBackups();
-
-      try {
-        const backups = await store.getVaultBackups(3);
-        state.backups = Array.isArray(backups) ? backups : [];
-        state.backupsLoading = false;
-        renderBackups();
-      } catch {
-        state.backups = [];
-        state.backupsLoading = false;
-        renderBackups("Could not load local backups.", "error");
-      }
-    }
-
-    async function onCreateBackup() {
-      if (!supportsBackupCreate()) return;
-
-      state.creatingBackup = true;
-      renderBackups("Creating snapshot…");
-
-      let message = "";
-      let tone = "";
-
-      try {
-        const result = await store.createVaultBackup("manual-popup");
-        await refreshBackups();
-
-        if (result?.created) {
-          message = `Backup created · ${result?.entryCount || 0} words saved.`;
-          tone = "success";
-        } else if ((result?.entryCount || 0) === 0) {
-          message = "No saved words yet to back up.";
-          tone = "";
-        } else {
-          message = "Latest backup is already up to date.";
-          tone = "";
-        }
-      } catch {
-        message = "Could not create a backup.";
-        tone = "error";
-      } finally {
-        state.creatingBackup = false;
-        renderBackups(message, tone);
-      }
-    }
-
-    async function onRefreshBackups() {
-      await refreshBackups();
-    }
-
-    async function onBackupListClick(event) {
-      const button = event.target.closest("button[data-action]");
-      if (!button || button.disabled) return;
-
-      const action = button.dataset.action || "";
-      if (action !== "restore-backup" && action !== "delete-backup") return;
-
-      const backupId = button.dataset.backupId || "";
-      const backup = state.backups.find((item) => item.id === backupId);
-      if (!backup) return;
-
-      const count = Number(backup.entryCount) || 0;
-
-      if (action === "restore-backup") {
-        const confirmed = typeof window?.confirm === "function"
-          ? window.confirm(`Restore this local backup (${count} word${count === 1 ? "" : "s"})?\n\nThis merges into your current vault and keeps existing words.`)
-          : true;
-        if (!confirmed) return;
-
-        state.restoringBackupId = backupId;
-        renderBackups("Restoring backup…");
-
-        let message = "";
-        let tone = "";
-
-        try {
-          const result = await store.restoreVaultBackup(backupId);
-          await refreshSettingsState();
-          await renderSavedList({ refreshBackups: false });
-          await refreshCurrentPage();
-          await refreshBackups();
-          message = `Backup restored · ${result?.entryCount || 0} words in vault.`;
-          tone = "success";
-        } catch {
-          message = "Could not restore that backup.";
-          tone = "error";
-        } finally {
-          state.restoringBackupId = "";
-          renderBackups(message, tone);
-        }
-
-        return;
-      }
-
-      if (!supportsBackupDelete()) return;
-
-      const confirmedDelete = typeof window?.confirm === "function"
-        ? window.confirm(`Delete this local backup (${count} word${count === 1 ? "" : "s"})?\n\nThis cannot be undone.`)
-        : true;
-      if (!confirmedDelete) return;
-
-      state.deletingBackupId = backupId;
-      renderBackups("Deleting backup…");
-
-      let message = "";
-      let tone = "";
-
-      try {
-        const result = await store.deleteVaultBackup(backupId);
-        await refreshBackups();
-        if (result?.deleted) {
-          message = "Backup deleted.";
-          tone = "success";
-        } else {
-          message = "Backup already removed.";
-          tone = "";
-        }
-      } catch {
-        message = "Could not delete that backup.";
-        tone = "error";
-      } finally {
-        state.deletingBackupId = "";
-        renderBackups(message, tone);
-      }
     }
 
     function openFlashcards() {
@@ -1680,6 +1578,17 @@
       const json = store.buildJsonExport(entries, { settings });
       const date = new Date().toISOString().slice(0, 10);
       store.downloadTextFile(`lodvault-export-${date}.json`, json, "application/json");
+
+      if (typeof store.markPortableBackupExported === "function") {
+        try {
+          state.portableBackupMeta = normalizePortableBackupMeta(
+            await store.markPortableBackupExported({ entryCount: entries.length })
+          );
+          renderPortableBackupStatus();
+        } catch {
+          // Ignore backup-status persistence failures so the download still works.
+        }
+      }
     }
 
     async function importJsonFile(event) {
@@ -1745,11 +1654,10 @@
       elements.importHistoryReportSummary = document.getElementById("import-history-report-summary");
       elements.importHistoryReportList = document.getElementById("import-history-report-list");
       elements.importJsonFile = document.getElementById("import-json-file");
-      elements.backupSection = document.getElementById("backup-section");
-      elements.backupStatus = document.getElementById("backup-status");
-      elements.backupList = document.getElementById("backup-list");
-      elements.createBackup = document.getElementById("create-backup");
-      elements.refreshBackups = document.getElementById("refresh-backups");
+      elements.portableBackupCard = document.getElementById("portable-backup-card");
+      elements.portableBackupChip = document.getElementById("portable-backup-chip");
+      elements.portableBackupNowButton = document.getElementById("portable-backup-now");
+      elements.portableBackupStatus = document.getElementById("portable-backup-status");
       elements.searchInput = document.getElementById("search-input");
       elements.searchStatus = document.getElementById("search-status");
       elements.savedList = document.getElementById("saved-list");
@@ -1778,6 +1686,7 @@
       elements.exportHtml.addEventListener("click", exportHtml);
       elements.exportAnki.addEventListener("click", exportAnki);
       elements.exportJson.addEventListener("click", exportJson);
+      elements.portableBackupNowButton?.addEventListener("click", exportJson);
       elements.importJson.addEventListener("click", () => elements.importJsonFile.click());
       elements.importBrowserHistory?.addEventListener("click", importFromBrowserHistory);
       elements.importHistoryRange?.addEventListener("change", onHistoryImportRangeChange);
@@ -1790,9 +1699,6 @@
       elements.savedList.addEventListener("input", onSavedListInput);
       elements.savedList.addEventListener("change", onSavedListChange);
       elements.savedList.addEventListener("focusout", onSavedListFocusOut);
-      elements.createBackup?.addEventListener("click", onCreateBackup);
-      elements.refreshBackups?.addEventListener("click", onRefreshBackups);
-      elements.backupList?.addEventListener("click", onBackupListClick);
 
       chromeApi.tabs.onActivated.addListener(handleActiveTabChange);
       chromeApi.tabs.onUpdated.addListener(handleTabUpdated);
@@ -1800,6 +1706,7 @@
       chromeApi.storage?.onChanged?.addListener(handleStorageChange);
 
       await refreshSettingsState();
+      await refreshPortableBackupMeta();
       renderAutoMode();
       renderSyncLanguages();
       renderBrowserHistoryImportAction();

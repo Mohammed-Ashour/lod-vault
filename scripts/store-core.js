@@ -2,11 +2,9 @@
   const STORAGE_KEY = "lodVault.entries";
   const LEGACY_STORAGE_KEY = "lodWrapper.entries";
   const SETTINGS_KEY = "lodVault.settings";
-  const BACKUP_KEY = "lodVault.backups";
+  const PORTABLE_BACKUP_KEY = "lodVault.portableBackup";
   const DELETED_KEY = "lodVault.deleted";
   const HISTORY_IMPORT_STATE_KEY = "lodVault.historyImport";
-  const MAX_BACKUP_SNAPSHOTS = 3;
-  const BACKUP_MIN_INTERVAL_MS = 5 * 60 * 1000;
   const DEFAULT_SETTINGS = {
     autoMode: false,
     syncLanguages: ["en", "fr", "de"]
@@ -197,6 +195,18 @@
       ...DEFAULT_SETTINGS,
       autoMode: Boolean(settings?.autoMode),
       syncLanguages: normalizeSyncLanguages(settings?.syncLanguages)
+    };
+  }
+
+  function normalizePortableBackupMeta(value = {}) {
+    const lastExportedAt = cleanText(value?.lastExportedAt);
+    const timestamp = Date.parse(lastExportedAt);
+
+    return {
+      lastExportedAt: Number.isFinite(timestamp)
+        ? new Date(timestamp).toISOString()
+        : "",
+      entryCount: Math.max(0, Number(value?.entryCount) || 0)
     };
   }
 
@@ -619,105 +629,6 @@
     return Object.keys(normalizeEntryMap(entryMap)).length;
   }
 
-  function normalizeBackupSnapshots(value = []) {
-    const snapshots = Array.isArray(value) ? value : [];
-    return snapshots
-      .filter((snapshot) => snapshot && typeof snapshot === "object" && snapshot.entries && typeof snapshot.entries === "object")
-      .map((snapshot) => {
-        const normalizedEntries = normalizeEntryMap(snapshot.entries);
-        const createdAt = cleanText(snapshot.createdAt) || nowIso();
-        const reason = cleanText(snapshot.reason) || "auto";
-        const entryCount = countStoredEntries(normalizedEntries);
-        const id = cleanText(snapshot.id) || `${createdAt}:${entryCount}`;
-
-        return {
-          id,
-          createdAt,
-          reason,
-          entryCount,
-          entries: normalizedEntries
-        };
-      })
-      .sort((left, right) => Date.parse(right.createdAt || 0) - Date.parse(left.createdAt || 0));
-  }
-
-  function buildBackupSnapshot(entryMap, reason = "auto") {
-    const normalizedEntries = normalizeEntryMap(entryMap);
-    const createdAt = nowIso();
-    const entryCount = countStoredEntries(normalizedEntries);
-    return {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      createdAt,
-      reason: cleanText(reason) || "auto",
-      entryCount,
-      entries: normalizedEntries
-    };
-  }
-
-  function shouldCreateBackupSnapshot(previousMap, nextMap, existingBackups = [], reason = "") {
-    const normalizedReason = cleanText(reason).toLowerCase();
-    const previousCount = countStoredEntries(previousMap);
-    const nextCount = countStoredEntries(nextMap);
-
-    if (!nextCount) return false;
-    if (previousCount !== nextCount) return true;
-
-    if (normalizedReason.startsWith("manual") || normalizedReason.includes("import") || normalizedReason.includes("restore")) {
-      return true;
-    }
-
-    if (stableEntryMapString(previousMap) === stableEntryMapString(nextMap)) {
-      return false;
-    }
-
-    const latestBackup = normalizeBackupSnapshots(existingBackups)[0];
-    if (!latestBackup) return true;
-
-    const latestTimestamp = Date.parse(latestBackup.createdAt || "");
-    if (!Number.isFinite(latestTimestamp)) return true;
-
-    return (Date.now() - latestTimestamp) >= BACKUP_MIN_INTERVAL_MS;
-  }
-
-  async function createSafetyBackupIfNeeded(previousMap, nextMap, reason = "auto") {
-    const previousEntries = normalizeEntryMap(previousMap);
-    const nextEntries = normalizeEntryMap(nextMap);
-    const previousCount = countStoredEntries(previousEntries);
-    const nextCount = countStoredEntries(nextEntries);
-
-    if (!previousCount || nextCount >= previousCount) {
-      return { created: false, backupId: "", entryCount: previousCount };
-    }
-
-    const data = await chrome.storage.local.get([BACKUP_KEY]);
-    const previousBackups = normalizeBackupSnapshots(data[BACKUP_KEY]);
-    const latestBackup = previousBackups[0];
-    if (latestBackup && stableEntryMapString(latestBackup.entries) === stableEntryMapString(previousEntries)) {
-      return { created: false, backupId: latestBackup.id || "", entryCount: previousCount };
-    }
-    if (!shouldCreateBackupSnapshot(previousEntries, nextEntries, previousBackups, reason) && nextCount > 0) {
-      return { created: false, backupId: latestBackup?.id || "", entryCount: previousCount };
-    }
-    if (!nextCount && latestBackup) {
-      const latestTimestamp = Date.parse(latestBackup.createdAt || "");
-      if (Number.isFinite(latestTimestamp) && (Date.now() - latestTimestamp) < BACKUP_MIN_INTERVAL_MS) {
-        return { created: false, backupId: latestBackup.id || "", entryCount: previousCount };
-      }
-    }
-
-    const snapshot = buildBackupSnapshot(previousEntries, reason);
-    const nextBackups = [snapshot, ...previousBackups].slice(0, MAX_BACKUP_SNAPSHOTS);
-    await chrome.storage.local.set({ [BACKUP_KEY]: nextBackups });
-
-    return {
-      created: true,
-      backupId: snapshot.id,
-      entryCount: snapshot.entryCount,
-      remaining: nextBackups.length,
-      reason: snapshot.reason
-    };
-  }
-
   async function getEntryMap() {
     ensureStoreCacheListener();
 
@@ -801,6 +712,18 @@
     }
   }
 
+  async function getPortableBackupMeta() {
+    try {
+      const data = await chrome.storage.local.get([PORTABLE_BACKUP_KEY]);
+      return normalizePortableBackupMeta(data[PORTABLE_BACKUP_KEY] || {});
+    } catch (error) {
+      if (isExtensionContextInvalidated(error)) {
+        return normalizePortableBackupMeta({});
+      }
+      throw error;
+    }
+  }
+
   async function getDeletedMap() {
     try {
       const data = await chrome.storage.local.get([DELETED_KEY]);
@@ -859,7 +782,7 @@
     }
   }
 
-  async function persistVaultState({ entryMap = null, settings = null, deletedMap = null, previousEntryMap = null, backupReason = "" }) {
+  async function persistVaultState({ entryMap = null, settings = null, deletedMap = null }) {
     const sourceEntryMap = entryMap ? normalizeEntryMap(entryMap) : await getEntryMap();
     const sourceDeletedMap = deletedMap ? normalizeDeletedMap(deletedMap) : await getDeletedMap();
     const nextEntryMap = normalizeEntryMap(sourceEntryMap);
@@ -879,10 +802,6 @@
       payload[DELETED_KEY] = nextDeletedMap;
     } else {
       removeKeys.push(DELETED_KEY);
-    }
-
-    if (backupReason) {
-      await createSafetyBackupIfNeeded(previousEntryMap || {}, nextEntryMap, backupReason);
     }
 
     await chrome.storage.local.set(payload);
@@ -1000,7 +919,6 @@
         getEntryMap(),
         getDeletedMap()
       ]);
-      const previousEntryMap = { ...entryMap };
       const existing = entryMap[normalized.id];
       const merged = applyTranslationLanguageFilter(mergeEntry(existing, normalized), settings.syncLanguages);
 
@@ -1016,9 +934,7 @@
         deletedMap[normalized.id] = nowIso();
         await persistVaultState({
           entryMap,
-          deletedMap,
-          previousEntryMap,
-          backupReason: "manual-delete"
+          deletedMap
         });
         return null;
       }
@@ -1077,7 +993,6 @@
         getEntryMap(),
         getDeletedMap()
       ]);
-      const previousEntryMap = { ...entryMap };
       const existing = entryMap[id];
       if (!existing) return null;
 
@@ -1093,9 +1008,7 @@
         deletedMap[id] = nowIso();
         await persistVaultState({
           entryMap,
-          deletedMap,
-          previousEntryMap,
-          backupReason: "manual-delete"
+          deletedMap
         });
         return null;
       }
@@ -1187,20 +1100,38 @@
         getDeletedMap()
       ]);
       if (!entryMap[id]) return;
-      const previousEntryMap = { ...entryMap };
       delete entryMap[id];
       deletedMap[id] = nowIso();
       await persistVaultState({
         entryMap,
-        deletedMap,
-        previousEntryMap,
-        backupReason: "manual-delete"
+        deletedMap
       });
     });
   }
 
   async function removeEntry(id) {
     return runStoreMutation("removeEntry", [id], removeEntryDirect);
+  }
+
+  async function markPortableBackupExportedDirect(summary = {}) {
+    const nextMeta = normalizePortableBackupMeta({
+      lastExportedAt: nowIso(),
+      entryCount: summary?.entryCount
+    });
+
+    try {
+      await chrome.storage.local.set({ [PORTABLE_BACKUP_KEY]: nextMeta });
+      return nextMeta;
+    } catch (error) {
+      if (isExtensionContextInvalidated(error)) {
+        throw createRefreshPageError();
+      }
+      throw error;
+    }
+  }
+
+  async function markPortableBackupExported(summary) {
+    return runStoreMutation("markPortableBackupExported", [summary], markPortableBackupExportedDirect);
   }
 
   function buildJsonExport(entries, options = {}) {
@@ -1789,9 +1720,7 @@
         await persistVaultState({
           entryMap: mergedEntries,
           settings: mergedSettings,
-          deletedMap: nextDeletedMap,
-          previousEntryMap: localEntries,
-          backupReason: appliedDeletionCount > 0 ? "sync-delete-safety" : ""
+          deletedMap: nextDeletedMap
         });
       }
 
@@ -1812,138 +1741,6 @@
 
   async function applyRemoteVaultState(remoteState) {
     return applyRemoteVaultStateDirect(remoteState);
-  }
-
-  async function createVaultBackupDirect(reason = "manual") {
-    const data = await chrome.storage.local.get([STORAGE_KEY, BACKUP_KEY]);
-    const entryMap = normalizeEntryMap(data[STORAGE_KEY]);
-    const entryCount = countStoredEntries(entryMap);
-
-    if (!entryCount) {
-      return {
-        created: false,
-        backupId: "",
-        entryCount: 0,
-        remaining: normalizeBackupSnapshots(data[BACKUP_KEY]).length,
-        reason: cleanText(reason) || "manual"
-      };
-    }
-
-    const previousBackups = normalizeBackupSnapshots(data[BACKUP_KEY]);
-    const latestBackup = previousBackups[0];
-    if (latestBackup && stableEntryMapString(latestBackup.entries) === stableEntryMapString(entryMap)) {
-      return {
-        created: false,
-        backupId: latestBackup.id,
-        entryCount,
-        remaining: previousBackups.length,
-        reason: latestBackup.reason || cleanText(reason) || "manual"
-      };
-    }
-
-    const nextSnapshot = buildBackupSnapshot(entryMap, cleanText(reason) || "manual");
-    const nextBackups = [nextSnapshot, ...previousBackups]
-      .slice(0, MAX_BACKUP_SNAPSHOTS);
-
-    await chrome.storage.local.set({ [BACKUP_KEY]: nextBackups });
-
-    return {
-      created: true,
-      backupId: nextSnapshot.id,
-      entryCount,
-      remaining: nextBackups.length,
-      reason: nextSnapshot.reason
-    };
-  }
-
-  async function createVaultBackup(reason = "manual") {
-    return runStoreMutation("createVaultBackup", [reason], createVaultBackupDirect);
-  }
-
-  async function getVaultBackups(limit = MAX_BACKUP_SNAPSHOTS) {
-    const data = await chrome.storage.local.get([BACKUP_KEY]);
-    const backups = normalizeBackupSnapshots(data[BACKUP_KEY]);
-    const requestedLimit = Math.max(1, Number(limit) || MAX_BACKUP_SNAPSHOTS);
-    const safeLimit = Math.min(MAX_BACKUP_SNAPSHOTS, requestedLimit);
-
-    return backups.slice(0, safeLimit).map((snapshot) => ({
-      id: snapshot.id,
-      createdAt: snapshot.createdAt,
-      reason: snapshot.reason,
-      entryCount: snapshot.entryCount
-    }));
-  }
-
-  async function restoreVaultBackupDirect(backupId) {
-    return runVaultIo(async () => {
-      const targetId = cleanText(backupId);
-      if (!targetId) {
-        throw new Error("Missing backup id.");
-      }
-
-      const data = await chrome.storage.local.get([BACKUP_KEY]);
-      const backups = normalizeBackupSnapshots(data[BACKUP_KEY]);
-      const snapshot = backups.find((item) => item.id === targetId);
-
-      if (!snapshot) {
-        throw new Error("Backup not found.");
-      }
-
-      const [current, deletedMap] = await Promise.all([
-        getEntryMap(),
-        getDeletedMap()
-      ]);
-      const merged = mergeVaultVersions(current, snapshot.entries);
-      for (const id of Object.keys(merged)) {
-        delete deletedMap[id];
-      }
-      await persistVaultState({ entryMap: merged, deletedMap });
-
-      return {
-        restored: true,
-        entryCount: Object.keys(merged).length,
-        backupId: snapshot.id
-      };
-    });
-  }
-
-  async function restoreVaultBackup(backupId) {
-    return runStoreMutation("restoreVaultBackup", [backupId], restoreVaultBackupDirect);
-  }
-
-  async function deleteVaultBackupDirect(backupId) {
-    const targetId = cleanText(backupId);
-    if (!targetId) {
-      throw new Error("Missing backup id.");
-    }
-
-    const data = await chrome.storage.local.get([BACKUP_KEY]);
-    const backups = normalizeBackupSnapshots(data[BACKUP_KEY]);
-    const nextBackups = backups.filter((item) => item.id !== targetId);
-
-    if (nextBackups.length === backups.length) {
-      return {
-        deleted: false,
-        backupId: targetId,
-        remaining: backups.length
-      };
-    }
-
-    if (nextBackups.length) {
-      await chrome.storage.local.set({ [BACKUP_KEY]: nextBackups });
-    } else {
-      await chrome.storage.local.remove(BACKUP_KEY);
-    }
-
-    return {
-      deleted: true,
-      backupId: targetId,
-      remaining: nextBackups.length
-    };
-  }
-
-  async function deleteVaultBackup(backupId) {
-    return runStoreMutation("deleteVaultBackup", [backupId], deleteVaultBackupDirect);
   }
 
   const FLASHCARD_META_KEY = "lodVault.flashcardMeta";
@@ -2120,7 +1917,7 @@
     STORAGE_KEY,
     LEGACY_STORAGE_KEY,
     SETTINGS_KEY,
-    BACKUP_KEY,
+    PORTABLE_BACKUP_KEY,
     DELETED_KEY,
     HISTORY_IMPORT_STATE_KEY,
     FLASHCARD_META_KEY,
@@ -2138,6 +1935,7 @@
     normalizeVisitCount,
     normalizeSyncLanguages,
     normalizeSettings,
+    normalizePortableBackupMeta,
     normalizeDeletedMap,
     isExtensionContextInvalidated,
     normalizeEntry,
@@ -2146,6 +1944,7 @@
     filterEntryMapTranslations,
     getEntryMap,
     getSettings,
+    getPortableBackupMeta,
     getDeletedMap,
     getHistoryImportState,
     getAutoMode,
@@ -2160,15 +1959,12 @@
     refreshEntryData,
     saveNote,
     removeEntry,
+    markPortableBackupExported,
     buildJsonExport,
     importJson,
     importBrowserHistory,
     resumeHistoryImportHydration,
     applyRemoteVaultStateDirect,
-    createVaultBackup,
-    getVaultBackups,
-    restoreVaultBackup,
-    deleteVaultBackup,
     normalizeFlashcardMeta,
     getFlashcardMeta,
     saveFlashcardMeta,

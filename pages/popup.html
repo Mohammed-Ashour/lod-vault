@@ -112,10 +112,23 @@
     <div class="search-section">
       <input id="search-input" class="search-input" type="search" placeholder="Search words, type, translation, note…" autocomplete="off">
       <div class="tools-row">
-        <button id="export-json" class="btn-tool">Export JSON</button>
-        <button id="import-json" class="btn-tool">Import JSON</button>
+        <button id="export-json" class="btn-tool">Backup JSON</button>
+        <button id="import-json" class="btn-tool">Restore JSON</button>
         <button id="import-browser-history" class="btn-tool">Import history</button>
       </div>
+      <section id="portable-backup-card" class="portable-backup-card is-neutral" aria-labelledby="portable-backup-title">
+        <div class="portable-backup-header">
+          <div class="portable-backup-heading">
+            <p class="section-label">Portable backup</p>
+            <div class="portable-backup-title-row">
+              <h3 id="portable-backup-title">JSON backup status</h3>
+              <span id="portable-backup-chip" class="status-chip is-neutral">Never</span>
+            </div>
+          </div>
+          <button id="portable-backup-now" class="btn-link portable-backup-now is-hidden" type="button">Backup now</button>
+        </div>
+        <p id="portable-backup-status" class="portable-backup-copy" aria-live="polite">Portable backup: checking status…</p>
+      </section>
       <div id="import-history-range-row" class="history-import-row">
         <label class="history-import-label" for="import-history-range">History range</label>
         <select id="import-history-range" class="history-import-select">
@@ -133,17 +146,6 @@
       </section>
       <input id="import-json-file" type="file" accept="application/json,.json" hidden>
 
-      <section id="backup-section" class="backup-section" aria-labelledby="backup-title">
-        <div class="backup-header">
-          <p id="backup-title" class="section-label">Local backups</p>
-          <div class="backup-header-actions">
-            <button id="create-backup" class="btn-link" type="button">Create snapshot</button>
-            <button id="refresh-backups" class="btn-link" type="button">Refresh</button>
-          </div>
-        </div>
-        <p id="backup-status" class="helper-text muted">Loading backups…</p>
-        <div id="backup-list" class="backup-list"></div>
-      </section>
     </div>
 
     <div id="saved-list" class="saved-list"></div>

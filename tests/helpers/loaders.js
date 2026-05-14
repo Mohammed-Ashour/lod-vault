@@ -370,6 +370,7 @@ async function loadPopupScript({
   currentEntry = null,
   autoMode = false,
   syncLanguages = ["en", "fr", "de"],
+  portableBackupMeta = null,
   popupHtml,
   storeOverrides = {},
   syncOverrides = null
@@ -385,16 +386,22 @@ async function loadPopupScript({
   const tabsOnUpdated = createChromeEvent();
   const runtimeOnMessage = createChromeEvent();
   const createdTabs = [];
+  let currentPortableBackupMeta = structuredClone(portableBackupMeta || {
+    lastExportedAt: "",
+    entryCount: 0
+  });
 
   const LodWrapperStore = {
     STORAGE_KEY: "lodVault.entries",
     LEGACY_STORAGE_KEY: "lodWrapper.entries",
     HISTORY_IMPORT_STATE_KEY: "lodVault.historyImport",
+    PORTABLE_BACKUP_KEY: "lodVault.portableBackup",
     DEFAULT_SETTINGS: structuredClone(shared.store.DEFAULT_SETTINGS),
     MAX_SYNC_LANGUAGES: shared.store.MAX_SYNC_LANGUAGES,
     TRANSLATION_LANGUAGE_ORDER: [...shared.store.TRANSLATION_LANGUAGE_ORDER],
     TRANSLATION_LANGUAGE_LABELS: { ...shared.store.TRANSLATION_LANGUAGE_LABELS },
     TRANSLATION_LANGUAGE_CHIP_LABELS: { ...shared.store.TRANSLATION_LANGUAGE_CHIP_LABELS },
+    normalizePortableBackupMeta: shared.store.normalizePortableBackupMeta,
     createNoteAutosaveController: shared.store.createNoteAutosaveController,
     escapeHtml: shared.store.escapeHtml,
     formatWhen: (value) => value || "",
@@ -440,17 +447,15 @@ async function loadPopupScript({
     async getHistoryImportState() {
       return { status: "idle", queue: [], failedIds: [], addedEntries: [] };
     },
-    async getVaultBackups() {
-      return [];
+    async getPortableBackupMeta() {
+      return structuredClone(shared.store.normalizePortableBackupMeta(currentPortableBackupMeta));
     },
-    async createVaultBackup() {
-      return { created: true, entryCount: entries.length, remaining: 1 };
-    },
-    async restoreVaultBackup() {
-      return { restored: true, entryCount: entries.length };
-    },
-    async deleteVaultBackup() {
-      return { deleted: true, remaining: 0 };
+    async markPortableBackupExported(summary = {}) {
+      currentPortableBackupMeta = shared.store.normalizePortableBackupMeta({
+        lastExportedAt: new Date().toISOString(),
+        entryCount: summary?.entryCount
+      });
+      return structuredClone(currentPortableBackupMeta);
     },
     async getSettings() {
       return { autoMode, syncLanguages: [...syncLanguages] };

@@ -21,11 +21,9 @@ const STORE_MUTATION_METHODS = new Set([
   "refreshEntryData",
   "saveNote",
   "removeEntry",
+  "markPortableBackupExported",
   "importJson",
   "importBrowserHistory",
-  "createVaultBackup",
-  "restoreVaultBackup",
-  "deleteVaultBackup",
   "recordFlashcardReview",
   "getFlashcardStats"
 ]);

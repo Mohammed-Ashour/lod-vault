@@ -604,6 +604,112 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
   color: var(--teal-lt);
 }
 
+.portable-backup-card {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(57, 167, 196, 0.28);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(57, 167, 196, 0.12), rgba(255, 255, 255, 0.03));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.portable-backup-card.is-warning {
+  border-color: rgba(240, 213, 110, 0.38);
+  background:
+    linear-gradient(180deg, rgba(240, 213, 110, 0.12), rgba(255, 255, 255, 0.03));
+}
+
+.portable-backup-card.is-success {
+  border-color: rgba(125, 212, 168, 0.34);
+  background:
+    linear-gradient(180deg, rgba(125, 212, 168, 0.11), rgba(255, 255, 255, 0.03));
+}
+
+.portable-backup-card.is-error {
+  border-color: rgba(242, 155, 162, 0.34);
+  background:
+    linear-gradient(180deg, rgba(230, 57, 70, 0.12), rgba(255, 255, 255, 0.03));
+}
+
+.portable-backup-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.portable-backup-heading {
+  min-width: 0;
+  flex: 1;
+}
+
+.portable-backup-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+
+.portable-backup-title-row h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #fff;
+}
+
+.portable-backup-copy {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--teal-lt);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.status-chip.is-neutral {
+  border-color: rgba(57, 167, 196, 0.28);
+  background: rgba(57, 167, 196, 0.12);
+  color: var(--teal-lt);
+}
+
+.status-chip.is-success {
+  border-color: rgba(125, 212, 168, 0.38);
+  background: rgba(125, 212, 168, 0.14);
+  color: #9be0bc;
+}
+
+.status-chip.is-warning {
+  border-color: rgba(240, 213, 110, 0.4);
+  background: rgba(240, 213, 110, 0.14);
+  color: #f6e291;
+}
+
+.status-chip.is-error {
+  border-color: rgba(242, 155, 162, 0.36);
+  background: rgba(230, 57, 70, 0.14);
+  color: #f7b4ba;
+}
+
+.portable-backup-now {
+  white-space: nowrap;
+  align-self: center;
+}
+
 .history-import-row {
   display: flex;
   align-items: center;
@@ -672,26 +778,7 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
 .helper-text.is-error { color: #f29ba2; }
 .helper-text.is-warning { color: #f0d56e; }
 
-/* ── local backups ──────────────────────────────── */
-.backup-section {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
-}
-
-.backup-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.backup-header-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
+/* ── action links ──────────────────────────────── */
 .btn-link {
   padding: 4px 8px;
   font-size: 11.5px;
@@ -704,65 +791,6 @@ textarea:disabled, input:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-link:hover {
   border-color: var(--teal);
   color: var(--teal-lt);
-}
-
-.backup-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.backup-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
-  border: 1px solid var(--border-solid);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.backup-meta {
-  min-width: 0;
-  color: var(--muted);
-  font-size: 11.5px;
-  line-height: 1.35;
-}
-
-.backup-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.backup-restore,
-.backup-delete {
-  padding: 5px 9px;
-  font-size: 11.5px;
-  background: var(--surface);
-  border: 1px solid var(--border-solid);
-  border-radius: 6px;
-}
-
-.backup-restore {
-  color: var(--teal-lt);
-}
-
-.backup-restore:hover {
-  border-color: var(--teal);
-  color: #fff;
-}
-
-.backup-delete {
-  color: #f2a3aa;
-}
-
-.backup-delete:hover {
-  border-color: #f2a3aa;
-  color: #ffd5da;
 }
 
 /* ── saved list ──────────────────────────────────── */

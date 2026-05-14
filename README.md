@@ -1,6 +1,6 @@
 <div align="center">
   <img src="icons/icon512-preview.png" width="96" alt="LODVault icon" />
-  <h1>LODVault v1.5.0</h1>
+  <h1>LODVault v1.6.0</h1>
   <p><strong>Your personal vocabulary vault for lod.lu</strong></p>
   <p>
     Save Luxembourgish words as you browse, study with flashcards,<br/>
@@ -22,7 +22,7 @@
 
 <img src="docs/screenshots/popup.png" width="380" alt="LODVault popup showing auto mode, sync language selector, and current word" />
 
-The popup shows your saved word count, lets you toggle **Auto mode**, pick **sync languages**, run **Sync now**, import from browser history with a date range, restore local backups, and manage the word you are currently reading.
+The popup shows your saved word count, lets you toggle **Auto mode**, pick **sync languages**, run **Sync now**, import from browser history with a date range, create a portable JSON backup, and manage the word you are currently reading.
 
 ---
 
@@ -62,10 +62,9 @@ The preview page lists all your saved words with their translations, POS tags, a
 | 🃏 **Flashcards** | Review your saved words with a simple flashcard mode |
 | 👁 **Preview** | Browse your full word list in a clean page — no download needed |
 | 📤 **Export HTML / Anki** | Download standalone HTML or Anki-ready text export |
-| 📦 **Export / Import JSON** | Back up and restore your vocabulary and supported settings |
+| 📦 **Backup / Restore JSON** | Back up and restore your vocabulary and supported settings with a portable file |
 | 🕘 **Optional browser history import** | On demand, import missing `lod.lu/artikel/*` words from history (add-only), with selectable date range and import report |
-| 💾 **Local backups** | Keep local vault snapshots and restore them from the popup |
-| ☁️ **Optional browser sync** | Sync a compact copy across Chrome profiles with configurable language selection, capacity indicator, and manual **Sync now** |
+| ☁️ **Optional browser sync** | Sync a compact copy across Chrome profiles with configurable language selection, capacity indicator, and manual **Sync now** (helpful, but not an uninstall-safe backup) |
 | 🔒 **Local-first** | `chrome.storage.local` stays authoritative; sync is only a compact replica |
 
 <h2 id="install">Install</h2>
@@ -108,6 +107,8 @@ If you prefer, you can still load it directly from source.
 
 The **LODVault** icon will appear in your browser toolbar.
 
+> **Important:** Before uninstalling LODVault or switching between unpacked and published builds, use **Backup JSON**. In Chrome, uninstalling the extension may remove both its local data and its extension sync data, even when the extension ID stays the same.
+
 ---
 
 ## How to use
@@ -123,7 +124,7 @@ The **LODVault** icon will appear in your browser toolbar.
 - Turn **Auto mode** on if you want every visited LOD article to be added to **Study** and **History** automatically
 - Choose up to **3 sync languages** for sync payload size control and use **Sync now** when you want an immediate push
 - Use **Import history** with a date range (7d / 30d / 90d / 365d / all time) to add missing LOD words
-- Review the import report, manage local backup snapshots, and restore a snapshot if needed
+- Review the import report and use **Backup JSON** before uninstalling or changing installations if you want a portable backup
 - Search, play pronunciation audio, add notes, toggle lists, or delete words from there
 
 ### Study with flashcards
@@ -135,8 +136,8 @@ The **LODVault** icon will appear in your browser toolbar.
 - **Preview** — opens a live, searchable page of your saved words in a new tab
 - **HTML** — downloads a standalone HTML file you can keep or share
 - **Anki** — downloads a tab-separated text file ready for Anki import
-- **Export JSON** — downloads a full backup of your saved words and extension settings
-- **Import JSON** — restores or merges a previous backup, including supported settings
+- **Backup JSON** — downloads a full portable backup of your saved words and extension settings; use this before uninstalling or switching versions
+- **Restore JSON** — restores or merges a previous backup, including supported settings
 - **Import history** — optionally requests browser History permission and adds missing `lod.lu/artikel/*` words into your vault (does not delete or overwrite existing words)
 
 ---
@@ -171,6 +172,7 @@ npm test
 - LODVault does **not** collect, transmit, or share data with any external service
 - Everything you save lives in your browser via `chrome.storage.local`
 - If browser sync is enabled, a compact replica is stored in `chrome.storage.sync`
+- In Chrome, uninstalling the extension may remove both local data and its extension sync data, so use **Backup JSON** if you want a portable backup before uninstalling
 - No analytics, no tracking, no external requests
 
 ---

@@ -57,6 +57,107 @@ test("popup search filters the saved list and shows the no-results state when ne
   assert.equal(noResults.classList.contains("is-hidden"), false);
 });
 
+test("popup highlights portable backup state, shows the Never chip, and removes local snapshot UI", async () => {
+  const { dom } = await loadPopupScript({ entries: makeEntries(2) });
+  const exportButton = dom.window.document.getElementById("export-json");
+  const importButton = dom.window.document.getElementById("import-json");
+  const portableCard = dom.window.document.getElementById("portable-backup-card");
+  const portableChip = dom.window.document.getElementById("portable-backup-chip");
+  const portableStatus = dom.window.document.getElementById("portable-backup-status");
+  const backupNowButton = dom.window.document.getElementById("portable-backup-now");
+
+  assert.equal(exportButton.textContent.trim(), "Backup JSON");
+  assert.equal(importButton.textContent.trim(), "Restore JSON");
+  assert.equal(dom.window.document.getElementById("backup-section"), null);
+  assert.equal(dom.window.document.getElementById("create-backup"), null);
+  assert.match(portableStatus.textContent, /Portable backup: not created yet/i);
+  assert.equal(portableCard.classList.contains("is-warning"), true);
+  assert.equal(portableChip.textContent.trim(), "Never");
+  assert.equal(portableChip.classList.contains("is-warning"), true);
+  assert.equal(backupNowButton.classList.contains("is-hidden"), false);
+});
+
+test("popup updates portable backup status after Backup JSON runs", async () => {
+  const downloadCalls = [];
+  const markCalls = [];
+  const fixedMeta = {
+    lastExportedAt: "2026-05-14T19:30:00.000Z",
+    entryCount: 2
+  };
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(2),
+    storeOverrides: {
+      downloadTextFile(filename, content, mimeType) {
+        downloadCalls.push({ filename, content, mimeType });
+      },
+      async getPortableBackupMeta() {
+        return { lastExportedAt: "", entryCount: 0 };
+      },
+      async markPortableBackupExported(summary) {
+        markCalls.push(summary);
+        return fixedMeta;
+      }
+    }
+  });
+
+  dom.window.document.getElementById("export-json").click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const portableCard = dom.window.document.getElementById("portable-backup-card");
+  const portableChip = dom.window.document.getElementById("portable-backup-chip");
+  const portableStatus = dom.window.document.getElementById("portable-backup-status");
+  const backupNowButton = dom.window.document.getElementById("portable-backup-now");
+  assert.equal(downloadCalls.length, 1);
+  assert.match(downloadCalls[0].filename, /lodvault-export-\d{4}-\d{2}-\d{2}\.json/);
+  assert.equal(downloadCalls[0].mimeType, "application/json");
+  assert.equal(markCalls.length, 1);
+  assert.equal(markCalls[0].entryCount, 2);
+  assert.match(portableStatus.textContent, /Last portable backup: 2026-05-14T19:30:00.000Z · 2 words/i);
+  assert.match(portableStatus.textContent, /This backup survives uninstall/i);
+  assert.equal(portableCard.classList.contains("is-success"), true);
+  assert.equal(portableChip.textContent.trim(), "Up to date");
+  assert.equal(portableChip.classList.contains("is-success"), true);
+  assert.equal(backupNowButton.classList.contains("is-hidden"), true);
+});
+
+test("popup shows the Needs backup chip and one-click Backup now action when the vault changed after the last backup", async () => {
+  const downloadCalls = [];
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(2),
+    portableBackupMeta: {
+      lastExportedAt: "2025-01-01T00:00:00.000Z",
+      entryCount: 2
+    },
+    storeOverrides: {
+      downloadTextFile(filename, content, mimeType) {
+        downloadCalls.push({ filename, content, mimeType });
+      },
+      async markPortableBackupExported(summary) {
+        return {
+          lastExportedAt: "2026-05-14T20:00:00.000Z",
+          entryCount: summary?.entryCount || 0
+        };
+      }
+    }
+  });
+
+  const portableCard = dom.window.document.getElementById("portable-backup-card");
+  const portableChip = dom.window.document.getElementById("portable-backup-chip");
+  const portableStatus = dom.window.document.getElementById("portable-backup-status");
+  const backupNowButton = dom.window.document.getElementById("portable-backup-now");
+
+  assert.equal(portableCard.classList.contains("is-warning"), true);
+  assert.equal(portableChip.textContent.trim(), "Needs backup");
+  assert.equal(portableChip.classList.contains("is-warning"), true);
+  assert.equal(backupNowButton.classList.contains("is-hidden"), false);
+  assert.match(portableStatus.textContent, /Newer local changes are not included yet/i);
+
+  backupNowButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(downloadCalls.length, 1);
+});
+
 test("popup renders sync language chips with count and estimated capacity hints", async () => {
   const { dom } = await loadPopupScript({ syncLanguages: ["en", "fr", "de"] });
 
@@ -440,100 +541,3 @@ test("popup current-note input can auto-save an unsaved current word", async () 
   assert.deepEqual(toggleCalls, [{ id: "HAUS1", listName: "study" }]);
 });
 
-test("popup renders backup snapshots and restores selected backup", async () => {
-  const backups = [
-    { id: "b1", createdAt: "2025-01-01T10:00:00.000Z", reason: "auto-visit", entryCount: 20 },
-    { id: "b2", createdAt: "2025-01-01T09:00:00.000Z", reason: "import-json", entryCount: 17 }
-  ];
-  const restored = [];
-
-  const { dom } = await loadPopupScript({
-    entries: makeEntries(3),
-    storeOverrides: {
-      async getVaultBackups() {
-        return backups;
-      },
-      async restoreVaultBackup(backupId) {
-        restored.push(backupId);
-        return { restored: true, entryCount: 21 };
-      }
-    }
-  });
-
-  dom.window.confirm = () => true;
-
-  const backupItems = Array.from(dom.window.document.querySelectorAll(".backup-item"));
-  assert.equal(backupItems.length, 2);
-  assert.match(dom.window.document.getElementById("backup-status").textContent, /2 local backup snapshots/);
-
-  const restoreBtn = dom.window.document.querySelector('button[data-action="restore-backup"][data-backup-id="b1"]');
-  restoreBtn.click();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-
-  assert.deepEqual(restored, ["b1"]);
-  assert.match(dom.window.document.getElementById("backup-status").textContent, /Backup restored/);
-});
-
-test("popup can delete a selected backup snapshot", async () => {
-  let backups = [
-    { id: "b1", createdAt: "2025-01-01T10:00:00.000Z", reason: "auto-visit", entryCount: 20 },
-    { id: "b2", createdAt: "2025-01-01T09:00:00.000Z", reason: "import-json", entryCount: 17 }
-  ];
-  const deleted = [];
-
-  const { dom } = await loadPopupScript({
-    entries: makeEntries(3),
-    storeOverrides: {
-      async getVaultBackups() {
-        return backups;
-      },
-      async deleteVaultBackup(backupId) {
-        deleted.push(backupId);
-        backups = backups.filter((item) => item.id !== backupId);
-        return { deleted: true, backupId, remaining: backups.length };
-      }
-    }
-  });
-
-  dom.window.confirm = () => true;
-
-  const deleteBtn = dom.window.document.querySelector('button[data-action="delete-backup"][data-backup-id="b1"]');
-  deleteBtn.click();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-
-  assert.deepEqual(deleted, ["b1"]);
-  assert.equal(dom.window.document.querySelector('article.backup-item[data-backup-id="b1"]'), null);
-  assert.match(dom.window.document.getElementById("backup-status").textContent, /Backup deleted/);
-});
-
-test("popup creates a manual backup from the backup header", async () => {
-  let backups = [];
-  const created = [];
-
-  const { dom } = await loadPopupScript({
-    entries: makeEntries(3),
-    storeOverrides: {
-      async getVaultBackups() {
-        return backups;
-      },
-      async createVaultBackup(reason) {
-        created.push(reason);
-        backups = [
-          { id: "manual-1", createdAt: "2026-05-11T21:36:00.000Z", reason: "manual-popup", entryCount: 3 }
-        ];
-        return { created: true, backupId: "manual-1", entryCount: 3, remaining: 1, reason: "manual-popup" };
-      }
-    }
-  });
-
-  const createBtn = dom.window.document.getElementById("create-backup");
-  createBtn.click();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-
-  assert.deepEqual(created, ["manual-popup"]);
-  assert.equal(dom.window.document.querySelectorAll(".backup-item").length, 1);
-  assert.match(dom.window.document.getElementById("backup-status").textContent, /Backup created/);
-});
