@@ -9,7 +9,7 @@ importScripts(
   chrome.runtime.getURL("scripts/sync-coordinator.js")
 );
 
-const LOD_URL_PATTERNS = ["https://lod.lu/artikel/*", "https://www.lod.lu/artikel/*"];
+const LOD_URL_PATTERNS = ["https://lod.lu/*", "https://www.lod.lu/*"];
 const STORE_MUTATION_MESSAGE_TYPE = LodWrapperStore.STORE_MUTATION_MESSAGE_TYPE;
 const STORE_MUTATION_METHODS = new Set([
   "setAutoMode",

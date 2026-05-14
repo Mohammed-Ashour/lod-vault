@@ -50,19 +50,26 @@ test("background serializes store mutations through a shared queue", async () =>
   assert.deepEqual(JSON.parse(JSON.stringify(secondResponse)), { ok: true, result: { call: 2 } });
 });
 
-test("background reloads LOD article tabs on install", async () => {
+test("background reloads all open LOD tabs on install", async () => {
   const background = loadBackgroundScript();
+  let receivedQuery = null;
 
-  background.chrome.tabs.query = async () => [
-    { id: 101 },
-    { id: "ignore-me" },
-    { id: 202 }
-  ];
+  background.chrome.tabs.query = async (queryInfo) => {
+    receivedQuery = queryInfo;
+    return [
+      { id: 101 },
+      { id: "ignore-me" },
+      { id: 202 }
+    ];
+  };
 
   background.runtimeOnInstalled.dispatch({ reason: "install" });
   await wait(0);
   await wait(0);
 
+  assert.deepEqual(JSON.parse(JSON.stringify(receivedQuery)), {
+    url: ["https://lod.lu/*", "https://www.lod.lu/*"]
+  });
   assert.deepEqual(background.reloadedTabIds, [101, 202]);
 });
 

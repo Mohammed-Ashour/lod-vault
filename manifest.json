@@ -31,8 +31,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://lod.lu/artikel/*",
-        "https://www.lod.lu/artikel/*"
+        "https://lod.lu/*",
+        "https://www.lod.lu/*"
       ],
       "js": [
         "scripts/store-core.js",
