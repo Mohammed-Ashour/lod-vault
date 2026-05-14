@@ -19,6 +19,7 @@ const STORE_MUTATION_METHODS = new Set([
 ]);
 
 let storeMutationQueue = Promise.resolve();
+let historyHydrationResumeTimer = null;
 
 const syncCoordinator = LodWrapperSyncCoordinator.createSyncCoordinator({
   store: LodWrapperStore,
@@ -32,6 +33,17 @@ function enqueueStoreMutation(task) {
   const result = storeMutationQueue.then(task, task);
   storeMutationQueue = result.catch(() => {});
   return result;
+}
+
+function scheduleHistoryHydrationResume(delayMs = 0) {
+  if (historyHydrationResumeTimer) {
+    clearTimeout(historyHydrationResumeTimer);
+  }
+
+  historyHydrationResumeTimer = setTimeout(() => {
+    historyHydrationResumeTimer = null;
+    LodWrapperStore.resumeHistoryImportHydration?.().catch?.(() => {});
+  }, Math.max(0, Number(delayMs) || 0));
 }
 
 async function reloadLodTabs() {
@@ -51,16 +63,23 @@ chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === "update" || details.reason === "install") {
     reloadLodTabs();
     syncCoordinator.handleInstalled("onInstalled");
+    scheduleHistoryHydrationResume(50);
   }
 });
 
 chrome.runtime.onStartup?.addListener(() => {
   syncCoordinator.handleStartup("onStartup");
+  scheduleHistoryHydrationResume(50);
 });
 
 chrome.storage.onChanged?.addListener((changes, areaName) => {
   syncCoordinator.handleStorageChanged(changes, areaName);
+  if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodWrapperStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
+    scheduleHistoryHydrationResume(25);
+  }
 });
+
+scheduleHistoryHydrationResume(50);
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== STORE_MUTATION_MESSAGE_TYPE) return;

@@ -8,10 +8,12 @@
     const suppressWindowMs = Math.max(pushDebounceMs * 2, 50);
     const localSyncKeys = new Set([
       store.STORAGE_KEY || "lodVault.entries",
-      store.SETTINGS_KEY || "lodVault.settings"
+      store.SETTINGS_KEY || "lodVault.settings",
+      store.DELETED_KEY || "lodVault.deleted"
     ]);
     const syncManifestKey = syncNamespace.SYNC_MANIFEST_KEY || "lodVault.m";
     const syncSettingsKey = syncNamespace.SYNC_SETTINGS_KEY || "lodVault.s";
+    const syncDeletedKey = syncNamespace.SYNC_DELETED_KEY || "lodVault.d";
     const syncEntryPrefix = syncNamespace.SYNC_ENTRY_PREFIX || "lodVault.e.";
 
     let syncTaskQueue = Promise.resolve();
@@ -56,6 +58,7 @@
       return Object.keys(changes || {}).some((key) => (
         key === syncManifestKey
         || key === syncSettingsKey
+        || key === syncDeletedKey
         || key.startsWith(syncEntryPrefix)
       ));
     }
@@ -125,7 +128,12 @@
     function describeLocalPushPlan(changes) {
       const entryChange = changes?.[store.STORAGE_KEY || "lodVault.entries"];
       const settingsChange = changes?.[store.SETTINGS_KEY || "lodVault.settings"];
+      const deletedChange = changes?.[store.DELETED_KEY || "lodVault.deleted"];
       const settingsKind = getSettingsChangeKind(settingsChange);
+
+      if (deletedChange) {
+        return { type: "all", immediate: true };
+      }
 
       // If both entries and settings changed, or sync-languages changed,
       // we must do a full push because the shard layout may change.

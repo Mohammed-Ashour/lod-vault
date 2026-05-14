@@ -51,6 +51,24 @@ function stableStringifyForTest(value) {
   return JSON.stringify(value);
 }
 
+function buildSyncFillerData(targetBytes = 95000) {
+  const data = {};
+  let used = 0;
+  let index = 0;
+
+  while (used < targetBytes) {
+    const key = `filler.${String(index).padStart(3, "0")}`;
+    const value = "x".repeat(7600);
+    const size = new TextEncoder().encode(String(key)).length
+      + new TextEncoder().encode(JSON.stringify(value)).length;
+    data[key] = value;
+    used += size;
+    index += 1;
+  }
+
+  return data;
+}
+
 test("compactEntry filters synced translations and expandEntry restores the local shape", () => {
   const { sync } = loadSyncScript();
   const compact = sync.compactEntry(makeLocalEntry(), ["en", "de"]);
@@ -448,6 +466,68 @@ test("SyncAdapter.pullAll recovers legacy sync entries that have no list flags",
   assert.equal(fixture.storageData["lodVault.entries"].HAUS1.visitCount, 3);
 });
 
+test("SyncAdapter.pullAll fallback persists merged state when the store helper is unavailable", async () => {
+  const fixture = loadSyncScript({
+    sync: {
+      "lodVault.m": { v: 4, n: 1, a: true, l: ["e", "f"], t: 1714564800 },
+      "lodVault.s": { a: true, l: ["en", "fr"] },
+      "lodVault.e.0": [
+        {
+          i: "HAUS1",
+          w: "Haus",
+          u: "HAUS1",
+          t: { e: "house", f: "maison" },
+          a: 2,
+          r: 1735689600,
+          o: 1735776000
+        }
+      ]
+    }
+  });
+
+  fixture.context.LodWrapperStore.applyRemoteVaultStateDirect = undefined;
+
+  const result = await fixture.sync.SyncAdapter.pullAll({ repush: false });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.changed, true);
+  assert.equal(fixture.storageData["lodVault.entries"].HAUS1.word, "Haus");
+  assert.deepEqual(fixture.storageData["lodVault.entries"].HAUS1.translations, { en: "house", fr: "maison" });
+  assert.equal(fixture.storageData["lodVault.settings"].autoMode, true);
+  assert.deepEqual(fixture.storageData["lodVault.settings"].syncLanguages, ["en", "fr"]);
+});
+
+test("SyncAdapter propagates manual deletions safely with tombstones", async () => {
+  const source = loadSyncScript({
+    local: {
+      "lodVault.entries": {
+        HAUS1: makeLocalEntry()
+      }
+    }
+  });
+
+  await source.sync.SyncAdapter.pushAll();
+  await source.store.removeEntry("HAUS1");
+  await source.sync.SyncAdapter.pushAll();
+
+  const target = loadSyncScript({
+    local: {
+      "lodVault.entries": {
+        HAUS1: makeLocalEntry()
+      }
+    },
+    sync: source.syncStorageData
+  });
+
+  const result = await target.sync.SyncAdapter.pullAll({ repush: false });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.appliedDeletionCount, 1);
+  assert.equal(target.storageData["lodVault.entries"].HAUS1, undefined);
+  assert.ok(target.storageData["lodVault.deleted"].HAUS1);
+  assert.ok(source.syncStorageData["lodVault.d"].HAUS1);
+});
+
 test("SyncAdapter.pushAll falls back cleanly when sync quota is exceeded", async () => {
   const fixture = loadSyncScript({
     local: {
@@ -702,6 +782,62 @@ test("SyncAdapter.pullAll migrates uncompressed v3 data to compressed v4 on repu
   assert.ok(decompressed.length > 0);
 });
 
+test("pushAll validates quota against actual current sync usage, not just the outgoing vault payload", async () => {
+  const fixture = loadSyncScript({
+    local: {
+      "lodVault.entries": {
+        HAUS1: makeLocalEntry()
+      },
+      "lodVault.settings": {
+        autoMode: false,
+        syncLanguages: ["en", "fr", "de"]
+      }
+    },
+    sync: buildSyncFillerData(102000)
+  });
+
+  const result = await fixture.sync.SyncAdapter.pushAll();
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "quota-exceeded");
+  assert.ok(result.estimatedBytes > fixture.sync.SYNC_TOTAL_HARD_LIMIT);
+});
+
+test("inspectSyncStorage measures actual sync usage across the full sync area", async () => {
+  const fixture = loadSyncScript({
+    sync: {
+      ...buildSyncFillerData(16000),
+      "lodVault.m": { v: 4, n: 1, a: false, l: ["e"], t: 1714564800 },
+      "lodVault.s": { a: false, l: ["en"] },
+      "lodVault.e.0": [
+        {
+          i: "HAUS1",
+          w: "Haus",
+          u: "HAUS1",
+          t: { e: "house" },
+          a: 3,
+          r: 1735689600,
+          o: 1735776000
+        }
+      ]
+    }
+  });
+
+  const expectedBytes = await fixture.chrome.storage.sync.getBytesInUse(null);
+  const expectedVaultBytes = await fixture.chrome.storage.sync.getBytesInUse(["lodVault.m", "lodVault.s", "lodVault.e.0"]);
+  const snapshot = await fixture.sync.inspectSyncStorage();
+
+  assert.equal(snapshot.ok, true);
+  assert.equal(snapshot.bytesUsed, expectedBytes);
+  assert.equal(snapshot.bytesUsedTotal, expectedBytes);
+  assert.equal(snapshot.bytesUsedVault, expectedVaultBytes);
+  assert.equal(snapshot.bytesUsedOther, expectedBytes - expectedVaultBytes);
+  assert.equal(snapshot.entryCount, 1);
+  assert.equal(snapshot.hasSyncData, true);
+  assert.equal(snapshot.hasSyncWords, true);
+  assert.ok(snapshot.itemCountOther > 0);
+});
+
 test("getSyncUsageStats returns correct byte counts", async () => {
   const fixture = loadSyncScript({
     local: {
@@ -731,6 +867,7 @@ test("getSyncUsageStats returns correct byte counts", async () => {
 
   const stats = await fixture.sync.getSyncUsageStats();
 
+  assert.equal(stats.ok, true);
   assert.equal(typeof stats.bytesUsed, "number");
   assert.ok(stats.bytesUsed > 0);
   assert.equal(stats.bytesTotal, 100 * 1024);
@@ -747,6 +884,9 @@ test("getSyncUsageStats returns zero state when sync is empty", async () => {
 
   const stats = await fixture.sync.getSyncUsageStats();
 
+  assert.equal(stats.ok, true);
+  assert.equal(stats.hasSyncData, false);
+  assert.equal(stats.hasSyncWords, false);
   assert.equal(stats.bytesUsed, 0);
   assert.equal(stats.bytesTotal, 100 * 1024);
   assert.equal(stats.percentUsed, 0);
@@ -756,21 +896,38 @@ test("getSyncUsageStats returns zero state when sync is empty", async () => {
   assert.equal(typeof stats.estimatedRemaining, "number");
 });
 
-test("getSyncUsageStats returns fallback on error", async () => {
+test("inspectSyncStorage reports metadata-only sync state without pretending it is empty", async () => {
+  const fixture = loadSyncScript({
+    sync: {
+      "lodVault.m": { v: 4, n: 0, a: false, l: ["en", "fr", "de"], t: 1714564800 },
+      "lodVault.s": { a: false, l: ["en", "fr", "de"] }
+    }
+  });
+
+  const snapshot = await fixture.sync.inspectSyncStorage();
+
+  assert.equal(snapshot.ok, true);
+  assert.equal(snapshot.hasSyncData, true);
+  assert.equal(snapshot.hasSyncWords, false);
+  assert.equal(snapshot.entryCount, 0);
+  assert.equal(snapshot.shardCount, 0);
+  assert.ok(snapshot.bytesUsed > 0);
+});
+
+test("getSyncUsageStats reports inspection failure instead of pretending sync is empty", async () => {
   const fixture = loadSyncScript({});
 
-  // Simulate an error
-  const originalGet = fixture.chrome.storage.sync.get;
   fixture.chrome.storage.sync.get = async () => {
     throw new Error("Sync unavailable");
   };
 
   const stats = await fixture.sync.getSyncUsageStats();
 
-  assert.equal(stats.bytesUsed, 0);
+  assert.equal(stats.ok, false);
+  assert.equal(stats.reason, "inspect-failed");
+  assert.ok(Number.isNaN(stats.bytesUsed));
+  assert.ok(Number.isNaN(stats.entryCount));
   assert.equal(stats.bytesTotal, 100 * 1024);
-  assert.equal(stats.percentUsed, 0);
-  assert.equal(stats.entryCount, 0);
 });
 
 test("getSyncUsageStats with compressed shards counts entries correctly", async () => {
@@ -808,6 +965,7 @@ test("getSyncUsageStats with compressed shards counts entries correctly", async 
 
   const stats = await fixture.sync.getSyncUsageStats();
 
+  assert.equal(stats.ok, true);
   assert.equal(stats.entryCount, 3);
   assert.ok(stats.bytesUsed > 0);
   assert.ok(stats.estimatedRemaining > 0);

@@ -43,6 +43,11 @@ const COMPRESSION_GLOBALS = typeof CompressionStream !== "undefined"
   ? { CompressionStream, DecompressionStream, ReadableStream: globalThis.ReadableStream, WritableStream: globalThis.WritableStream }
   : {};
 
+function getStorageItemBytes(key, value) {
+  return new TextEncoder().encode(String(key ?? "")).length
+    + new TextEncoder().encode(JSON.stringify(value)).length;
+}
+
 function createChromeStorage(initialData = {}, options = {}) {
   const hasAreas = Boolean(initialData && ("local" in initialData || "sync" in initialData));
   const data = {
@@ -99,6 +104,18 @@ function createChromeStorage(initialData = {}, options = {}) {
     return {
       async get(keys) {
         return buildGetResult(areaData, keys);
+      },
+      async getBytesInUse(keys = null) {
+        const selected = keys == null
+          ? { ...areaData }
+          : Array.isArray(keys)
+            ? keys.reduce((result, key) => {
+                if (key in areaData) result[key] = areaData[key];
+                return result;
+              }, {})
+            : (typeof keys === "string" && keys in areaData ? { [keys]: areaData[keys] } : {});
+
+        return Object.entries(selected).reduce((total, [key, value]) => total + getStorageItemBytes(key, value), 0);
       },
       async set(values) {
         const changes = {};
@@ -176,7 +193,8 @@ function loadSharedStore(initialStorage = {}, options = {}) {
     "scripts/store-core.js",
     "scripts/note-autosave.js",
     "scripts/entry-presenter.js",
-    "scripts/shared.js"
+    "scripts/shared.js",
+    "scripts/lod-article.js"
   ]);
 
   return {
@@ -224,6 +242,7 @@ function loadSyncScript(initialStorage = {}, options = {}) {
     "scripts/note-autosave.js",
     "scripts/entry-presenter.js",
     "scripts/shared.js",
+    "scripts/lod-article.js",
     "scripts/compress.js",
     "scripts/sync.js"
   ]);
@@ -370,6 +389,7 @@ async function loadPopupScript({
   const LodWrapperStore = {
     STORAGE_KEY: "lodVault.entries",
     LEGACY_STORAGE_KEY: "lodWrapper.entries",
+    HISTORY_IMPORT_STATE_KEY: "lodVault.historyImport",
     DEFAULT_SETTINGS: structuredClone(shared.store.DEFAULT_SETTINGS),
     MAX_SYNC_LANGUAGES: shared.store.MAX_SYNC_LANGUAGES,
     TRANSLATION_LANGUAGE_ORDER: [...shared.store.TRANSLATION_LANGUAGE_ORDER],
@@ -416,6 +436,9 @@ async function loadPopupScript({
     async importJson() {},
     async importBrowserHistory() {
       return { imported: 0, scanned: 0, skippedExisting: 0, ignored: 0, total: entries.length };
+    },
+    async getHistoryImportState() {
+      return { status: "idle", queue: [], failedIds: [], addedEntries: [] };
     },
     async getVaultBackups() {
       return [];

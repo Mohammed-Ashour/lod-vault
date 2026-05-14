@@ -111,24 +111,64 @@ test("popup sync language selector saves immediately and enforces min/max select
   assert.match(dom.window.document.getElementById("sync-language-capacity").textContent, /Sync: Est\. ~990 words/);
 });
 
-test("popup sync-now button pushes local vault to sync and updates status", async () => {
+test("popup sync capacity surfaces non-vault sync usage separately", async () => {
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(2),
+    syncOverrides: {
+      SYNC_TOTAL_HARD_LIMIT: 102400,
+      async inspectSyncStorage() {
+        return {
+          ok: true,
+          hasSyncData: true,
+          hasSyncWords: true,
+          bytesUsed: 4096,
+          bytesUsedTotal: 4096,
+          bytesUsedVault: 3072,
+          bytesUsedOther: 1024,
+          bytesTotal: 102400,
+          bytesRemaining: 98304,
+          percentUsed: 4,
+          entryCount: 2,
+          shardCount: 1,
+          estimatedRemaining: 580,
+          itemCountTotal: 6,
+          itemCountVault: 4,
+          itemCountOther: 2,
+          itemCountRemaining: 506,
+          maxItemsTotal: 512
+        };
+      }
+    }
+  });
+
+  const capacity = dom.window.document.getElementById("sync-language-capacity");
+  assert.match(capacity.textContent, /4\.0 KB \/ 100\.0 KB used/);
+  assert.match(capacity.textContent, /~580 words fit/);
+  assert.match(capacity.textContent, /1\.0 KB used by other sync data/);
+});
+
+test("popup sync-now verifies the remote copy after pushing without calling sync init", async () => {
   let initCalls = 0;
   let pushAllCalls = 0;
+  let remoteState = {
+    ok: true,
+    hasSyncData: false,
+    hasSyncWords: false,
+    bytesUsed: 0,
+    bytesTotal: 102400,
+    bytesRemaining: 102400,
+    percentUsed: 0,
+    entryCount: 0,
+    shardCount: 0,
+    estimatedRemaining: 700
+  };
 
   const { dom } = await loadPopupScript({
     entries: makeEntries(2),
     syncOverrides: {
       SYNC_TOTAL_HARD_LIMIT: 102400,
-      async getSyncUsageStats() {
-        return {
-          bytesUsed: 2048,
-          bytesTotal: 102400,
-          bytesRemaining: 100352,
-          percentUsed: 2,
-          entryCount: 2,
-          shardCount: 1,
-          estimatedRemaining: 600
-        };
+      async inspectSyncStorage() {
+        return { ...remoteState };
       },
       SyncAdapter: {
         async init() {
@@ -137,6 +177,18 @@ test("popup sync-now button pushes local vault to sync and updates status", asyn
         },
         async pushAll() {
           pushAllCalls += 1;
+          remoteState = {
+            ok: true,
+            hasSyncData: true,
+            hasSyncWords: true,
+            bytesUsed: 2048,
+            bytesTotal: 102400,
+            bytesRemaining: 100352,
+            percentUsed: 2,
+            entryCount: 2,
+            shardCount: 1,
+            estimatedRemaining: 600
+          };
           return { ok: true, entryCount: 2 };
         }
       }
@@ -148,9 +200,64 @@ test("popup sync-now button pushes local vault to sync and updates status", asyn
   await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
 
-  assert.equal(initCalls, 1);
+  assert.equal(initCalls, 0);
   assert.equal(pushAllCalls, 1);
-  assert.match(dom.window.document.getElementById("sync-now-status").textContent, /Sync complete/);
+  assert.match(dom.window.document.getElementById("sync-now-status").textContent, /2 words verified in sync/);
+});
+
+test("popup sync-now surfaces verification failure when sync stores only metadata", async () => {
+  let pushAllCalls = 0;
+  let remoteState = {
+    ok: true,
+    hasSyncData: false,
+    hasSyncWords: false,
+    bytesUsed: 0,
+    bytesTotal: 102400,
+    bytesRemaining: 102400,
+    percentUsed: 0,
+    entryCount: 0,
+    shardCount: 0,
+    estimatedRemaining: 700
+  };
+
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(2),
+    syncOverrides: {
+      SYNC_TOTAL_HARD_LIMIT: 102400,
+      async inspectSyncStorage() {
+        return { ...remoteState };
+      },
+      SyncAdapter: {
+        async pushAll() {
+          pushAllCalls += 1;
+          remoteState = {
+            ok: true,
+            hasSyncData: true,
+            hasSyncWords: false,
+            bytesUsed: 128,
+            bytesTotal: 102400,
+            bytesRemaining: 102272,
+            percentUsed: 0,
+            entryCount: 0,
+            shardCount: 0,
+            estimatedRemaining: 700
+          };
+          return { ok: true, entryCount: 2 };
+        }
+      }
+    }
+  });
+
+  const button = dom.window.document.getElementById("sync-now");
+  button.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(pushAllCalls, 1);
+  const syncStatus = dom.window.document.getElementById("sync-now-status");
+  assert.match(syncStatus.textContent, /failed verification/i);
+  assert.equal(syncStatus.classList.contains("is-error"), true);
+  assert.doesNotMatch(dom.window.document.getElementById("sync-language-capacity").textContent, /^Sync: 0 \/ 100\.0 KB used/);
 });
 
 test("popup pull-synced-data button pulls without triggering sync init side effects", async () => {

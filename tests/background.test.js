@@ -73,6 +73,46 @@ test("background reloads all open LOD tabs on install", async () => {
   assert.deepEqual(background.reloadedTabIds, [101, 202]);
 });
 
+test("background resumes queued history hydration when the service worker starts with pending work", async () => {
+  const background = loadBackgroundScript({
+    local: {
+      "lodVault.historyImport": {
+        status: "queued",
+        startedAt: "2025-04-02T09:00:00.000Z",
+        updatedAt: "2025-04-02T09:00:00.000Z",
+        scanned: 1,
+        imported: 1,
+        skippedExisting: 0,
+        ignored: 0,
+        queued: 1,
+        hydrated: 0,
+        failed: 0,
+        currentId: "",
+        queue: ["BEEM1"],
+        failedIds: [],
+        addedEntries: [
+          {
+            id: "BEEM1",
+            word: "Beem",
+            url: "https://lod.lu/artikel/BEEM1",
+            lastVisitedAt: "2025-04-02T09:00:00.000Z"
+          }
+        ]
+      }
+    }
+  });
+  let resumeCalls = 0;
+
+  background.context.LodWrapperStore.resumeHistoryImportHydration = async () => {
+    resumeCalls += 1;
+    return true;
+  };
+
+  await wait(70);
+
+  assert.equal(resumeCalls, 1);
+});
+
 test("background pushes relevant local storage changes into sync storage", async () => {
   const background = loadBackgroundScript({
     local: {

@@ -15,6 +15,7 @@ const IIFE_SCRIPTS = [
   "note-autosave.js",
   "entry-presenter.js",
   "shared.js",
+  "lod-article.js",
   "compress.js",
   "sync.js",
   "sync-coordinator.js",

@@ -279,6 +279,97 @@ test("importBrowserHistory adds only missing words from lod article history", as
   assert.equal(storageData[store.STORAGE_KEY]["MÄNNCHEN1"].visitCount, 1);
 });
 
+test("importBrowserHistory can re-import entries that were manually deleted", async () => {
+  const { store, storageData, chrome } = loadSharedStore({
+    local: {
+      "lodVault.deleted": {
+        BEEM1: "2025-04-05T09:00:00.000Z"
+      }
+    }
+  });
+
+  chrome.history = {
+    async search() {
+      return [
+        {
+          url: "https://lod.lu/artikel/BEEM1",
+          title: "Beem - LOD",
+          visitCount: 2,
+          lastVisitTime: Date.parse("2025-04-06T09:00:00.000Z")
+        }
+      ];
+    }
+  };
+
+  const result = await store.importBrowserHistory({ maxResults: 20 });
+
+  assert.equal(result.imported, 1);
+  assert.equal(result.skippedExisting, 0);
+  assert.equal(storageData[store.STORAGE_KEY].BEEM1.word, "Beem");
+  assert.equal(storageData[store.STORAGE_KEY].BEEM1.history, true);
+  assert.equal(storageData[store.DELETED_KEY], undefined);
+});
+
+test("importBrowserHistory queues safe hydration and records visible progress", async () => {
+  const { store, storageData, chrome, context } = loadSharedStore();
+
+  chrome.history = {
+    async search() {
+      return [
+        {
+          url: "https://lod.lu/artikel/BEEM1",
+          title: "Beem - LOD",
+          visitCount: 2,
+          lastVisitTime: Date.parse("2025-04-02T09:00:00.000Z")
+        }
+      ];
+    }
+  };
+
+  context.fetch = async () => ({
+    ok: true,
+    async text() {
+      return `
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta name="description" content="noun">
+            <meta property="og:title" content="Beem - LOD">
+          </head>
+          <body>
+            <main>
+              <h1>Beem kopéiert</h1>
+              <section class="microstructures">
+                <div class="targetLanguages">
+                  <div class="en"><span class="content">tree</span></div>
+                  <div class="fr"><span class="content">arbre</span></div>
+                </div>
+              </section>
+            </main>
+          </body>
+        </html>
+      `;
+    }
+  });
+
+  const result = await store.importBrowserHistory({ maxResults: 20 });
+  assert.equal(result.imported, 1);
+  assert.ok(result.hydrationQueued >= 1);
+
+  await store.resumeHistoryImportHydration();
+
+  assert.deepEqual(storageData[store.STORAGE_KEY].BEEM1.translations, {
+    en: "tree",
+    fr: "arbre"
+  });
+  assert.equal(storageData[store.STORAGE_KEY].BEEM1.pos, "noun");
+
+  const importState = await store.getHistoryImportState();
+  assert.equal(importState.hydrated, 1);
+  assert.equal(importState.failed, 0);
+  assert.equal(importState.queue.length, 0);
+  assert.equal(importState.status, "complete");
+});
 
 test("getEntries migrates legacy storage automatically", async () => {
   const { store, storageData } = loadSharedStore({

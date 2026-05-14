@@ -1,6 +1,7 @@
 (() => {
   const STORAGE_KEY = globalThis.LodWrapperStore?.STORAGE_KEY || "lodVault.entries";
   const LOCAL_SETTINGS_KEY = globalThis.LodWrapperStore?.SETTINGS_KEY || "lodVault.settings";
+  const LOCAL_DELETED_KEY = globalThis.LodWrapperStore?.DELETED_KEY || "lodVault.deleted";
   const DEFAULT_SETTINGS = globalThis.LodWrapperStore?.DEFAULT_SETTINGS || {
     autoMode: false,
     syncLanguages: ["en", "fr", "de"]
@@ -21,10 +22,12 @@
   const COMPRESSION = globalThis.LodWrapperCompress || null;
   const SYNC_MANIFEST_KEY = "lodVault.m";
   const SYNC_SETTINGS_KEY = "lodVault.s";
+  const SYNC_DELETED_KEY = "lodVault.d";
   const SYNC_ENTRY_PREFIX = "lodVault.e.";
   const SYNC_SHARD_SOFT_LIMIT = 7000;
   const SYNC_ITEM_HARD_LIMIT = 8192;
   const SYNC_TOTAL_HARD_LIMIT = 100 * 1024;
+  const SYNC_MAX_ITEMS = 512;
   const DEFAULT_REPUSH_DELAY_MS = Math.max(0, Number(globalThis.__LOD_SYNC_REPUSH_DELAY_MS__ ?? 2000) || 0);
 
   let initPromise = null;
@@ -45,6 +48,17 @@
     return deduped.length ? deduped : [...DEFAULT_SETTINGS.syncLanguages];
   };
   const normalizeSettings = typeof store.normalizeSettings === "function" ? store.normalizeSettings : (settings = {}) => ({ ...DEFAULT_SETTINGS, autoMode: Boolean(settings?.autoMode), syncLanguages: normalizeSyncLanguages(settings?.syncLanguages) });
+  const normalizeDeletedMap = typeof store.normalizeDeletedMap === "function" ? store.normalizeDeletedMap : (value = {}) => {
+    const result = {};
+    for (const [rawId, rawDeletedAt] of Object.entries(value || {})) {
+      const id = cleanText(rawId);
+      const deletedAt = cleanText(rawDeletedAt);
+      const timestamp = Date.parse(deletedAt);
+      if (!id || !deletedAt || !Number.isFinite(timestamp)) continue;
+      result[id] = new Date(timestamp).toISOString();
+    }
+    return result;
+  };
   const normalizeEntryMap = typeof store.normalizeEntryMap === "function" ? store.normalizeEntryMap : (entryMap = {}) => {
     const result = {};
     for (const [entryId, value] of Object.entries(entryMap || {})) { const normalized = normalizeEntry({ id: entryId, ...value }); if (!normalized.id || !normalized.word || !shouldKeepEntry(normalized)) continue; result[normalized.id] = normalized; }
@@ -86,6 +100,105 @@
     if (Number.isFinite(created)) return created;
 
     return 0;
+  }
+
+  function mergeDeletedMaps(primary = {}, secondary = {}) {
+    const left = normalizeDeletedMap(primary);
+    const right = normalizeDeletedMap(secondary);
+    const merged = { ...left };
+
+    for (const [id, deletedAt] of Object.entries(right)) {
+      const current = merged[id];
+      if (!current || Date.parse(deletedAt) > Date.parse(current)) {
+        merged[id] = deletedAt;
+      }
+    }
+
+    return merged;
+  }
+
+  function applyDeletedMap(entryMap = {}, deletedMap = {}) {
+    const normalizedEntries = normalizeEntryMap(entryMap);
+    const normalizedDeleted = normalizeDeletedMap(deletedMap);
+    const nextEntries = {};
+
+    for (const [id, entry] of Object.entries(normalizedEntries)) {
+      const deletedAt = normalizedDeleted[id];
+      if (!deletedAt) {
+        nextEntries[id] = entry;
+        continue;
+      }
+
+      if (getEntryTimestamp(entry) > Date.parse(deletedAt)) {
+        nextEntries[id] = entry;
+      }
+    }
+
+    return nextEntries;
+  }
+
+  function pruneDeletedMapAgainstEntries(entryMap = {}, deletedMap = {}) {
+    const normalizedEntries = normalizeEntryMap(entryMap);
+    const normalizedDeleted = normalizeDeletedMap(deletedMap);
+    const nextDeleted = {};
+
+    for (const [id, deletedAt] of Object.entries(normalizedDeleted)) {
+      const entry = normalizedEntries[id];
+      if (!entry) {
+        nextDeleted[id] = deletedAt;
+        continue;
+      }
+
+      if (getEntryTimestamp(entry) <= Date.parse(deletedAt)) {
+        nextDeleted[id] = deletedAt;
+      }
+    }
+
+    return nextDeleted;
+  }
+
+  async function persistFallbackLocalState(entries, settings, deletedMap) {
+    const normalizedEntries = normalizeEntryMap(entries);
+    const normalizedSettings = normalizeSettings(settings);
+    const normalizedDeletedMap = pruneDeletedMapAgainstEntries(normalizedEntries, deletedMap);
+    const payload = {
+      [STORAGE_KEY]: normalizedEntries,
+      [LOCAL_SETTINGS_KEY]: normalizedSettings
+    };
+
+    if (Object.keys(normalizedDeletedMap).length) {
+      payload[LOCAL_DELETED_KEY] = normalizedDeletedMap;
+      await chrome.storage.local.set(payload);
+    } else {
+      await chrome.storage.local.set(payload);
+      await chrome.storage.local.remove(LOCAL_DELETED_KEY);
+    }
+
+    return normalizedDeletedMap;
+  }
+
+  function compactDeletedMap(deletedMap = {}) {
+    const compact = {};
+    for (const [id, deletedAt] of Object.entries(normalizeDeletedMap(deletedMap))) {
+      const unix = isoToUnix(deletedAt);
+      if (id && unix) {
+        compact[id] = unix;
+      }
+    }
+    return compact;
+  }
+
+  function expandDeletedMap(value = {}) {
+    const expanded = {};
+    for (const [id, deletedAt] of Object.entries(value || {})) {
+      const normalizedId = cleanText(id);
+      const iso = typeof deletedAt === "number" ? unixToIso(deletedAt) : cleanText(deletedAt);
+      if (!normalizedId || !iso) continue;
+      const timestamp = Date.parse(iso);
+      if (!Number.isFinite(timestamp)) continue;
+      expanded[normalizedId] = new Date(timestamp).toISOString();
+    }
+    return expanded;
   }
 
   function pickLatestIso(...values) {
@@ -651,15 +764,17 @@
   }
 
   async function getLocalState() {
-    const data = await chrome.storage.local.get([STORAGE_KEY, LOCAL_SETTINGS_KEY]);
+    const data = await chrome.storage.local.get([STORAGE_KEY, LOCAL_SETTINGS_KEY, LOCAL_DELETED_KEY]);
     const rawEntries = data[STORAGE_KEY] && typeof data[STORAGE_KEY] === "object" ? data[STORAGE_KEY] : {};
     const rawSettings = data[LOCAL_SETTINGS_KEY] && typeof data[LOCAL_SETTINGS_KEY] === "object" ? data[LOCAL_SETTINGS_KEY] : {};
     const settings = normalizeSettings(rawSettings);
+    const deletedMap = normalizeDeletedMap(data[LOCAL_DELETED_KEY] || {});
 
     return {
       entries: filterEntryMapTranslations(rawEntries, settings.syncLanguages),
       rawSettings,
-      settings
+      settings,
+      deletedMap
     };
   }
 
@@ -689,6 +804,9 @@
       : null;
     const rawSettings = data[SYNC_SETTINGS_KEY] && typeof data[SYNC_SETTINGS_KEY] === "object"
       ? data[SYNC_SETTINGS_KEY]
+      : null;
+    const rawDeletedMap = data[SYNC_DELETED_KEY] && typeof data[SYNC_DELETED_KEY] === "object"
+      ? data[SYNC_DELETED_KEY]
       : null;
     const presentShardKeys = Object.keys(data)
       .filter((key) => key.startsWith(SYNC_ENTRY_PREFIX))
@@ -726,7 +844,7 @@
       .filter(Boolean));
     const entries = flattenShardEntries(compactShards);
     const entryShardMap = buildEntryShardMap(compactShards);
-    const hasSyncData = Boolean(rawManifest || rawSettings || presentShardKeys.length);
+    const hasSyncData = Boolean(rawManifest || rawSettings || rawDeletedMap || presentShardKeys.length);
     const partialRead = missingShardKeys.length > 0 || malformedShardKeys.length > 0;
     const needsMigration = detectSyncMigrationNeed({
       rawManifest,
@@ -749,6 +867,7 @@
       rawManifest,
       settings,
       rawSettings,
+      deletedMap: expandDeletedMap(rawDeletedMap || {}),
       shardKeys,
       presentShardKeys,
       extraShardKeys,
@@ -796,16 +915,59 @@
   }
 
   function getSyncItemSize(key, value) {
-    return getByteLength({ [key]: value });
+    return getByteLength(String(key ?? "")) + getByteLength(JSON.stringify(value));
   }
 
   function estimateSyncWriteSize(values = {}) {
-    return Object.entries(values).reduce((total, [key, value]) => total + getSyncItemSize(key, value), 0);
+    return Object.entries(values || {}).reduce((total, [key, value]) => total + getSyncItemSize(key, value), 0);
+  }
+
+  function countSyncItems(values = {}) {
+    return Object.keys(values || {}).length;
+  }
+
+  function buildProjectedSyncData(currentData = {}, payload = {}, removeKeys = []) {
+    const transientData = {
+      ...(currentData && typeof currentData === "object" ? currentData : {}),
+      ...(payload && typeof payload === "object" ? payload : {})
+    };
+    const finalData = { ...transientData };
+
+    for (const key of Array.isArray(removeKeys) ? removeKeys : []) {
+      delete finalData[key];
+    }
+
+    return {
+      transientData,
+      finalData
+    };
+  }
+
+  function getLodVaultSyncKeys(data = {}) {
+    return Object.keys(data || {}).filter((key) => (
+      key === SYNC_MANIFEST_KEY
+      || key === SYNC_SETTINGS_KEY
+      || key === SYNC_DELETED_KEY
+      || key.startsWith(SYNC_ENTRY_PREFIX)
+    ));
+  }
+
+  async function getActualSyncBytesInUse(keys = null) {
+    if (typeof chrome?.storage?.sync?.getBytesInUse !== "function") {
+      return Number.NaN;
+    }
+
+    try {
+      const bytes = await chrome.storage.sync.getBytesInUse(keys);
+      return Number(bytes);
+    } catch {
+      return Number.NaN;
+    }
   }
 
   function classifyRecoverableSyncError(error) {
     const message = String(error?.message || error || "");
-    if (message.includes("QUOTA") || message.includes("MAX_WRITE_OPERATIONS")) {
+    if (message.includes("QUOTA") || message.includes("MAX_ITEMS") || message.includes("MAX_WRITE_OPERATIONS")) {
       return "quota-exceeded";
     }
     if (message.includes("storage.sync") || message.includes("Sync storage") || message.includes("Extension context invalidated")) {
@@ -817,6 +979,7 @@
   function isRecoverableSyncError(error) {
     const message = String(error?.message || error || "");
     return message.includes("QUOTA")
+      || message.includes("MAX_ITEMS")
       || message.includes("MAX_WRITE_OPERATIONS")
       || message.includes("storage.sync")
       || message.includes("Sync storage")
@@ -830,34 +993,51 @@
     };
   }
 
-  function validateSyncPayload(payload = {}) {
-    const oversizeKeys = Object.entries(payload)
+  function validateSyncPayload(payload = {}, options = {}) {
+    const oversizeKeys = Object.entries(payload || {})
       .filter(([key, value]) => getSyncItemSize(key, value) > SYNC_ITEM_HARD_LIMIT)
       .map(([key]) => key);
-    const estimatedBytes = estimateSyncWriteSize(payload);
+    const { transientData, finalData } = buildProjectedSyncData(options.currentData, payload, options.removeKeys);
+    const estimatedBytes = estimateSyncWriteSize(transientData);
+    const finalEstimatedBytes = estimateSyncWriteSize(finalData);
+    const itemCount = countSyncItems(transientData);
+    const finalItemCount = countSyncItems(finalData);
+    const maxItemsExceeded = itemCount > SYNC_MAX_ITEMS;
 
-    if (oversizeKeys.length || estimatedBytes > SYNC_TOTAL_HARD_LIMIT) {
+    if (oversizeKeys.length || estimatedBytes > SYNC_TOTAL_HARD_LIMIT || maxItemsExceeded) {
       return {
         ok: false,
         reason: "quota-exceeded",
         oversizeKeys,
-        estimatedBytes
+        estimatedBytes,
+        finalEstimatedBytes,
+        itemCount,
+        finalItemCount,
+        maxItemsExceeded
       };
     }
 
     return {
       ok: true,
       estimatedBytes,
+      finalEstimatedBytes,
+      itemCount,
+      finalItemCount,
+      maxItemsExceeded: false,
       oversizeKeys: []
     };
   }
 
   async function writeSyncPayload(payload, options = {}) {
-    const validation = validateSyncPayload(payload);
+    const validation = validateSyncPayload(payload, options);
     if (!validation.ok) {
       console.warn("[LODVault] Sync push skipped: payload exceeds sync quota.", {
         oversizeKeys: validation.oversizeKeys,
-        estimatedBytes: validation.estimatedBytes
+        estimatedBytes: validation.estimatedBytes,
+        finalEstimatedBytes: validation.finalEstimatedBytes,
+        itemCount: validation.itemCount,
+        finalItemCount: validation.finalItemCount,
+        maxItemsExceeded: validation.maxItemsExceeded
       });
       return validation;
     }
@@ -876,6 +1056,10 @@
           ok: false,
           reason,
           estimatedBytes: validation.estimatedBytes,
+          finalEstimatedBytes: validation.finalEstimatedBytes,
+          itemCount: validation.itemCount,
+          finalItemCount: validation.finalItemCount,
+          maxItemsExceeded: validation.maxItemsExceeded,
           oversizeKeys: validation.oversizeKeys
         };
       }
@@ -910,10 +1094,20 @@
       nextSyncData[`${SYNC_ENTRY_PREFIX}${index}`] = await compressShard(shards[index]);
     }
 
+    if (Object.keys(localState.deletedMap || {}).length) {
+      nextSyncData[SYNC_DELETED_KEY] = compactDeletedMap(localState.deletedMap);
+    }
+
     Object.assign(nextSyncData, buildMetadataPayload(localState.settings, shards.length));
 
+    const removeKeys = syncState.presentShardKeys.filter((key) => !(key in nextSyncData));
+    if (!nextSyncData[SYNC_DELETED_KEY] && syncState.data?.[SYNC_DELETED_KEY]) {
+      removeKeys.push(SYNC_DELETED_KEY);
+    }
+
     const writeResult = await writeSyncPayload(nextSyncData, {
-      removeKeys: syncState.presentShardKeys.filter((key) => !(key in nextSyncData))
+      currentData: syncState.data,
+      removeKeys
     });
 
     return {
@@ -927,25 +1121,46 @@
   async function pullAll(options = {}) {
     const [localState, syncState] = await Promise.all([getLocalState(), getSyncState()]);
     const remoteEntries = buildRemoteEntryMap(syncState.entries, localState.entries);
-    const mergedSettings = buildPulledSettings(localState, syncState);
-    const mergedSourceEntries = Object.keys(remoteEntries).length
-      ? mergeVaultVersionsPreferLarger(localState.entries, remoteEntries)
-      : localState.entries;
-    const mergedEntries = filterEntryMapTranslations(
-      mergedSourceEntries,
-      mergedSettings.syncLanguages
-    );
-    const entriesChanged = stableStringify(localState.entries) !== stableStringify(mergedEntries);
-    const settingsChanged = stableStringify(localState.settings) !== stableStringify(mergedSettings);
 
-    if (entriesChanged || settingsChanged) {
-      await chrome.storage.local.set({
-        [STORAGE_KEY]: mergedEntries,
-        [LOCAL_SETTINGS_KEY]: mergedSettings
-      });
-    }
+    const applyResult = typeof store.applyRemoteVaultStateDirect === "function"
+      ? await store.applyRemoteVaultStateDirect({
+          entries: remoteEntries,
+          settings: syncState.settings,
+          deletedMap: syncState.deletedMap
+        })
+      : await (async () => {
+          const mergedSettings = buildPulledSettings(localState, syncState);
+          const mergedDeletedMap = mergeDeletedMaps(localState.deletedMap, syncState.deletedMap);
+          const mergedEntries = applyDeletedMap(
+            filterEntryMapTranslations(
+              Object.keys(remoteEntries).length
+                ? mergeVaultVersionsPreferLarger(localState.entries, remoteEntries)
+                : localState.entries,
+              mergedSettings.syncLanguages
+            ),
+            mergedDeletedMap
+          );
+          const nextDeletedMap = pruneDeletedMapAgainstEntries(mergedEntries, mergedDeletedMap);
+          const changed = stableStringify(localState.entries) !== stableStringify(mergedEntries)
+            || stableStringify(localState.settings) !== stableStringify(mergedSettings)
+            || stableStringify(normalizeDeletedMap(localState.deletedMap)) !== stableStringify(nextDeletedMap);
+          const appliedDeletionCount = Object.keys(localState.entries).filter((id) => !mergedEntries[id] && nextDeletedMap[id]).length;
 
-    const shouldRepush = !syncState.partialRead && (entriesChanged || settingsChanged || syncState.needsMigration);
+          if (changed) {
+            await persistFallbackLocalState(mergedEntries, mergedSettings, nextDeletedMap);
+          }
+
+          return {
+            changed,
+            entryCount: Object.keys(mergedEntries).length,
+            entries: mergedEntries,
+            settings: mergedSettings,
+            deletedMap: nextDeletedMap,
+            appliedDeletionCount
+          };
+        })();
+
+    const shouldRepush = !syncState.partialRead && (applyResult.changed || syncState.needsMigration);
     if (shouldRepush && options.repush !== false) {
       const repushDelayMs = Math.max(0, Number(options.repushDelayMs ?? DEFAULT_REPUSH_DELAY_MS) || 0);
       if (repushDelayMs > 0) {
@@ -956,12 +1171,13 @@
 
     return {
       ok: true,
-      changed: entriesChanged || settingsChanged,
-      entryCount: Object.keys(mergedEntries).length,
+      changed: Boolean(applyResult.changed),
+      entryCount: Number(applyResult.entryCount) || 0,
       partialRead: syncState.partialRead,
       missingShardKeys: syncState.missingShardKeys,
       malformedShardKeys: syncState.malformedShardKeys,
-      needsMigration: syncState.needsMigration
+      needsMigration: syncState.needsMigration,
+      appliedDeletionCount: Number(applyResult.appliedDeletionCount) || 0
     };
   }
 
@@ -1060,7 +1276,10 @@
       payload[shardRef.key] = await compressShard(compactShards[shardRef.shardIndex]);
     }
 
-    const writeResult = await writeSyncPayload(payload, { removeKeys });
+    const writeResult = await writeSyncPayload(payload, {
+      currentData: syncState.data,
+      removeKeys
+    });
 
     return {
       ...writeResult,
@@ -1082,7 +1301,9 @@
 
     const shardCount = syncState.compactShards?.length || 0;
     const payload = buildMetadataPayload(localState.settings, shardCount);
-    const writeResult = await writeSyncPayload(payload);
+    const writeResult = await writeSyncPayload(payload, {
+      currentData: syncState.data
+    });
 
     return {
       ...writeResult,
@@ -1100,78 +1321,113 @@
   /*  Sync usage statistics (for the popup capacity bar)                  */
   /* ------------------------------------------------------------------ */
 
-  async function getSyncUsageStats() {
+  async function inspectSyncStorage() {
     try {
-      const data = await chrome.storage.sync.get(null);
-      const syncKeys = Object.keys(data).filter((key) => (
-        key === SYNC_MANIFEST_KEY
-        || key === SYNC_SETTINGS_KEY
-        || key.startsWith(SYNC_ENTRY_PREFIX)
-      ));
+      const syncState = await getSyncState();
+      const lodVaultKeys = getLodVaultSyncKeys(syncState.data || {});
+      const lodVaultData = lodVaultKeys.reduce((result, key) => {
+        result[key] = syncState.data[key];
+        return result;
+      }, {});
+      const measuredTotalBytesUsed = await getActualSyncBytesInUse(null);
+      const measuredVaultBytesUsed = lodVaultKeys.length
+        ? await getActualSyncBytesInUse(lodVaultKeys)
+        : 0;
+      const bytesUsedTotal = Number.isFinite(measuredTotalBytesUsed)
+        ? measuredTotalBytesUsed
+        : estimateSyncWriteSize(syncState.data || {});
+      const bytesUsedVault = Number.isFinite(measuredVaultBytesUsed)
+        ? measuredVaultBytesUsed
+        : estimateSyncWriteSize(lodVaultData);
+      const bytesUsedOther = Math.max(0, bytesUsedTotal - bytesUsedVault);
+      const itemCountTotal = Object.keys(syncState.data || {}).length;
+      const itemCountVault = lodVaultKeys.length;
+      const itemCountOther = Math.max(0, itemCountTotal - itemCountVault);
+      const itemCountRemaining = Math.max(0, SYNC_MAX_ITEMS - itemCountTotal);
+      const shardCount = syncState.shardKeys?.length || 0;
+      const entryCount = Array.isArray(syncState.entries) ? syncState.entries.length : 0;
+      const bytesRemaining = Math.max(0, SYNC_TOTAL_HARD_LIMIT - bytesUsedTotal);
+      const percentUsed = Math.min(100, Math.round((bytesUsedTotal / SYNC_TOTAL_HARD_LIMIT) * 100));
+      const capacityByCount = { 1: 990, 2: 830, 3: 700 };
+      const langCount = Array.isArray(syncState.manifest?.l) ? syncState.manifest.l.length : 3;
 
-      const bytesUsed = syncKeys.reduce((total, key) => {
-        return total + getSyncItemSize(key, data[key]);
-      }, 0);
-
-      const manifest = normalizeManifest(data[SYNC_MANIFEST_KEY], 0);
-      const shardKeys = syncKeys.filter((key) => key.startsWith(SYNC_ENTRY_PREFIX));
-      const shardCount = shardKeys.length;
-
-      let entryCount = 0;
-      for (const key of shardKeys) {
-        const decompressed = await decompressShard(data[key]);
-        entryCount += Array.isArray(decompressed) ? decompressed.length : 0;
-      }
-
-      const bytesRemaining = Math.max(0, SYNC_TOTAL_HARD_LIMIT - bytesUsed);
-      const percentUsed = Math.min(100, Math.round((bytesUsed / SYNC_TOTAL_HARD_LIMIT) * 100));
-
-      let estimatedRemaining = 0;
-      if (entryCount > 0 && bytesUsed > 0) {
-        const avgBytesPerEntry = bytesUsed / entryCount;
+      let estimatedRemaining = capacityByCount[Math.min(langCount, 3)] || 700;
+      if (entryCount > 0 && bytesUsedVault > 0) {
+        const avgBytesPerEntry = bytesUsedVault / entryCount;
         estimatedRemaining = Math.floor(bytesRemaining / Math.max(1, avgBytesPerEntry));
-      } else if (bytesUsed === 0) {
-        const capacityByCount = { 1: 990, 2: 830, 3: 700 };
-        const langCount = Array.isArray(manifest?.l) ? manifest.l.length : 3;
-        estimatedRemaining = capacityByCount[Math.min(langCount, 3)] || 700;
       }
 
       return {
-        bytesUsed,
+        ok: true,
+        hasSyncData: Boolean(syncState.hasSyncData),
+        hasSyncWords: entryCount > 0 || shardCount > 0,
+        partialRead: Boolean(syncState.partialRead),
+        needsMigration: Boolean(syncState.needsMigration),
+        bytesUsed: bytesUsedTotal,
+        bytesUsedTotal,
+        bytesUsedVault,
+        bytesUsedOther,
         bytesTotal: SYNC_TOTAL_HARD_LIMIT,
         bytesRemaining,
         percentUsed,
         entryCount,
         shardCount,
-        estimatedRemaining
+        estimatedRemaining,
+        itemCountTotal,
+        itemCountVault,
+        itemCountOther,
+        itemCountRemaining,
+        maxItemsTotal: SYNC_MAX_ITEMS
       };
-    } catch (_error) {
+    } catch (error) {
+      console.warn("[LODVault] Could not inspect sync storage.", error);
       return {
-        bytesUsed: 0,
+        ok: false,
+        reason: "inspect-failed",
+        hasSyncData: false,
+        hasSyncWords: false,
+        partialRead: false,
+        needsMigration: false,
+        bytesUsed: Number.NaN,
+        bytesUsedTotal: Number.NaN,
+        bytesUsedVault: Number.NaN,
+        bytesUsedOther: Number.NaN,
         bytesTotal: SYNC_TOTAL_HARD_LIMIT,
-        bytesRemaining: SYNC_TOTAL_HARD_LIMIT,
-        percentUsed: 0,
-        entryCount: 0,
-        shardCount: 0,
-        estimatedRemaining: 700
+        bytesRemaining: Number.NaN,
+        percentUsed: Number.NaN,
+        entryCount: Number.NaN,
+        shardCount: Number.NaN,
+        estimatedRemaining: Number.NaN,
+        itemCountTotal: Number.NaN,
+        itemCountVault: Number.NaN,
+        itemCountOther: Number.NaN,
+        itemCountRemaining: Number.NaN,
+        maxItemsTotal: SYNC_MAX_ITEMS
       };
     }
+  }
+
+  async function getSyncUsageStats() {
+    return inspectSyncStorage();
   }
 
   globalThis.LodWrapperSync = {
     SYNC_FORMAT_VERSION,
     SYNC_MANIFEST_KEY,
     SYNC_SETTINGS_KEY,
+    SYNC_DELETED_KEY,
     SYNC_ENTRY_PREFIX,
     SYNC_SHARD_SOFT_LIMIT,
     SYNC_ITEM_HARD_LIMIT,
     SYNC_TOTAL_HARD_LIMIT,
+    SYNC_MAX_ITEMS,
     stableStringify,
     compactEntry,
     expandEntry,
     expandTranslations,
     shardEntries,
     mergeEntryMaps,
+    inspectSyncStorage,
     getSyncUsageStats,
     SyncAdapter: {
       init,

@@ -3,6 +3,8 @@
   const LEGACY_STORAGE_KEY = "lodWrapper.entries";
   const SETTINGS_KEY = "lodVault.settings";
   const BACKUP_KEY = "lodVault.backups";
+  const DELETED_KEY = "lodVault.deleted";
+  const HISTORY_IMPORT_STATE_KEY = "lodVault.historyImport";
   const MAX_BACKUP_SNAPSHOTS = 3;
   const BACKUP_MIN_INTERVAL_MS = 5 * 60 * 1000;
   const DEFAULT_SETTINGS = {
@@ -38,10 +40,15 @@
   );
   const BROWSER_HISTORY_IMPORT_QUERY = "lod.lu/artikel/";
   const BROWSER_HISTORY_IMPORT_MAX_RESULTS = 20000;
+  const HISTORY_HYDRATION_MAX_QUEUE = 120;
+  const HISTORY_HYDRATION_DELAY_MS = 250;
+  const HISTORY_HYDRATION_FETCH_TIMEOUT_MS = 8000;
 
   let storeCacheListenerInstalled = false;
   let cachedEntryMap = null;
   let cachedSettings = null;
+  let vaultIoQueue = Promise.resolve();
+  let historyHydrationRunning = false;
 
   function invalidateStoreCache(options = {}) {
     const invalidateEntries = options.entryMap !== false;
@@ -72,7 +79,8 @@
       if (areaName !== "local") return;
 
       if (Object.prototype.hasOwnProperty.call(changes || {}, STORAGE_KEY)
-        || Object.prototype.hasOwnProperty.call(changes || {}, LEGACY_STORAGE_KEY)) {
+        || Object.prototype.hasOwnProperty.call(changes || {}, LEGACY_STORAGE_KEY)
+        || Object.prototype.hasOwnProperty.call(changes || {}, DELETED_KEY)) {
         invalidateStoreCache({ entryMap: true, settings: false });
       }
 
@@ -192,6 +200,113 @@
     };
   }
 
+  function normalizeDeletedMap(value = {}) {
+    const result = {};
+
+    for (const [rawId, rawDeletedAt] of Object.entries(value || {})) {
+      const id = cleanText(rawId);
+      const deletedAt = cleanText(rawDeletedAt);
+      const timestamp = Date.parse(deletedAt);
+      if (!id || !deletedAt || !Number.isFinite(timestamp)) continue;
+      result[id] = new Date(timestamp).toISOString();
+    }
+
+    return result;
+  }
+
+  function mergeDeletedMaps(primary = {}, secondary = {}) {
+    const left = normalizeDeletedMap(primary);
+    const right = normalizeDeletedMap(secondary);
+    const merged = { ...left };
+
+    for (const [id, deletedAt] of Object.entries(right)) {
+      const current = merged[id];
+      if (!current || Date.parse(deletedAt) > Date.parse(current)) {
+        merged[id] = deletedAt;
+      }
+    }
+
+    return merged;
+  }
+
+  function getEntryTimestampMs(entry = {}) {
+    const normalized = normalizeEntry(entry);
+    return Math.max(
+      Date.parse(normalized.updatedAt || "") || 0,
+      Date.parse(normalized.lastVisitedAt || "") || 0,
+      Date.parse(normalized.createdAt || "") || 0
+    );
+  }
+
+  function applyDeletedMap(entryMap = {}, deletedMap = {}) {
+    const normalizedEntries = normalizeEntryMap(entryMap);
+    const normalizedDeleted = normalizeDeletedMap(deletedMap);
+    const nextEntries = {};
+
+    for (const [id, entry] of Object.entries(normalizedEntries)) {
+      const deletedAt = normalizedDeleted[id];
+      if (!deletedAt) {
+        nextEntries[id] = entry;
+        continue;
+      }
+
+      const deletedTimestamp = Date.parse(deletedAt) || 0;
+      if (getEntryTimestampMs(entry) > deletedTimestamp) {
+        nextEntries[id] = entry;
+      }
+    }
+
+    return nextEntries;
+  }
+
+  function pruneDeletedMapAgainstEntries(entryMap = {}, deletedMap = {}) {
+    const normalizedEntries = normalizeEntryMap(entryMap);
+    const normalizedDeleted = normalizeDeletedMap(deletedMap);
+    const nextDeleted = {};
+
+    for (const [id, deletedAt] of Object.entries(normalizedDeleted)) {
+      const entry = normalizedEntries[id];
+      if (!entry) {
+        nextDeleted[id] = deletedAt;
+        continue;
+      }
+
+      const deletedTimestamp = Date.parse(deletedAt) || 0;
+      if (getEntryTimestampMs(entry) <= deletedTimestamp) {
+        nextDeleted[id] = deletedAt;
+      }
+    }
+
+    return nextDeleted;
+  }
+
+  function normalizeHistoryImportState(value = {}) {
+    const status = cleanText(value?.status) || "idle";
+    const queue = Array.isArray(value?.queue)
+      ? value.queue.map((id) => cleanText(id)).filter(Boolean)
+      : [];
+    const failedIds = Array.isArray(value?.failedIds)
+      ? value.failedIds.map((id) => cleanText(id)).filter(Boolean)
+      : [];
+
+    return {
+      status,
+      startedAt: cleanText(value?.startedAt),
+      updatedAt: cleanText(value?.updatedAt),
+      scanned: Math.max(0, Number(value?.scanned) || 0),
+      imported: Math.max(0, Number(value?.imported) || 0),
+      skippedExisting: Math.max(0, Number(value?.skippedExisting) || 0),
+      ignored: Math.max(0, Number(value?.ignored) || 0),
+      queued: Math.max(0, Number(value?.queued) || queue.length),
+      hydrated: Math.max(0, Number(value?.hydrated) || 0),
+      failed: Math.max(0, Number(value?.failed) || failedIds.length),
+      currentId: cleanText(value?.currentId),
+      queue,
+      failedIds,
+      addedEntries: Array.isArray(value?.addedEntries) ? value.addedEntries.slice(0, 20) : []
+    };
+  }
+
   function isExtensionContextInvalidated(error) {
     return String(error || "").includes("Extension context invalidated");
   }
@@ -221,6 +336,12 @@
     return message.includes("Could not establish connection")
       || message.includes("Receiving end does not exist")
       || message.includes("message port closed");
+  }
+
+  function runVaultIo(task) {
+    const result = vaultIoQueue.then(task, task);
+    vaultIoQueue = result.catch(() => {});
+    return result;
   }
 
   async function runStoreMutation(method, args, directHandler) {
@@ -482,6 +603,18 @@
     return JSON.stringify(sorted);
   }
 
+  function stableDeletedMapString(deletedMap = {}) {
+    const normalized = normalizeDeletedMap(deletedMap);
+    const sorted = Object.keys(normalized)
+      .sort((left, right) => left.localeCompare(right))
+      .reduce((result, id) => {
+        result[id] = normalized[id];
+        return result;
+      }, {});
+
+    return JSON.stringify(sorted);
+  }
+
   function countStoredEntries(entryMap) {
     return Object.keys(normalizeEntryMap(entryMap)).length;
   }
@@ -546,6 +679,45 @@
     return (Date.now() - latestTimestamp) >= BACKUP_MIN_INTERVAL_MS;
   }
 
+  async function createSafetyBackupIfNeeded(previousMap, nextMap, reason = "auto") {
+    const previousEntries = normalizeEntryMap(previousMap);
+    const nextEntries = normalizeEntryMap(nextMap);
+    const previousCount = countStoredEntries(previousEntries);
+    const nextCount = countStoredEntries(nextEntries);
+
+    if (!previousCount || nextCount >= previousCount) {
+      return { created: false, backupId: "", entryCount: previousCount };
+    }
+
+    const data = await chrome.storage.local.get([BACKUP_KEY]);
+    const previousBackups = normalizeBackupSnapshots(data[BACKUP_KEY]);
+    const latestBackup = previousBackups[0];
+    if (latestBackup && stableEntryMapString(latestBackup.entries) === stableEntryMapString(previousEntries)) {
+      return { created: false, backupId: latestBackup.id || "", entryCount: previousCount };
+    }
+    if (!shouldCreateBackupSnapshot(previousEntries, nextEntries, previousBackups, reason) && nextCount > 0) {
+      return { created: false, backupId: latestBackup?.id || "", entryCount: previousCount };
+    }
+    if (!nextCount && latestBackup) {
+      const latestTimestamp = Date.parse(latestBackup.createdAt || "");
+      if (Number.isFinite(latestTimestamp) && (Date.now() - latestTimestamp) < BACKUP_MIN_INTERVAL_MS) {
+        return { created: false, backupId: latestBackup.id || "", entryCount: previousCount };
+      }
+    }
+
+    const snapshot = buildBackupSnapshot(previousEntries, reason);
+    const nextBackups = [snapshot, ...previousBackups].slice(0, MAX_BACKUP_SNAPSHOTS);
+    await chrome.storage.local.set({ [BACKUP_KEY]: nextBackups });
+
+    return {
+      created: true,
+      backupId: snapshot.id,
+      entryCount: snapshot.entryCount,
+      remaining: nextBackups.length,
+      reason: snapshot.reason
+    };
+  }
+
   async function getEntryMap() {
     ensureStoreCacheListener();
 
@@ -554,10 +726,11 @@
     }
 
     try {
-      const data = await chrome.storage.local.get([STORAGE_KEY, LEGACY_STORAGE_KEY, SETTINGS_KEY]);
+      const data = await chrome.storage.local.get([STORAGE_KEY, LEGACY_STORAGE_KEY, SETTINGS_KEY, DELETED_KEY]);
       const current = data[STORAGE_KEY] && typeof data[STORAGE_KEY] === "object" ? data[STORAGE_KEY] : {};
       const legacy = data[LEGACY_STORAGE_KEY] && typeof data[LEGACY_STORAGE_KEY] === "object" ? data[LEGACY_STORAGE_KEY] : null;
       const settings = normalizeSettings(data[SETTINGS_KEY] || {});
+      const deletedMap = normalizeDeletedMap(data[DELETED_KEY] || {});
 
       const combined = legacy
         ? {
@@ -570,16 +743,18 @@
         changed,
         needsLegacyRecovery
       } = filterEntryMapTranslationsWithMeta(combined, settings.syncLanguages);
+      const filteredWithDeletes = applyDeletedMap(filtered, deletedMap);
+      const deletedChanged = stableEntryMapString(filtered) !== stableEntryMapString(filteredWithDeletes);
 
-      if (legacy || needsLegacyRecovery || changed) {
-        await saveEntryMap(filtered, { reason: legacy ? "migration-legacy" : "migration-normalize" });
+      if (legacy || needsLegacyRecovery || changed || deletedChanged) {
+        await saveEntryMap(filteredWithDeletes, { reason: legacy ? "migration-legacy" : (deletedChanged ? "apply-deletions" : "migration-normalize") });
         if (legacy) {
           await chrome.storage.local.remove(LEGACY_STORAGE_KEY);
         }
       }
 
       cachedSettings = settings;
-      cachedEntryMap = filtered;
+      cachedEntryMap = filteredWithDeletes;
       return cachedEntryMap;
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
@@ -626,6 +801,103 @@
     }
   }
 
+  async function getDeletedMap() {
+    try {
+      const data = await chrome.storage.local.get([DELETED_KEY]);
+      return normalizeDeletedMap(data[DELETED_KEY] || {});
+    } catch (error) {
+      if (isExtensionContextInvalidated(error)) {
+        return {};
+      }
+      throw error;
+    }
+  }
+
+  async function saveDeletedMap(deletedMap) {
+    const normalized = normalizeDeletedMap(deletedMap);
+
+    try {
+      if (Object.keys(normalized).length) {
+        await chrome.storage.local.set({ [DELETED_KEY]: normalized });
+      } else {
+        await chrome.storage.local.remove(DELETED_KEY);
+      }
+    } catch (error) {
+      if (isExtensionContextInvalidated(error)) {
+        throw createRefreshPageError();
+      }
+      throw error;
+    }
+  }
+
+  async function getHistoryImportState() {
+    try {
+      const data = await chrome.storage.local.get([HISTORY_IMPORT_STATE_KEY]);
+      return normalizeHistoryImportState(data[HISTORY_IMPORT_STATE_KEY] || {});
+    } catch (error) {
+      if (isExtensionContextInvalidated(error)) {
+        return normalizeHistoryImportState({});
+      }
+      throw error;
+    }
+  }
+
+  async function saveHistoryImportState(state) {
+    const normalized = normalizeHistoryImportState(state);
+
+    try {
+      if (normalized.status === "idle" && !normalized.startedAt && !normalized.imported && !normalized.scanned) {
+        await chrome.storage.local.remove(HISTORY_IMPORT_STATE_KEY);
+      } else {
+        await chrome.storage.local.set({ [HISTORY_IMPORT_STATE_KEY]: normalized });
+      }
+    } catch (error) {
+      if (isExtensionContextInvalidated(error)) {
+        throw createRefreshPageError();
+      }
+      throw error;
+    }
+  }
+
+  async function persistVaultState({ entryMap = null, settings = null, deletedMap = null, previousEntryMap = null, backupReason = "" }) {
+    const sourceEntryMap = entryMap ? normalizeEntryMap(entryMap) : await getEntryMap();
+    const sourceDeletedMap = deletedMap ? normalizeDeletedMap(deletedMap) : await getDeletedMap();
+    const nextEntryMap = normalizeEntryMap(sourceEntryMap);
+    const nextDeletedMap = pruneDeletedMapAgainstEntries(nextEntryMap, sourceDeletedMap);
+    const payload = {
+      [STORAGE_KEY]: nextEntryMap
+    };
+    const removeKeys = [];
+
+    if (settings) {
+      const normalizedSettings = normalizeSettings(settings);
+      payload[SETTINGS_KEY] = normalizedSettings;
+      cachedSettings = normalizedSettings;
+    }
+
+    if (Object.keys(nextDeletedMap).length) {
+      payload[DELETED_KEY] = nextDeletedMap;
+    } else {
+      removeKeys.push(DELETED_KEY);
+    }
+
+    if (backupReason) {
+      await createSafetyBackupIfNeeded(previousEntryMap || {}, nextEntryMap, backupReason);
+    }
+
+    await chrome.storage.local.set(payload);
+    if (removeKeys.length) {
+      await chrome.storage.local.remove(removeKeys);
+    }
+
+    cachedEntryMap = nextEntryMap;
+    return {
+      entryMap: nextEntryMap,
+      deletedMap: nextDeletedMap,
+      settings: settings ? normalizeSettings(settings) : null
+    };
+  }
+
   async function getAutoMode() {
     const settings = await getSettings();
     return Boolean(settings.autoMode);
@@ -637,23 +909,24 @@
   }
 
   async function setAutoModeDirect(enabled) {
-    const nextSettings = normalizeSettings({
-      ...(await getSettings()),
-      autoMode: Boolean(enabled)
-    });
+    return runVaultIo(async () => {
+      const nextSettings = normalizeSettings({
+        ...(await getSettings()),
+        autoMode: Boolean(enabled)
+      });
 
-    try {
-      await chrome.storage.local.set({ [SETTINGS_KEY]: nextSettings });
-      cachedSettings = nextSettings;
-    } catch (error) {
-      invalidateStoreCache({ entryMap: false, settings: true });
-      if (isExtensionContextInvalidated(error)) {
-        throw createRefreshPageError();
+      try {
+        await persistVaultState({ settings: nextSettings });
+      } catch (error) {
+        invalidateStoreCache({ entryMap: false, settings: true });
+        if (isExtensionContextInvalidated(error)) {
+          throw createRefreshPageError();
+        }
+        throw error;
       }
-      throw error;
-    }
 
-    return nextSettings.autoMode;
+      return nextSettings.autoMode;
+    });
   }
 
   async function setAutoMode(enabled) {
@@ -661,26 +934,31 @@
   }
 
   async function setSyncLanguagesDirect(languages) {
-    const nextSettings = normalizeSettings({
-      ...(await getSettings()),
-      syncLanguages: languages
-    });
-    const entryMap = await getEntryMap();
-    const filteredEntryMap = filterEntryMapTranslations(entryMap, nextSettings.syncLanguages);
+    return runVaultIo(async () => {
+      const nextSettings = normalizeSettings({
+        ...(await getSettings()),
+        syncLanguages: languages
+      });
+      const entryMap = await getEntryMap();
+      const deletedMap = await getDeletedMap();
+      const filteredEntryMap = filterEntryMapTranslations(entryMap, nextSettings.syncLanguages);
 
-    try {
-      await saveEntryMap(filteredEntryMap, { reason: "settings-sync-languages" });
-      await chrome.storage.local.set({ [SETTINGS_KEY]: nextSettings });
-      cachedSettings = nextSettings;
-    } catch (error) {
-      invalidateStoreCache({ entryMap: false, settings: true });
-      if (isExtensionContextInvalidated(error)) {
-        throw createRefreshPageError();
+      try {
+        await persistVaultState({
+          entryMap: filteredEntryMap,
+          settings: nextSettings,
+          deletedMap
+        });
+      } catch (error) {
+        invalidateStoreCache({ entryMap: false, settings: true });
+        if (isExtensionContextInvalidated(error)) {
+          throw createRefreshPageError();
+        }
+        throw error;
       }
-      throw error;
-    }
 
-    return [...nextSettings.syncLanguages];
+      return [...nextSettings.syncLanguages];
+    });
   }
 
   async function setSyncLanguages(languages) {
@@ -707,36 +985,49 @@
   }
 
   async function toggleListDirect(entry, listName) {
-    if (!["favorite", "study"].includes(listName)) {
-      throw new Error(`Unsupported list: ${listName}`);
-    }
+    return runVaultIo(async () => {
+      if (!["favorite", "study"].includes(listName)) {
+        throw new Error(`Unsupported list: ${listName}`);
+      }
 
-    const normalized = normalizeEntry(entry);
-    if (!normalized.id || !normalized.word) {
-      throw new Error("Cannot save an empty entry.");
-    }
+      const normalized = normalizeEntry(entry);
+      if (!normalized.id || !normalized.word) {
+        throw new Error("Cannot save an empty entry.");
+      }
 
-    const settings = await getSettings();
-    const entryMap = await getEntryMap();
-    const existing = entryMap[normalized.id];
-    const merged = applyTranslationLanguageFilter(mergeEntry(existing, normalized), settings.syncLanguages);
+      const [settings, entryMap, deletedMap] = await Promise.all([
+        getSettings(),
+        getEntryMap(),
+        getDeletedMap()
+      ]);
+      const previousEntryMap = { ...entryMap };
+      const existing = entryMap[normalized.id];
+      const merged = applyTranslationLanguageFilter(mergeEntry(existing, normalized), settings.syncLanguages);
 
-    merged.favorite = Boolean(existing?.favorite);
-    merged.study = Boolean(existing?.study);
-    merged.history = Boolean(existing?.history);
-    merged.visitCount = normalizeVisitCount(existing?.visitCount);
-    merged.lastVisitedAt = cleanText(existing?.lastVisitedAt);
-    merged[listName] = !merged[listName];
+      merged.favorite = Boolean(existing?.favorite);
+      merged.study = Boolean(existing?.study);
+      merged.history = Boolean(existing?.history);
+      merged.visitCount = normalizeVisitCount(existing?.visitCount);
+      merged.lastVisitedAt = cleanText(existing?.lastVisitedAt);
+      merged[listName] = !merged[listName];
 
-    if (!shouldKeepEntry(merged)) {
-      delete entryMap[normalized.id];
-      await saveEntryMap(entryMap, { reason: "toggle-list" });
-      return null;
-    }
+      if (!shouldKeepEntry(merged)) {
+        delete entryMap[normalized.id];
+        deletedMap[normalized.id] = nowIso();
+        await persistVaultState({
+          entryMap,
+          deletedMap,
+          previousEntryMap,
+          backupReason: "manual-delete"
+        });
+        return null;
+      }
 
-    entryMap[normalized.id] = merged;
-    await saveEntryMap(entryMap, { reason: "toggle-list" });
-    return normalizeEntry(merged);
+      entryMap[normalized.id] = merged;
+      delete deletedMap[normalized.id];
+      await persistVaultState({ entryMap, deletedMap });
+      return normalizeEntry(merged);
+    });
   }
 
   async function toggleList(entry, listName) {
@@ -744,28 +1035,34 @@
   }
 
   async function recordAutoVisitDirect(entry) {
-    const normalized = normalizeEntry(entry);
-    if (!normalized.id || !normalized.word) {
-      throw new Error("Cannot save an empty entry.");
-    }
+    return runVaultIo(async () => {
+      const normalized = normalizeEntry(entry);
+      if (!normalized.id || !normalized.word) {
+        throw new Error("Cannot save an empty entry.");
+      }
 
-    const settings = await getSettings();
-    const entryMap = await getEntryMap();
-    const existing = entryMap[normalized.id];
-    const merged = applyTranslationLanguageFilter(mergeEntry(existing, normalized), settings.syncLanguages);
-    const visitedAt = nowIso();
+      const [settings, entryMap, deletedMap] = await Promise.all([
+        getSettings(),
+        getEntryMap(),
+        getDeletedMap()
+      ]);
+      const existing = entryMap[normalized.id];
+      const merged = applyTranslationLanguageFilter(mergeEntry(existing, normalized), settings.syncLanguages);
+      const visitedAt = nowIso();
 
-    merged.favorite = Boolean(existing?.favorite);
-    merged.study = true;
-    merged.history = true;
-    merged.visitCount = normalizeVisitCount(existing?.visitCount) + 1;
-    merged.lastVisitedAt = visitedAt;
-    merged.updatedAt = visitedAt;
-    merged.createdAt = merged.createdAt || visitedAt;
+      merged.favorite = Boolean(existing?.favorite);
+      merged.study = true;
+      merged.history = true;
+      merged.visitCount = normalizeVisitCount(existing?.visitCount) + 1;
+      merged.lastVisitedAt = visitedAt;
+      merged.updatedAt = visitedAt;
+      merged.createdAt = merged.createdAt || visitedAt;
 
-    entryMap[normalized.id] = merged;
-    await saveEntryMap(entryMap, { reason: "auto-visit" });
-    return normalizeEntry(merged);
+      entryMap[normalized.id] = merged;
+      delete deletedMap[normalized.id];
+      await persistVaultState({ entryMap, deletedMap });
+      return normalizeEntry(merged);
+    });
   }
 
   async function recordAutoVisit(entry) {
@@ -773,28 +1070,40 @@
   }
 
   async function removeFromHistoryDirect(id) {
-    if (!id) return null;
+    return runVaultIo(async () => {
+      if (!id) return null;
 
-    const entryMap = await getEntryMap();
-    const existing = entryMap[id];
-    if (!existing) return null;
+      const [entryMap, deletedMap] = await Promise.all([
+        getEntryMap(),
+        getDeletedMap()
+      ]);
+      const previousEntryMap = { ...entryMap };
+      const existing = entryMap[id];
+      if (!existing) return null;
 
-    const merged = mergeEntry(existing, existing);
-    merged.favorite = Boolean(existing.favorite);
-    merged.study = Boolean(existing.study);
-    merged.history = false;
-    delete merged.visitCount;
-    delete merged.lastVisitedAt;
+      const merged = mergeEntry(existing, existing);
+      merged.favorite = Boolean(existing.favorite);
+      merged.study = Boolean(existing.study);
+      merged.history = false;
+      delete merged.visitCount;
+      delete merged.lastVisitedAt;
 
-    if (!shouldKeepEntry(merged)) {
-      delete entryMap[id];
-      await saveEntryMap(entryMap, { reason: "remove-history" });
-      return null;
-    }
+      if (!shouldKeepEntry(merged)) {
+        delete entryMap[id];
+        deletedMap[id] = nowIso();
+        await persistVaultState({
+          entryMap,
+          deletedMap,
+          previousEntryMap,
+          backupReason: "manual-delete"
+        });
+        return null;
+      }
 
-    entryMap[id] = merged;
-    await saveEntryMap(entryMap, { reason: "remove-history" });
-    return normalizeEntry(merged);
+      entryMap[id] = merged;
+      await persistVaultState({ entryMap, deletedMap });
+      return normalizeEntry(merged);
+    });
   }
 
   async function removeFromHistory(id) {
@@ -802,33 +1111,39 @@
   }
 
   async function refreshEntryDataDirect(entry) {
-    const normalized = normalizeEntry(entry);
-    if (!normalized.id || !normalized.word) return null;
+    return runVaultIo(async () => {
+      const normalized = normalizeEntry(entry);
+      if (!normalized.id || !normalized.word) return null;
 
-    const settings = await getSettings();
-    const entryMap = await getEntryMap();
-    const existing = entryMap[normalized.id];
-    if (!existing) return null;
+      const [settings, entryMap, deletedMap] = await Promise.all([
+        getSettings(),
+        getEntryMap(),
+        getDeletedMap()
+      ]);
+      const existing = entryMap[normalized.id];
+      if (!existing) return null;
 
-    const merged = applyTranslationLanguageFilter(mergeEntry(existing, normalized), settings.syncLanguages);
-    merged.favorite = Boolean(existing.favorite);
-    merged.study = Boolean(existing.study);
-    merged.history = Boolean(existing.history);
-    merged.visitCount = normalizeVisitCount(existing.visitCount);
-    merged.lastVisitedAt = cleanText(existing.lastVisitedAt);
-    merged.createdAt = cleanText(existing.createdAt) || merged.createdAt;
+      const merged = applyTranslationLanguageFilter(mergeEntry(existing, normalized), settings.syncLanguages);
+      merged.favorite = Boolean(existing.favorite);
+      merged.study = Boolean(existing.study);
+      merged.history = Boolean(existing.history);
+      merged.visitCount = normalizeVisitCount(existing.visitCount);
+      merged.lastVisitedAt = cleanText(existing.lastVisitedAt);
+      merged.createdAt = cleanText(existing.createdAt) || merged.createdAt;
 
-    if (!shouldKeepEntry(merged)) {
-      return null;
-    }
+      if (!shouldKeepEntry(merged)) {
+        return null;
+      }
 
-    if (entriesMatchForStorage(existing, merged)) {
-      return normalizeEntry(existing);
-    }
+      if (entriesMatchForStorage(existing, merged)) {
+        return normalizeEntry(existing);
+      }
 
-    entryMap[normalized.id] = merged;
-    await saveEntryMap(entryMap, { reason: "refresh-entry" });
-    return normalizeEntry(merged);
+      entryMap[normalized.id] = merged;
+      delete deletedMap[normalized.id];
+      await persistVaultState({ entryMap, deletedMap });
+      return normalizeEntry(merged);
+    });
   }
 
   async function refreshEntryData(entry) {
@@ -836,23 +1151,28 @@
   }
 
   async function saveNoteDirect(id, note) {
-    if (!id) throw new Error("Missing entry id.");
+    return runVaultIo(async () => {
+      if (!id) throw new Error("Missing entry id.");
 
-    const entryMap = await getEntryMap();
-    const existing = entryMap[id];
-    if (!existing) throw new Error("Entry not found.");
+      const [entryMap, deletedMap] = await Promise.all([
+        getEntryMap(),
+        getDeletedMap()
+      ]);
+      const existing = entryMap[id];
+      if (!existing) throw new Error("Entry not found.");
 
-    const merged = mergeEntry(existing, existing);
+      const merged = mergeEntry(existing, existing);
 
-    merged.note = cleanText(note);
-    merged.favorite = Boolean(existing.favorite);
-    merged.study = Boolean(existing.study);
-    merged.history = Boolean(existing.history);
-    merged.visitCount = normalizeVisitCount(existing.visitCount);
-    merged.lastVisitedAt = cleanText(existing.lastVisitedAt);
-    entryMap[id] = merged;
-    await saveEntryMap(entryMap, { reason: "save-note" });
-    return normalizeEntry(merged);
+      merged.note = cleanText(note);
+      merged.favorite = Boolean(existing.favorite);
+      merged.study = Boolean(existing.study);
+      merged.history = Boolean(existing.history);
+      merged.visitCount = normalizeVisitCount(existing.visitCount);
+      merged.lastVisitedAt = cleanText(existing.lastVisitedAt);
+      entryMap[id] = merged;
+      await persistVaultState({ entryMap, deletedMap });
+      return normalizeEntry(merged);
+    });
   }
 
   async function saveNote(id, note) {
@@ -860,10 +1180,23 @@
   }
 
   async function removeEntryDirect(id) {
-    if (!id) return;
-    const entryMap = await getEntryMap();
-    delete entryMap[id];
-    await saveEntryMap(entryMap, { reason: "manual-remove-entry" });
+    return runVaultIo(async () => {
+      if (!id) return;
+      const [entryMap, deletedMap] = await Promise.all([
+        getEntryMap(),
+        getDeletedMap()
+      ]);
+      if (!entryMap[id]) return;
+      const previousEntryMap = { ...entryMap };
+      delete entryMap[id];
+      deletedMap[id] = nowIso();
+      await persistVaultState({
+        entryMap,
+        deletedMap,
+        previousEntryMap,
+        backupReason: "manual-delete"
+      });
+    });
   }
 
   async function removeEntry(id) {
@@ -920,56 +1253,57 @@
   }
 
   async function importJsonDirect(text) {
-    const parsed = JSON.parse(text);
-    validateImportPayload(parsed);
+    return runVaultIo(async () => {
+      const parsed = JSON.parse(text);
+      validateImportPayload(parsed);
 
-    const incomingEntries = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.entries) ? parsed.entries : [];
-    const importedSettings = getImportedSettings(parsed);
-    const currentSettings = await getSettings();
-    const effectiveSettings = normalizeSettings({
-      ...currentSettings,
-      ...(importedSettings || {})
-    });
-    const entryMap = await getEntryMap();
-    let imported = 0;
+      const incomingEntries = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.entries) ? parsed.entries : [];
+      const importedSettings = getImportedSettings(parsed);
+      const currentSettings = await getSettings();
+      const effectiveSettings = normalizeSettings({
+        ...currentSettings,
+        ...(importedSettings || {})
+      });
+      const entryMap = await getEntryMap();
+      const deletedMap = await getDeletedMap();
+      let imported = 0;
 
-    for (const rawEntry of incomingEntries) {
-      const incoming = normalizeEntry(rawEntry);
-      if (!incoming.id || !incoming.word) continue;
-      if (!shouldKeepEntry(incoming)) continue;
+      for (const rawEntry of incomingEntries) {
+        const incoming = normalizeEntry(rawEntry);
+        if (!incoming.id || !incoming.word) continue;
+        if (!shouldKeepEntry(incoming)) continue;
 
-      const existing = entryMap[incoming.id];
-      const merged = applyTranslationLanguageFilter(mergeEntry(existing, incoming), effectiveSettings.syncLanguages);
-      merged.favorite = Boolean(existing?.favorite) || Boolean(incoming.favorite);
-      merged.study = Boolean(existing?.study) || Boolean(incoming.study);
-      merged.history = Boolean(existing?.history) || Boolean(incoming.history);
-      merged.visitCount = merged.history
-        ? Math.max(normalizeVisitCount(existing?.visitCount), normalizeVisitCount(incoming.visitCount), 1)
-        : 0;
-      merged.lastVisitedAt = incoming.lastVisitedAt || cleanText(existing?.lastVisitedAt);
-      merged.note = incoming.note || merged.note;
+        const existing = entryMap[incoming.id];
+        const merged = applyTranslationLanguageFilter(mergeEntry(existing, incoming), effectiveSettings.syncLanguages);
+        merged.favorite = Boolean(existing?.favorite) || Boolean(incoming.favorite);
+        merged.study = Boolean(existing?.study) || Boolean(incoming.study);
+        merged.history = Boolean(existing?.history) || Boolean(incoming.history);
+        merged.visitCount = merged.history
+          ? Math.max(normalizeVisitCount(existing?.visitCount), normalizeVisitCount(incoming.visitCount), 1)
+          : 0;
+        merged.lastVisitedAt = incoming.lastVisitedAt || cleanText(existing?.lastVisitedAt);
+        merged.note = incoming.note || merged.note;
 
-      if (!merged.visitCount) {
-        delete merged.visitCount;
+        if (!merged.visitCount) {
+          delete merged.visitCount;
+        }
+        if (!merged.lastVisitedAt) {
+          delete merged.lastVisitedAt;
+        }
+
+        entryMap[incoming.id] = merged;
+        delete deletedMap[incoming.id];
+        imported += 1;
       }
-      if (!merged.lastVisitedAt) {
-        delete merged.lastVisitedAt;
-      }
 
-      entryMap[incoming.id] = merged;
-      imported += 1;
-    }
+      const filteredEntryMap = filterEntryMapTranslations(entryMap, effectiveSettings.syncLanguages);
 
-    const filteredEntryMap = filterEntryMapTranslations(entryMap, effectiveSettings.syncLanguages);
-
-    await saveEntryMap(filteredEntryMap, { reason: "import-json" });
-
-    if (importedSettings) {
       try {
-        await chrome.storage.local.set({
-          [SETTINGS_KEY]: effectiveSettings
+        await persistVaultState({
+          entryMap: filteredEntryMap,
+          settings: importedSettings ? effectiveSettings : null,
+          deletedMap
         });
-        cachedSettings = effectiveSettings;
       } catch (error) {
         invalidateStoreCache({ entryMap: false, settings: true });
         if (isExtensionContextInvalidated(error)) {
@@ -977,9 +1311,9 @@
         }
         throw error;
       }
-    }
 
-    return { imported, total: countStoredEntries(filteredEntryMap) };
+      return { imported, total: countStoredEntries(filteredEntryMap) };
+    });
   }
 
   async function importJson(text) {
@@ -1004,6 +1338,198 @@
     };
   }
 
+  function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+  }
+
+  async function fetchArticleHtml(url) {
+    const requestUrl = cleanText(url);
+    if (!requestUrl) return "";
+
+    const controller = typeof AbortController !== "undefined"
+      ? new AbortController()
+      : null;
+    const timer = controller
+      ? setTimeout(() => controller.abort(), HISTORY_HYDRATION_FETCH_TIMEOUT_MS)
+      : null;
+
+    try {
+      const response = await fetch(requestUrl, {
+        method: "GET",
+        credentials: "omit",
+        redirect: "follow",
+        signal: controller?.signal,
+        headers: {
+          Accept: "text/html,application/xhtml+xml"
+        }
+      });
+
+      if (!response?.ok) {
+        throw new Error(`HTTP ${response?.status || 0}`);
+      }
+
+      return await response.text();
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  function extractEntryFromHtml(html, url) {
+    const reader = globalThis.LodWrapperArticleReader;
+    if (typeof reader?.extractEntryFromHtml === "function") {
+      return reader.extractEntryFromHtml(html, url);
+    }
+    return null;
+  }
+
+  function shouldHydrateHistoryEntry(entry) {
+    const normalized = normalizeEntry(entry);
+    if (!normalized.id || !normalized.word || !shouldKeepEntry(normalized)) return false;
+    if (!isLodArticleUrl(normalized.url)) return false;
+
+    return !normalized.pos
+      || !normalized.inflection
+      || !normalized.example
+      || Object.keys(normalized.translations || {}).length === 0;
+  }
+
+  function mergeHydratedHistoryEntry(existing, hydrated, settings) {
+    const merged = applyTranslationLanguageFilter(mergeEntry(existing, hydrated), settings.syncLanguages);
+    merged.favorite = Boolean(existing?.favorite);
+    merged.study = Boolean(existing?.study);
+    merged.history = Boolean(existing?.history);
+    merged.note = cleanText(existing?.note) || cleanText(merged.note);
+    merged.visitCount = normalizeVisitCount(existing?.visitCount || merged.visitCount);
+    merged.lastVisitedAt = cleanText(existing?.lastVisitedAt || merged.lastVisitedAt);
+    merged.createdAt = cleanText(existing?.createdAt) || merged.createdAt;
+    merged.updatedAt = nowIso();
+
+    if (!merged.visitCount) {
+      delete merged.visitCount;
+    }
+
+    if (!merged.lastVisitedAt) {
+      delete merged.lastVisitedAt;
+    }
+
+    return normalizeEntry(merged);
+  }
+
+  async function hydrateHistoryEntry(entry, settings) {
+    const normalized = normalizeEntry(entry);
+    if (!shouldHydrateHistoryEntry(normalized)) return null;
+
+    const html = await fetchArticleHtml(normalized.url);
+    const extracted = extractEntryFromHtml(html, normalized.url);
+    if (!extracted?.id || extracted.id !== normalized.id) {
+      throw new Error("Hydrated article did not match the expected entry.");
+    }
+
+    return normalizeEntry({
+      ...normalized,
+      ...extracted,
+      favorite: normalized.favorite,
+      study: normalized.study,
+      history: normalized.history,
+      note: normalized.note,
+      visitCount: normalized.visitCount,
+      lastVisitedAt: normalized.lastVisitedAt,
+      createdAt: normalized.createdAt,
+      updatedAt: nowIso()
+    });
+  }
+
+  async function resumeHistoryImportHydration() {
+    if (historyHydrationRunning) return false;
+    historyHydrationRunning = true;
+
+    try {
+      while (true) {
+        const state = await getHistoryImportState();
+        if (!state.queue.length) {
+          if (state.status === "running" || state.status === "queued") {
+            await saveHistoryImportState({
+              ...state,
+              status: "complete",
+              currentId: "",
+              updatedAt: nowIso(),
+              queue: []
+            });
+          }
+          return true;
+        }
+
+        const nextId = state.queue[0];
+        await saveHistoryImportState({
+          ...state,
+          status: "running",
+          currentId: nextId,
+          updatedAt: nowIso()
+        });
+
+        let hydrated = false;
+        try {
+          const [settings, existingEntry, deletedMap] = await Promise.all([
+            getSettings(),
+            getEntry(nextId),
+            getDeletedMap()
+          ]);
+
+          if (existingEntry && !deletedMap[nextId] && shouldHydrateHistoryEntry(existingEntry)) {
+            const hydratedEntry = await hydrateHistoryEntry(existingEntry, settings);
+            hydrated = await runVaultIo(async () => {
+              const [latestSettings, entryMap, latestDeletedMap] = await Promise.all([
+                getSettings(),
+                getEntryMap(),
+                getDeletedMap()
+              ]);
+              const latestEntry = entryMap[nextId];
+              if (!latestEntry || latestDeletedMap[nextId] || !shouldHydrateHistoryEntry(latestEntry)) {
+                return false;
+              }
+
+              entryMap[nextId] = mergeHydratedHistoryEntry(latestEntry, hydratedEntry, latestSettings);
+              await persistVaultState({ entryMap, deletedMap: latestDeletedMap });
+              return true;
+            });
+          }
+        } catch {
+          hydrated = false;
+        }
+
+        const latestState = await getHistoryImportState();
+        let removed = false;
+        const nextQueue = latestState.queue.filter((id) => {
+          if (!removed && id === nextId) {
+            removed = true;
+            return false;
+          }
+          return true;
+        });
+        const nextFailedIds = hydrated
+          ? latestState.failedIds.filter((id) => id !== nextId)
+          : [...latestState.failedIds.filter((id) => id !== nextId), nextId].slice(-20);
+
+        await saveHistoryImportState({
+          ...latestState,
+          status: nextQueue.length ? "running" : "complete",
+          currentId: nextQueue.length ? "" : "",
+          updatedAt: nowIso(),
+          hydrated: latestState.hydrated + (hydrated ? 1 : 0),
+          failed: nextFailedIds.length,
+          failedIds: nextFailedIds,
+          queue: nextQueue
+        });
+
+        if (nextQueue.length) {
+          await delay(HISTORY_HYDRATION_DELAY_MS);
+        }
+      }
+    } finally {
+      historyHydrationRunning = false;
+    }
+  }
+
   function assertBrowserHistoryApiAvailable() {
     if (typeof chrome?.history?.search !== "function") {
       throw new Error("Browser history access is unavailable.");
@@ -1024,74 +1550,122 @@
 
     const searchOptions = normalizeHistoryImportOptions(options);
     const historyItems = await chrome.history.search(searchOptions);
-    const entryMap = await getEntryMap();
-    const settings = await getSettings();
-    let imported = 0;
-    let skippedExisting = 0;
-    let ignored = 0;
-    const addedEntries = [];
 
-    for (const item of Array.isArray(historyItems) ? historyItems : []) {
-      const url = cleanText(item?.url);
-      if (!isLodArticleUrl(url)) {
-        ignored += 1;
-        continue;
-      }
+    const result = await runVaultIo(async () => {
+      const [entryMap, settings, deletedMap, existingImportState] = await Promise.all([
+        getEntryMap(),
+        getSettings(),
+        getDeletedMap(),
+        getHistoryImportState()
+      ]);
+      let imported = 0;
+      let skippedExisting = 0;
+      let ignored = 0;
+      const addedEntries = [];
+      const hydrationCandidates = [];
 
-      const id = getIdFromUrl(url);
-      if (!id) {
-        ignored += 1;
-        continue;
-      }
+      for (const item of Array.isArray(historyItems) ? historyItems : []) {
+        const url = cleanText(item?.url);
+        if (!isLodArticleUrl(url)) {
+          ignored += 1;
+          continue;
+        }
 
-      if (entryMap[id]) {
-        skippedExisting += 1;
-        continue;
-      }
+        const id = getIdFromUrl(url);
+        if (!id) {
+          ignored += 1;
+          continue;
+        }
 
-      const lastVisitedAt = toVisitedIso(item?.lastVisitTime);
-      const visitCount = Math.max(normalizeVisitCount(item?.visitCount), 1);
-      const normalized = normalizeEntry({
-        id,
-        word: deriveWordFromHistoryItem(item, id),
-        url,
-        study: true,
-        history: true,
-        visitCount,
-        lastVisitedAt,
-        createdAt: lastVisitedAt,
-        updatedAt: lastVisitedAt
-      });
+        if (entryMap[id]) {
+          skippedExisting += 1;
+          continue;
+        }
 
-      if (!normalized.id || !normalized.word || !shouldKeepEntry(normalized)) {
-        ignored += 1;
-        continue;
-      }
-
-      entryMap[id] = applyTranslationLanguageFilter(normalized, settings.syncLanguages);
-      imported += 1;
-      if (addedEntries.length < 20) {
-        addedEntries.push({
-          id: normalized.id,
-          word: normalized.word,
-          url: normalized.url,
-          lastVisitedAt: normalized.lastVisitedAt
+        const lastVisitedAt = toVisitedIso(item?.lastVisitTime);
+        const visitCount = Math.max(normalizeVisitCount(item?.visitCount), 1);
+        const normalized = normalizeEntry({
+          id,
+          word: deriveWordFromHistoryItem(item, id),
+          url,
+          study: true,
+          history: true,
+          visitCount,
+          lastVisitedAt,
+          createdAt: lastVisitedAt,
+          updatedAt: lastVisitedAt
         });
+
+        if (!normalized.id || !normalized.word || !shouldKeepEntry(normalized)) {
+          ignored += 1;
+          continue;
+        }
+
+        const storedEntry = applyTranslationLanguageFilter(normalized, settings.syncLanguages);
+        entryMap[id] = storedEntry;
+        delete deletedMap[id];
+        imported += 1;
+        if (shouldHydrateHistoryEntry(storedEntry)) {
+          hydrationCandidates.push(id);
+        }
+        if (addedEntries.length < 20) {
+          addedEntries.push({
+            id: normalized.id,
+            word: normalized.word,
+            url: normalized.url,
+            lastVisitedAt: normalized.lastVisitedAt
+          });
+        }
       }
+
+      if (imported > 0) {
+        await persistVaultState({ entryMap, deletedMap });
+      }
+
+      const baseImportState = (existingImportState.queue.length || existingImportState.status === "running")
+        ? existingImportState
+        : normalizeHistoryImportState({});
+      const nextQueue = [...baseImportState.queue];
+      for (const id of hydrationCandidates) {
+        if (nextQueue.includes(id)) continue;
+        if (nextQueue.length >= HISTORY_HYDRATION_MAX_QUEUE) break;
+        nextQueue.push(id);
+      }
+
+      const nextImportState = normalizeHistoryImportState({
+        ...baseImportState,
+        status: nextQueue.length ? (historyHydrationRunning ? "running" : "queued") : (imported > 0 ? "complete" : baseImportState.status),
+        startedAt: baseImportState.startedAt || nowIso(),
+        updatedAt: nowIso(),
+        scanned: baseImportState.scanned + (Array.isArray(historyItems) ? historyItems.length : 0),
+        imported: baseImportState.imported + imported,
+        skippedExisting: baseImportState.skippedExisting + skippedExisting,
+        ignored: baseImportState.ignored + ignored,
+        queued: Math.max(baseImportState.queued, baseImportState.hydrated + baseImportState.failed + nextQueue.length),
+        queue: nextQueue,
+        addedEntries
+      });
+      await saveHistoryImportState(nextImportState);
+
+      return {
+        imported,
+        scanned: Array.isArray(historyItems) ? historyItems.length : 0,
+        skippedExisting,
+        ignored,
+        total: countStoredEntries(entryMap),
+        addedEntries,
+        hydrationQueued: nextQueue.length,
+        hydrationStatus: nextImportState.status
+      };
+    });
+
+    if (result.hydrationQueued > 0) {
+      setTimeout(() => {
+        resumeHistoryImportHydration().catch(() => {});
+      }, 0);
     }
 
-    if (imported > 0) {
-      await saveEntryMap(entryMap, { reason: "import-browser-history" });
-    }
-
-    return {
-      imported,
-      scanned: Array.isArray(historyItems) ? historyItems.length : 0,
-      skippedExisting,
-      ignored,
-      total: countStoredEntries(entryMap),
-      addedEntries
-    };
+    return result;
   }
 
   async function importBrowserHistory(options) {
@@ -1101,6 +1675,9 @@
   function mergeEntriesByCoverage(primaryEntry = {}, secondaryEntry = {}) {
     const primary = normalizeEntry(primaryEntry);
     const secondary = normalizeEntry(secondaryEntry);
+    const newest = getEntryTimestampMs(secondary) > getEntryTimestampMs(primary)
+      ? secondary
+      : primary;
 
     const hasHistory = Boolean(primary.history || secondary.history);
     const latestVisitedAt = [primary.lastVisitedAt, secondary.lastVisitedAt]
@@ -1123,13 +1700,14 @@
       id: primary.id || secondary.id,
       word: primary.word || secondary.word,
       url: primary.url || secondary.url,
-      pos: primary.pos || secondary.pos,
-      inflection: primary.inflection || secondary.inflection,
-      example: primary.example || secondary.example,
-      note: primary.note || secondary.note,
+      pos: newest.pos || primary.pos || secondary.pos,
+      inflection: newest.inflection || primary.inflection || secondary.inflection,
+      example: newest.example || primary.example || secondary.example,
+      note: newest.note || primary.note || secondary.note,
       translations: {
         ...(secondary.translations || {}),
-        ...(primary.translations || {})
+        ...(primary.translations || {}),
+        ...(newest.translations || {})
       },
       favorite: Boolean(primary.favorite || secondary.favorite),
       study: Boolean(primary.study || secondary.study),
@@ -1174,6 +1752,66 @@
     }
 
     return normalizeEntryMap(merged);
+  }
+
+  async function applyRemoteVaultStateDirect(remoteState = {}) {
+    return runVaultIo(async () => {
+      const data = await chrome.storage.local.get([STORAGE_KEY, SETTINGS_KEY, DELETED_KEY]);
+      const localEntries = normalizeEntryMap(data[STORAGE_KEY] || {});
+      const rawLocalSettings = data[SETTINGS_KEY] && typeof data[SETTINGS_KEY] === "object" ? data[SETTINGS_KEY] : {};
+      const localSettings = normalizeSettings(rawLocalSettings);
+      const localDeletedMap = normalizeDeletedMap(data[DELETED_KEY] || {});
+      const remoteEntries = normalizeEntryMap(remoteState?.entries || {});
+      const remoteSettings = remoteState?.settings && typeof remoteState.settings === "object"
+        ? remoteState.settings
+        : {};
+      const remoteDeletedMap = normalizeDeletedMap(remoteState?.deletedMap || {});
+
+      const mergedSettings = normalizeSettings({
+        ...localSettings,
+        ...(!("autoMode" in rawLocalSettings) && "a" in remoteSettings ? { autoMode: Boolean(remoteSettings.a) } : {}),
+        ...(!("syncLanguages" in rawLocalSettings) && Array.isArray(remoteSettings.l)
+          ? { syncLanguages: normalizeSyncLanguages(remoteSettings.l) }
+          : {})
+      });
+      const mergedDeletedMap = mergeDeletedMaps(localDeletedMap, remoteDeletedMap);
+      const mergedEntries = applyDeletedMap(
+        filterEntryMapTranslations(mergeVaultVersions(localEntries, remoteEntries), mergedSettings.syncLanguages),
+        mergedDeletedMap
+      );
+      const nextDeletedMap = pruneDeletedMapAgainstEntries(mergedEntries, mergedDeletedMap);
+      const entriesChanged = stableEntryMapString(localEntries) !== stableEntryMapString(mergedEntries);
+      const settingsChanged = JSON.stringify(localSettings) !== JSON.stringify(mergedSettings);
+      const deletedChanged = stableDeletedMapString(localDeletedMap) !== stableDeletedMapString(nextDeletedMap);
+      const appliedDeletionCount = Object.keys(localEntries).filter((id) => !mergedEntries[id] && nextDeletedMap[id]).length;
+
+      if (entriesChanged || settingsChanged || deletedChanged) {
+        await persistVaultState({
+          entryMap: mergedEntries,
+          settings: mergedSettings,
+          deletedMap: nextDeletedMap,
+          previousEntryMap: localEntries,
+          backupReason: appliedDeletionCount > 0 ? "sync-delete-safety" : ""
+        });
+      }
+
+      return {
+        changed: entriesChanged || settingsChanged || deletedChanged,
+        entriesChanged,
+        settingsChanged,
+        deletedChanged,
+        appliedDeletionCount,
+        entryCount: Object.keys(mergedEntries).length,
+        deletedCount: Object.keys(nextDeletedMap).length,
+        settings: mergedSettings,
+        deletedMap: nextDeletedMap,
+        entries: mergedEntries
+      };
+    });
+  }
+
+  async function applyRemoteVaultState(remoteState) {
+    return applyRemoteVaultStateDirect(remoteState);
   }
 
   async function createVaultBackupDirect(reason = "manual") {
@@ -1237,28 +1875,36 @@
   }
 
   async function restoreVaultBackupDirect(backupId) {
-    const targetId = cleanText(backupId);
-    if (!targetId) {
-      throw new Error("Missing backup id.");
-    }
+    return runVaultIo(async () => {
+      const targetId = cleanText(backupId);
+      if (!targetId) {
+        throw new Error("Missing backup id.");
+      }
 
-    const data = await chrome.storage.local.get([BACKUP_KEY]);
-    const backups = normalizeBackupSnapshots(data[BACKUP_KEY]);
-    const snapshot = backups.find((item) => item.id === targetId);
+      const data = await chrome.storage.local.get([BACKUP_KEY]);
+      const backups = normalizeBackupSnapshots(data[BACKUP_KEY]);
+      const snapshot = backups.find((item) => item.id === targetId);
 
-    if (!snapshot) {
-      throw new Error("Backup not found.");
-    }
+      if (!snapshot) {
+        throw new Error("Backup not found.");
+      }
 
-    const current = await getEntryMap();
-    const merged = mergeVaultVersions(current, snapshot.entries);
-    await saveEntryMap(merged, { reason: "restore-backup" });
+      const [current, deletedMap] = await Promise.all([
+        getEntryMap(),
+        getDeletedMap()
+      ]);
+      const merged = mergeVaultVersions(current, snapshot.entries);
+      for (const id of Object.keys(merged)) {
+        delete deletedMap[id];
+      }
+      await persistVaultState({ entryMap: merged, deletedMap });
 
-    return {
-      restored: true,
-      entryCount: Object.keys(merged).length,
-      backupId: snapshot.id
-    };
+      return {
+        restored: true,
+        entryCount: Object.keys(merged).length,
+        backupId: snapshot.id
+      };
+    });
   }
 
   async function restoreVaultBackup(backupId) {
@@ -1475,6 +2121,8 @@
     LEGACY_STORAGE_KEY,
     SETTINGS_KEY,
     BACKUP_KEY,
+    DELETED_KEY,
+    HISTORY_IMPORT_STATE_KEY,
     FLASHCARD_META_KEY,
     DEFAULT_SETTINGS,
     EXPORT_VERSION,
@@ -1490,6 +2138,7 @@
     normalizeVisitCount,
     normalizeSyncLanguages,
     normalizeSettings,
+    normalizeDeletedMap,
     isExtensionContextInvalidated,
     normalizeEntry,
     normalizeEntryMap,
@@ -1497,6 +2146,8 @@
     filterEntryMapTranslations,
     getEntryMap,
     getSettings,
+    getDeletedMap,
+    getHistoryImportState,
     getAutoMode,
     getSyncLanguages,
     setAutoMode,
@@ -1512,6 +2163,8 @@
     buildJsonExport,
     importJson,
     importBrowserHistory,
+    resumeHistoryImportHydration,
+    applyRemoteVaultStateDirect,
     createVaultBackup,
     getVaultBackups,
     restoreVaultBackup,

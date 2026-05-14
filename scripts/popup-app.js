@@ -123,6 +123,7 @@
         const hasSyncVaultChange = Object.keys(changes || {}).some((key) => (
           key === "lodVault.m"
           || key === "lodVault.s"
+          || key === "lodVault.d"
           || key.startsWith("lodVault.e.")
         ));
         if (hasSyncVaultChange) {
@@ -142,13 +143,20 @@
       const hasBackupChange = Boolean(
         store.BACKUP_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.BACKUP_KEY)
       );
+      const hasHistoryImportStateChange = Boolean(
+        store.HISTORY_IMPORT_STATE_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.HISTORY_IMPORT_STATE_KEY)
+      );
 
-      if (!hasEntriesChange && !hasSettingsChange && !hasBackupChange) {
+      if (!hasEntriesChange && !hasSettingsChange && !hasBackupChange && !hasHistoryImportStateChange) {
         return;
       }
 
       if (hasSettingsChange) {
         await refreshSettingsState();
+      }
+
+      if (hasHistoryImportStateChange) {
+        await refreshHistoryImportState();
       }
 
       if (hasEntriesChange || hasSettingsChange) {
@@ -319,6 +327,7 @@
       const keys = Object.keys(syncStorage || {}).filter((key) => (
         key === "lodVault.m"
         || key === "lodVault.s"
+        || key === "lodVault.d"
         || key.startsWith("lodVault.e.")
       ));
       const shardKeyCount = keys.filter((key) => key.startsWith("lodVault.e.")).length;
@@ -326,6 +335,98 @@
       return {
         keyCount: keys.length,
         shardKeyCount
+      };
+    }
+
+    function toFiniteNumber(value) {
+      const number = Number(value);
+      return Number.isFinite(number) ? number : Number.NaN;
+    }
+
+    async function inspectSyncRemoteState() {
+      const sync = getSyncNamespace();
+      if (typeof sync?.inspectSyncStorage === "function") {
+        try {
+          const snapshot = await sync.inspectSyncStorage();
+          if (snapshot && typeof snapshot === "object") {
+            return {
+              ok: snapshot.ok !== false,
+              hasSyncData: Boolean(snapshot.hasSyncData),
+              hasSyncWords: Boolean(snapshot.hasSyncWords),
+              partialRead: Boolean(snapshot.partialRead),
+              bytesUsed: toFiniteNumber(snapshot.bytesUsed),
+              bytesUsedTotal: toFiniteNumber(snapshot.bytesUsedTotal),
+              bytesUsedVault: toFiniteNumber(snapshot.bytesUsedVault),
+              bytesUsedOther: toFiniteNumber(snapshot.bytesUsedOther),
+              bytesTotal: toFiniteNumber(snapshot.bytesTotal) || toFiniteNumber(sync.SYNC_TOTAL_HARD_LIMIT) || 102400,
+              bytesRemaining: toFiniteNumber(snapshot.bytesRemaining),
+              percentUsed: toFiniteNumber(snapshot.percentUsed),
+              entryCount: toFiniteNumber(snapshot.entryCount),
+              shardCount: toFiniteNumber(snapshot.shardCount),
+              estimatedRemaining: toFiniteNumber(snapshot.estimatedRemaining),
+              itemCountTotal: toFiniteNumber(snapshot.itemCountTotal),
+              itemCountVault: toFiniteNumber(snapshot.itemCountVault),
+              itemCountOther: toFiniteNumber(snapshot.itemCountOther),
+              itemCountRemaining: toFiniteNumber(snapshot.itemCountRemaining),
+              maxItemsTotal: toFiniteNumber(snapshot.maxItemsTotal)
+            };
+          }
+        } catch {
+          // Fall through to the legacy inspection path below.
+        }
+      }
+
+      let summary = { keyCount: 0, shardKeyCount: 0 };
+      let canReadRawSync = false;
+      if (supportsSyncHealthInspection()) {
+        try {
+          summary = getSyncKeySummary(await chromeApi.storage.sync.get(null));
+          canReadRawSync = true;
+        } catch {
+          canReadRawSync = false;
+        }
+      }
+
+      let stats = null;
+      if (typeof sync?.getSyncUsageStats === "function") {
+        try {
+          stats = await sync.getSyncUsageStats();
+        } catch {
+          stats = null;
+        }
+      }
+
+      const statsOk = Boolean(stats && stats.ok !== false);
+      const entryCount = toFiniteNumber(stats?.entryCount);
+      const bytesUsed = toFiniteNumber(stats?.bytesUsed);
+      const bytesTotal = toFiniteNumber(stats?.bytesTotal) || toFiniteNumber(sync?.SYNC_TOTAL_HARD_LIMIT) || 102400;
+      const hasSyncWords = statsOk
+        ? entryCount > 0
+        : summary.shardKeyCount > 0;
+      const hasSyncData = canReadRawSync
+        ? summary.keyCount > 0
+        : (statsOk && (hasSyncWords || bytesUsed > 0));
+
+      return {
+        ok: statsOk || canReadRawSync,
+        hasSyncData,
+        hasSyncWords,
+        partialRead: Boolean(stats?.partialRead),
+        bytesUsed,
+        bytesUsedTotal: bytesUsed,
+        bytesUsedVault: toFiniteNumber(stats?.bytesUsedVault),
+        bytesUsedOther: toFiniteNumber(stats?.bytesUsedOther),
+        bytesTotal,
+        bytesRemaining: toFiniteNumber(stats?.bytesRemaining),
+        percentUsed: toFiniteNumber(stats?.percentUsed),
+        entryCount,
+        shardCount: toFiniteNumber(stats?.shardCount),
+        estimatedRemaining: toFiniteNumber(stats?.estimatedRemaining),
+        itemCountTotal: toFiniteNumber(stats?.itemCountTotal),
+        itemCountVault: toFiniteNumber(stats?.itemCountVault),
+        itemCountOther: toFiniteNumber(stats?.itemCountOther),
+        itemCountRemaining: toFiniteNumber(stats?.itemCountRemaining),
+        maxItemsTotal: toFiniteNumber(stats?.maxItemsTotal)
       };
     }
 
@@ -361,47 +462,41 @@
       }
     }
 
-    async function refreshSyncHealth() {
-      if (!supportsSyncHealthInspection() || !elements.syncHealthStatus) return;
+    async function refreshSyncHealth(snapshot = null) {
+      if (!elements.syncHealthStatus) return;
       if (state.syncNowInProgress || state.syncPullInProgress) return;
 
       try {
-        const syncStorage = await chromeApi.storage.sync.get(null);
-        const summary = getSyncKeySummary(syncStorage);
-        const hasSyncMetadata = summary.keyCount > 0;
-        let remoteEntryCount = Number.NaN;
-
-        const sync = getSyncNamespace();
-        if (typeof sync?.getSyncUsageStats === "function") {
-          try {
-            const stats = await sync.getSyncUsageStats();
-            remoteEntryCount = Number(stats?.entryCount);
-          } catch {
-            remoteEntryCount = Number.NaN;
-          }
-        }
-
-        const hasSyncWords = Number.isFinite(remoteEntryCount)
-          ? remoteEntryCount > 0
-          : summary.shardKeyCount > 0;
+        const remoteState = snapshot || await inspectSyncRemoteState();
         const localCount = Number(state.savedEntries?.length || 0);
 
-        if (hasSyncWords && localCount === 0) {
-          setSyncHealthStatus("Synced words found, but your local vault is empty. Click Pull synced data.", "warning");
+        if (remoteState?.ok === false && remoteState?.hasSyncData) {
+          setSyncHealthStatus("Sync is connected, but its remote state could not be verified right now.", "warning");
           return;
         }
 
-        if (hasSyncMetadata && !hasSyncWords && localCount === 0) {
+        if (remoteState?.partialRead) {
+          setSyncHealthStatus("Sync data looks partial. Pull synced data to reconcile safely.", "warning");
+          return;
+        }
+
+        if (remoteState?.hasSyncWords && localCount === 0) {
+          const countLabel = Number.isFinite(remoteState.entryCount) ? `${remoteState.entryCount} ` : "";
+          setSyncHealthStatus(`Synced words found (${countLabel}remote). Click Pull synced data.`, "warning");
+          return;
+        }
+
+        if (remoteState?.hasSyncData && !remoteState?.hasSyncWords && localCount === 0) {
           setSyncHealthStatus("Sync is connected, but no words are stored in sync yet.", "warning");
           return;
         }
 
-        if (!hasSyncMetadata && localCount > 0) {
+        if (!remoteState?.hasSyncData && localCount > 0) {
           setSyncHealthStatus("No synced vault backup found yet. Click Sync now to upload this vault.", "warning");
           return;
         }
 
-        if (hasSyncMetadata && !hasSyncWords && localCount > 0) {
+        if (remoteState?.hasSyncData && !remoteState?.hasSyncWords && localCount > 0) {
           setSyncHealthStatus("Sync has no words yet. Click Sync now to upload this vault.", "warning");
           return;
         }
@@ -476,8 +571,11 @@
     }
 
     function describeSyncFailure(result = {}) {
+      if (result?.maxItemsExceeded) {
+        return "Sync failed: sync item limit reached. Try syncing fewer words.";
+      }
       if (result?.reason === "quota-exceeded") {
-        return "Sync failed: storage quota exceeded. Try fewer sync languages.";
+        return "Sync failed: storage quota exceeded. Try fewer sync languages or fewer words.";
       }
       return "Sync failed. Try again.";
     }
@@ -490,32 +588,46 @@
       renderSyncNowAction();
       setSyncNowStatus("Syncing now…");
 
+      let remoteState = null;
       try {
-        if (typeof sync?.SyncAdapter?.init === "function") {
-          await sync.SyncAdapter.init();
+        remoteState = await inspectSyncRemoteState();
+        if (remoteState?.hasSyncData && typeof sync?.SyncAdapter?.pullAll === "function") {
+          const pullResult = await sync.SyncAdapter.pullAll({ repush: false });
+          if (pullResult?.ok === false) {
+            setSyncNowStatus("Sync failed while reconciling remote data.", "error");
+            return;
+          }
+          await refreshSettingsState();
+          await renderSavedList({ refreshBackups: false });
+          await refreshCurrentPage();
         }
 
+        const expectedEntryCount = Number(state.savedEntries?.length || 0);
         const result = await sync.SyncAdapter.pushAll();
-        await renderSyncCapacity();
+        remoteState = await inspectSyncRemoteState();
+        await renderSyncCapacity(remoteState);
         scheduleSyncCapacityRefresh();
 
         if (result?.ok === false) {
           setSyncNowStatus(describeSyncFailure(result), "error");
+        } else if (expectedEntryCount === 0) {
+          setSyncNowStatus("Sync complete · vault is empty.", "success");
+        } else if (remoteState?.ok !== false && Number.isFinite(remoteState?.entryCount) && remoteState.entryCount === expectedEntryCount) {
+          setSyncNowStatus(`Sync complete · ${expectedEntryCount} words verified in sync.`, "success");
+        } else if (remoteState?.hasSyncData && !remoteState?.hasSyncWords) {
+          setSyncNowStatus("Sync failed verification: sync storage has metadata, but no words were stored.", "error");
+        } else if (remoteState?.ok === false) {
+          setSyncNowStatus("Sync completed, but the remote copy could not be verified yet.", "warning");
         } else {
-          const entryCount = Number(result?.entryCount);
-          setSyncNowStatus(
-            Number.isFinite(entryCount)
-              ? `Sync complete · ${entryCount} words pushed.`
-              : "Sync complete.",
-            "success"
-          );
+          const remoteCount = Number.isFinite(remoteState?.entryCount) ? remoteState.entryCount : "unknown";
+          setSyncNowStatus(`Sync completed, but remote count (${remoteCount}) did not match the local vault (${expectedEntryCount}).`, "warning");
         }
       } catch {
         setSyncNowStatus("Sync failed. Try again.", "error");
       } finally {
         state.syncNowInProgress = false;
         renderSyncNowAction();
-        await refreshSyncHealth();
+        await refreshSyncHealth(remoteState);
       }
     }
 
@@ -571,30 +683,61 @@
       }
     }
 
-    async function renderSyncCapacity() {
+    async function renderSyncCapacity(snapshot = null) {
       const sync = getSyncNamespace();
-      if (!sync || !sync.getSyncUsageStats) {
-        elements.syncLanguageCapacity.textContent = `Sync: Est. ~${getSyncCapacityHint(state.syncLanguages.length)} words`;
+      const fallbackText = `Sync: Est. ~${getSyncCapacityHint(state.syncLanguages.length)} words`;
+
+      elements.syncCapacityFill.style.width = "0%";
+      elements.syncCapacityFill.classList.remove("is-warning", "is-danger");
+
+      if (!sync || (!sync.getSyncUsageStats && !sync.inspectSyncStorage)) {
+        elements.syncLanguageCapacity.textContent = fallbackText;
         return;
       }
 
       try {
-        const stats = await sync.getSyncUsageStats();
-        const percentUsed = Math.min(100, stats.percentUsed || 0);
-        const usedLabel = formatBytes(stats.bytesUsed || 0);
-        const totalLabel = formatBytes(stats.bytesTotal || sync.SYNC_TOTAL_HARD_LIMIT || 102400);
+        const remoteState = snapshot || await inspectSyncRemoteState();
+        const totalLabel = formatBytes(remoteState?.bytesTotal || sync.SYNC_TOTAL_HARD_LIMIT || 102400);
 
+        if (remoteState?.ok === false) {
+          elements.syncLanguageCapacity.textContent = remoteState?.hasSyncData
+            ? `Sync: connected · size unavailable`
+            : fallbackText;
+          return;
+        }
+
+        const totalBytesUsed = Number.isFinite(remoteState?.bytesUsedTotal)
+          ? remoteState.bytesUsedTotal
+          : (remoteState?.bytesUsed || 0);
+        const vaultBytesUsed = Number.isFinite(remoteState?.bytesUsedVault)
+          ? remoteState.bytesUsedVault
+          : totalBytesUsed;
+        const otherBytesUsed = Number.isFinite(remoteState?.bytesUsedOther)
+          ? remoteState.bytesUsedOther
+          : Math.max(0, totalBytesUsed - vaultBytesUsed);
+        const usedLabel = formatBytes(totalBytesUsed);
+        const otherUsageSuffix = otherBytesUsed > 0
+          ? ` · ${formatBytes(otherBytesUsed)} used by other sync data`
+          : "";
+        const percentUsed = Math.min(100, Math.max(0, remoteState?.percentUsed || 0));
         elements.syncCapacityFill.style.width = `${percentUsed}%`;
         elements.syncCapacityFill.classList.toggle("is-warning", percentUsed >= 70 && percentUsed < 90);
         elements.syncCapacityFill.classList.toggle("is-danger", percentUsed >= 90);
 
-        if (stats.entryCount > 0) {
-          elements.syncLanguageCapacity.textContent = `Sync: ${usedLabel} / ${totalLabel} used · ~${stats.estimatedRemaining} words fit`;
+        if (remoteState?.entryCount > 0) {
+          const remaining = Number.isFinite(remoteState?.estimatedRemaining)
+            ? remoteState.estimatedRemaining
+            : getSyncCapacityHint(state.syncLanguages.length);
+          elements.syncLanguageCapacity.textContent = `Sync: ${usedLabel} / ${totalLabel} used · ~${remaining} words fit${otherUsageSuffix}`;
+        } else if (remoteState?.hasSyncData) {
+          elements.syncLanguageCapacity.textContent = `Sync: ${usedLabel} / ${totalLabel} used · no words stored yet${otherUsageSuffix}`;
+        } else if (totalBytesUsed > 0) {
+          elements.syncLanguageCapacity.textContent = `Sync: ${usedLabel} / ${totalLabel} used · vault data not stored yet${otherUsageSuffix}`;
         } else {
           elements.syncLanguageCapacity.textContent = `Sync: 0 / ${totalLabel} used · ~${getSyncCapacityHint(state.syncLanguages.length)} words fit`;
         }
       } catch (_error) {
-        elements.syncLanguageCapacity.textContent = `Sync: Est. ~${getSyncCapacityHint(state.syncLanguages.length)} words`;
+        elements.syncLanguageCapacity.textContent = fallbackText;
       }
     }
 
@@ -1358,6 +1501,25 @@
       renderBrowserHistoryImportAction();
     }
 
+    async function refreshHistoryImportState() {
+      if (typeof store.getHistoryImportState !== "function") return;
+
+      try {
+        const importState = await store.getHistoryImportState();
+        if (importState && (importState.scanned || importState.imported || importState.queue?.length || importState.hydrated || importState.failed)) {
+          state.historyImportReport = {
+            ...state.historyImportReport,
+            ...importState,
+            addedEntries: Array.isArray(importState.addedEntries) ? importState.addedEntries : (state.historyImportReport?.addedEntries || []),
+            rangeLabel: state.historyImportReport?.rangeLabel || getHistoryImportRangeLabel(state.historyImportRange)
+          };
+        }
+        renderHistoryImportReport();
+      } catch {
+        // Ignore import progress read failures.
+      }
+    }
+
     function renderHistoryImportReport() {
       if (!elements.importHistoryReport || !elements.importHistoryReportSummary || !elements.importHistoryReportList) {
         return;
@@ -1375,8 +1537,15 @@
       const imported = Number(report.imported) || 0;
       const skippedExisting = Number(report.skippedExisting) || 0;
       const ignored = Number(report.ignored) || 0;
+      const queued = Math.max(0, Number(report.queued) || 0);
+      const hydrated = Math.max(0, Number(report.hydrated) || 0);
+      const failed = Math.max(0, Number(report.failed) || 0);
+      const pending = Array.isArray(report.queue) ? report.queue.length : 0;
+      const progressSummary = queued
+        ? ` Hydration: ${hydrated}/${queued} ready${failed ? `, ${failed} failed` : ""}${pending ? `, ${pending} pending` : ""}.`
+        : "";
 
-      elements.importHistoryReportSummary.textContent = `Import report (${report.rangeLabel}): scanned ${scanned}, imported ${imported}, already saved ${skippedExisting}, ignored ${ignored}.`;
+      elements.importHistoryReportSummary.textContent = `Import report (${report.rangeLabel}): scanned ${scanned}, imported ${imported}, already saved ${skippedExisting}, ignored ${ignored}.${progressSummary}`;
 
       const addedEntries = Array.isArray(report.addedEntries) ? report.addedEntries : [];
       if (!addedEntries.length) {
@@ -1463,12 +1632,16 @@
           ignored: Number(result?.ignored) || 0,
           addedEntries: Array.isArray(result?.addedEntries) ? result.addedEntries : []
         };
+        await refreshHistoryImportState();
         renderHistoryImportReport();
         scheduleSyncCapacityRefresh();
 
         if (imported > 0) {
+          const hydrationQueued = Number(result?.hydrationQueued) || 0;
           setSearchStatusFeedback(
-            `Imported ${imported} new word${imported === 1 ? "" : "s"} from browser history.`,
+            hydrationQueued > 0
+              ? `Imported ${imported} new word${imported === 1 ? "" : "s"} from browser history · enriching recent entries in the background.`
+              : `Imported ${imported} new word${imported === 1 ? "" : "s"} from browser history.`,
             "success"
           );
         } else {
@@ -1630,6 +1803,7 @@
       renderAutoMode();
       renderSyncLanguages();
       renderBrowserHistoryImportAction();
+      await refreshHistoryImportState();
       renderHistoryImportReport();
       await refreshCurrentPage();
       await renderSavedList();
