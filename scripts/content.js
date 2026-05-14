@@ -162,7 +162,6 @@ function installDomObserver() {
   if (domObserver || typeof MutationObserver === "undefined") return;
 
   domObserver = new MutationObserver(() => {
-    if (!isLikelyArticlePage()) return;
     if (LodWrapperArticleReader.getHeadingElement()) scheduleRefresh(80);
   });
 
