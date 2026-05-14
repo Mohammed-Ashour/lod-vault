@@ -1,6 +1,6 @@
 <div align="center">
   <img src="icons/icon512-preview.png" width="96" alt="LODVault icon" />
-  <h1>LODVault v1.6.0</h1>
+  <h1>LODVault</h1>
   <p><strong>Your personal vocabulary vault for lod.lu</strong></p>
   <p>
     Save Luxembourgish words as you browse, study with flashcards,<br/>
