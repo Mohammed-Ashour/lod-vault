@@ -36,9 +36,17 @@ A banner is injected directly under the article heading on every `lod.lu/artikel
 
 ### Preview page
 
-<img src="docs/screenshots/preview-page.png" width="780" alt="LODVault preview page listing saved words with translations and tags" />
+<img src="docs/screenshots/preview-page.png" width="780" alt="LODVault preview page listing saved words with translations, tags, and note actions" />
 
-The preview page lists all your saved words with their translations, POS tags, and list membership. Filter by language, search, or download as a standalone HTML file.
+The preview page lists all your saved words with their translations, POS tags, list membership, and editable notes. Filter by language, search, or download as a standalone HTML file.
+
+---
+
+### Flashcards
+
+<img src="docs/screenshots/flashcards.png" width="780" alt="LODVault flashcards page showing the current deck and study controls" />
+
+The flashcards page lets you review your saved words in a focused study view, with deck filters, session controls, and built-in pronunciation playback.
 
 ---
 
