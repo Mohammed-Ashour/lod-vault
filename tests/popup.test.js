@@ -70,7 +70,7 @@ test("popup highlights portable backup state, shows the Never chip, and removes 
   assert.equal(importButton.textContent.trim(), "Restore JSON");
   assert.equal(dom.window.document.getElementById("backup-section"), null);
   assert.equal(dom.window.document.getElementById("create-backup"), null);
-  assert.match(portableStatus.textContent, /Portable backup: not created yet/i);
+  assert.match(portableStatus.textContent, /No backup created yet/i);
   assert.equal(portableCard.classList.contains("is-warning"), true);
   assert.equal(portableChip.textContent.trim(), "Never");
   assert.equal(portableChip.classList.contains("is-warning"), true);

@@ -1081,13 +1081,13 @@
       if (!exportedAt) {
         return hasEntries
           ? {
-              message: "Portable backup: not created yet. Click Backup JSON before uninstalling or switching versions.",
+              message: "No backup created yet. Click Backup JSON before uninstalling or switching versions.",
               tone: "warning",
               chipLabel: "Never",
               showAction: true
             }
           : {
-              message: "Portable backup: create a JSON backup when you want a file you can restore later.",
+              message: "Create a JSON backup when you want a file you can restore later.",
               tone: "",
               chipLabel: "Never",
               showAction: false
@@ -1138,7 +1138,7 @@
         state.portableBackupMeta = normalizePortableBackupMeta({});
         setPortableBackupStatus("Portable backup status unavailable.", {
           tone: "error",
-          chipLabel: "Status",
+          chipLabel: "Error",
           showAction: false
         });
       }

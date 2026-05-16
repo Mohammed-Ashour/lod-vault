@@ -20,8 +20,9 @@
       <div class="header-actions">
         <button id="open-flashcards" class="btn-ghost">Flashcards</button>
         <button id="open-preview" class="btn-ghost">Vault</button>
-        <button id="export-html" class="btn-ghost">HTML</button>
-        <button id="export-anki" class="btn-ghost">Anki</button>
+        <span class="header-sep" aria-hidden="true"></span>
+        <button id="export-html" class="btn-ghost btn-secondary">HTML</button>
+        <button id="export-anki" class="btn-ghost btn-secondary">Anki</button>
       </div>
     </header>
 
@@ -41,12 +42,13 @@
         <p class="helper-text muted sync-language-helper">Selected languages are kept in saved words and included in sync.</p>
         <div id="sync-language-chips" class="sync-language-chips" role="group" aria-label="Sync languages"></div>
         <div class="sync-language-meta">
-          <p id="sync-language-count" class="muted">3 of 3 selected</p>
-          <p class="sync-bar-label muted">Sync space</p>
+          <div class="sync-meta-top">
+            <p id="sync-language-count" class="muted">3 of 3 selected</p>
+            <p id="sync-language-capacity" class="muted">Sync: 0 / 100 KB used</p>
+          </div>
           <div id="sync-capacity-bar" class="sync-capacity-bar">
             <div id="sync-capacity-fill" class="sync-capacity-fill" style="width: 0%"></div>
           </div>
-          <p id="sync-language-capacity" class="muted">Sync: 0 / 100 KB used</p>
         </div>
         <div class="sync-actions-row">
           <button id="sync-now" class="btn-link sync-now-btn" type="button">Sync now</button>
@@ -121,7 +123,7 @@
           <div class="portable-backup-heading">
             <p class="section-label">Portable backup</p>
             <div class="portable-backup-title-row">
-              <h3 id="portable-backup-title">JSON backup status</h3>
+              <h3 id="portable-backup-title">JSON backup</h3>
               <span id="portable-backup-chip" class="status-chip is-neutral">Never</span>
             </div>
           </div>
