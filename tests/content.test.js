@@ -227,7 +227,7 @@ test("applyState updates the status dot based on save state", async () => {
   assert.equal(dot.classList.contains("is-saved"), false);
 });
 
-test("applyState shows the word name and note icon in the banner", async () => {
+test("applyState shows the word name and note toggle in the banner", async () => {
   const { api, dom } = loadContentScript({ html: samplePageHtml() });
 
   const entry = api.extractCurrentEntry();
@@ -235,11 +235,11 @@ test("applyState shows the word name and note icon in the banner", async () => {
 
   const banner = dom.window.document.getElementById("lod-wrapper-banner");
   const word = banner.querySelector(".lodw-word");
-  const noteIcon = banner.querySelector(".lodw-note-icon");
+  const noteToggle = banner.querySelector(".lodw-note-toggle");
 
   assert.equal(word.textContent, "Haus");
-  assert.ok(noteIcon, "note icon should be present");
-  assert.equal(noteIcon.textContent.trim(), "📝");
+  assert.ok(noteToggle, "note toggle should be present");
+  assert.ok(banner.querySelector(".lodw-note-icon"), "note icon should be present");
 });
 
 test("message listener returns the extracted entry for popup requests", () => {

@@ -92,6 +92,20 @@
         : "Save to enable notes…";
       textarea.disabled = !savedEntry || isContextInvalidated();
 
+      const banner = getBanner();
+      const noteToggle = banner?.querySelector(".lodw-note-toggle");
+      const noteBody = banner?.querySelector(".lodw-note-body");
+      if (noteToggle) noteToggle.disabled = !savedEntry || isContextInvalidated();
+      if (noteBody) {
+        if (savedValue) {
+          noteToggle?.classList.add("is-hidden");
+          noteBody.classList.remove("is-hidden");
+        } else if (!isSameEntry && !isFocused) {
+          noteToggle?.classList.remove("is-hidden");
+          noteBody.classList.add("is-hidden");
+        }
+      }
+
       if (!isDirty && (!isFocused || !isSameEntry)) {
         textarea.value = savedValue;
       }
@@ -140,8 +154,13 @@
             </div>
           </div>
           <div class="lodw-note-row">
-            <span class="lodw-note-icon">📝</span>
-            <textarea id="lodw-note-input" class="lodw-note-input" rows="1" placeholder="Save to enable notes…" disabled></textarea>
+            <button type="button" class="lodw-note-toggle" aria-expanded="false">
+              <span class="lodw-note-icon">📝</span>
+              <span class="lodw-note-toggle-label">Add note</span>
+            </button>
+            <div class="lodw-note-body is-hidden">
+              <textarea id="lodw-note-input" class="lodw-note-input" rows="1" placeholder="Add a note…" disabled></textarea>
+            </div>
           </div>
           <div class="lodw-meta">Save to enable notes.</div>
         `;
@@ -192,6 +211,17 @@
             bannerNoteController.commit(textarea);
           }
         });
+
+        banner.addEventListener("click", (event) => {
+          const toggle = event.target.closest(".lodw-note-toggle");
+          if (!toggle || toggle.disabled) return;
+          const noteBody = toggle.closest(".lodw-note-row")?.querySelector(".lodw-note-body");
+          if (!noteBody) return;
+          toggle.classList.add("is-hidden");
+          toggle.setAttribute("aria-expanded", "true");
+          noteBody.classList.remove("is-hidden");
+          noteBody.querySelector(".lodw-note-input")?.focus();
+        });
       }
 
       if (banner.parentElement !== heading.parentElement || banner.previousElementSibling !== heading) {
@@ -219,7 +249,7 @@
       infoEl.textContent = "Reload this page to re-enable.";
       infoEl.title = "";
       const dot = banner.querySelector(".lodw-dot");
-      if (dot) dot.className = "lodw-dot";
+      if (dot) { dot.className = "lodw-dot"; dot.textContent = ""; }
       const noteInput = getBannerNoteInput();
       if (noteInput) {
         bannerNoteController.clear(noteInput);

@@ -222,6 +222,12 @@
       }
     }
 
+    function revealNoteBody(noteBody) {
+      noteBody.classList.remove("is-hidden");
+      noteBody.closest(".note-section")?.querySelector(".note-toggle")?.classList.add("is-hidden");
+      noteBody.querySelector(".note-input")?.focus();
+    }
+
     function rerenderListPreservingNoteFocus(noteId) {
       const active = document.activeElement;
       const hadFocus = active?.matches?.('textarea[data-note-id]') && active.dataset.noteId === noteId;
@@ -236,6 +242,11 @@
       const next = Array.from(elements.savedList.querySelectorAll('textarea[data-note-id]'))
         .find((textarea) => textarea.dataset.noteId === noteId);
       if (!next) return;
+
+      const noteBody = next.closest(".note-body");
+      if (noteBody?.classList.contains("is-hidden")) {
+        revealNoteBody(noteBody);
+      }
 
       next.focus();
       if (typeof selectionStart === "number" && typeof selectionEnd === "number") {
@@ -1153,6 +1164,7 @@
       const lastVisitedText = entry.history && entry.lastVisitedAt
         ? `<p class="item-meta">Last visited ${store.escapeHtml(store.formatWhen(entry.lastVisitedAt))}</p>`
         : "";
+      const hasNote = Boolean(entry.note);
 
       return `
         <article class="saved-item" data-id="${store.escapeHtml(entry.id)}">
@@ -1169,8 +1181,11 @@
           ${(() => { const mk = store.buildMeaningCollapsibleMarkup(entry); return mk ? `<div class="item-meanings">${mk}</div>` : ""; })()}
           ${entry.example ? `<p class="item-example">${store.escapeHtml(entry.example)}</p>` : ""}
           <div class="note-section">
-            <label class="note-label" for="note-${store.escapeHtml(entry.id)}">Note</label>
-            <textarea id="note-${store.escapeHtml(entry.id)}" class="note-input" data-note-id="${store.escapeHtml(entry.id)}" data-saved-value="${store.escapeHtml(entry.note || "")}" placeholder="Add a note for this word...">${store.escapeHtml(entry.note || "")}</textarea>
+            <button type="button" class="note-toggle${hasNote ? " is-hidden" : ""}" data-action="toggle-note" data-id="${store.escapeHtml(entry.id)}" aria-label="Add a note">+ Note</button>
+            <div class="note-body${hasNote ? "" : " is-hidden"}">
+              <label class="note-label" for="note-${store.escapeHtml(entry.id)}">Note</label>
+              <textarea id="note-${store.escapeHtml(entry.id)}" class="note-input" data-note-id="${store.escapeHtml(entry.id)}" data-saved-value="${store.escapeHtml(entry.note || "")}" placeholder="Add a note for this word...">${store.escapeHtml(entry.note || "")}</textarea>
+            </div>
           </div>
         </article>
       `;
@@ -1276,6 +1291,12 @@
 
       const button = event.target.closest("button[data-action]");
       if (!button || button.disabled) return;
+
+      if (button.dataset.action === "toggle-note") {
+        const noteBody = button.closest(".note-section")?.querySelector(".note-body");
+        if (noteBody) revealNoteBody(noteBody);
+        return;
+      }
 
       const entry = findEntry(button.dataset.id);
       if (!entry) return;
