@@ -51,6 +51,20 @@
     );
   }
 
+  function sanitizePos(value) {
+    const text = cleanWord(value);
+    if (!text) return "";
+
+    const lower = text.toLowerCase();
+    const isGenericDictionaryDescription = text.length > 60
+      || lower.includes("dictionnaire")
+      || lower.includes("menej")
+      || lower.includes("zenter fir d'lëtzebuerger sprooch")
+      || lower.includes("zenter fir d’lëtzebuerger sprooch");
+
+    return isGenericDictionaryDescription ? "" : text;
+  }
+
   function getHeadingElement() {
     return document.querySelector("main h1") || document.querySelector("h1");
   }
@@ -191,7 +205,7 @@
       id,
       word,
       url: location.href,
-      pos: document.querySelector('meta[name="description"]')?.content?.trim() || "",
+      pos: sanitizePos(document.querySelector('meta[name="description"]')?.content),
       inflection: collectText(document.querySelector(".microstructures .inflection .forms > div") || document.querySelector(".inflection .forms > div")),
       example: collectText(document.querySelector(".microstructures .examples > div") || document.querySelector(".examples > div") || document.querySelector(".examples")),
       translations: extractTranslations()
@@ -276,7 +290,7 @@
       id,
       word,
       url: pageUrl,
-      pos: doc.querySelector('meta[name="description"]')?.content?.trim() || "",
+      pos: sanitizePos(doc.querySelector('meta[name="description"]')?.content),
       inflection: collectText(doc.querySelector(".microstructures .inflection .forms > div") || doc.querySelector(".inflection .forms > div")),
       example: collectText(doc.querySelector(".microstructures .examples > div") || doc.querySelector(".examples > div") || doc.querySelector(".examples")),
       translations: extractTranslationsFromDocument(doc)
@@ -318,7 +332,7 @@
       id,
       word,
       url,
-      pos: decodeHtmlText(posMatch?.[1] || ""),
+      pos: sanitizePos(decodeHtmlText(posMatch?.[1] || "")),
       inflection: "",
       example: "",
       translations
@@ -394,6 +408,7 @@
     stitchTokens,
     collectText,
     sanitizeHeading,
+    sanitizePos,
     getHeadingElement,
     extractTranslations,
     extractCurrentEntry,

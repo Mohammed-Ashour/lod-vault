@@ -57,6 +57,19 @@ test("extractCurrentEntry reads the current lod.lu article data", async () => {
   });
 });
 
+test("extractCurrentEntry ignores generic dictionary description metadata", async () => {
+  const html = samplePageHtml().replace(
+    'content="noun"',
+    'content="E fënnefsproochegen Dictionnaire vum Zenter fir d\'Lëtzebuerger Sprooch (MENEJ)"'
+  );
+  const { api } = loadContentScript({ html });
+
+  const entry = api.extractCurrentEntry();
+
+  assert.equal(entry.pos, "");
+  assert.equal(api.infoText(entry), "English: house · +2");
+});
+
 test("content script stays idle on non-article pages", async () => {
   const { dom, context } = loadContentScript({
     html: samplePageHtml(),
