@@ -198,12 +198,34 @@ test("applyState keeps the banner note disabled until the word is saved", async 
   assert.equal(noteMeta.textContent, "Save to enable notes.");
 });
 
-test("statusText returns Saved for any saved entry and Not saved for null", () => {
-  const { api } = loadContentScript({ html: samplePageHtml() });
+test("applyState keeps the banner note toggle aria-expanded in sync with visibility", () => {
+  const { api, dom } = loadContentScript({ html: samplePageHtml() });
+  const entry = api.extractCurrentEntry();
 
-  assert.equal(api.statusText(null), "Not saved");
-  assert.equal(api.statusText({ study: true, history: true }), "Saved");
-  assert.equal(api.statusText({ favorite: true, study: true, history: true }), "Saved");
+  api.applyState({ study: true, history: true }, entry);
+  const banner = dom.window.document.getElementById("lod-wrapper-banner");
+  const noteToggle = banner.querySelector(".lodw-note-toggle");
+  const noteBody = banner.querySelector(".lodw-note-body");
+
+  assert.equal(noteToggle.getAttribute("aria-expanded"), "false");
+  assert.equal(noteToggle.classList.contains("is-hidden"), false);
+  assert.equal(noteBody.classList.contains("is-hidden"), true);
+
+  api.applyState({ study: true, history: true, note: "Stone house" }, entry);
+  assert.equal(noteToggle.getAttribute("aria-expanded"), "true");
+  assert.equal(noteToggle.classList.contains("is-hidden"), true);
+  assert.equal(noteBody.classList.contains("is-hidden"), false);
+
+  const nextEntry = {
+    ...entry,
+    id: "BEEM1",
+    word: "Beem",
+    url: "https://lod.lu/artikel/BEEM1"
+  };
+  api.applyState({ study: true, history: true, note: "" }, nextEntry);
+  assert.equal(noteToggle.getAttribute("aria-expanded"), "false");
+  assert.equal(noteToggle.classList.contains("is-hidden"), false);
+  assert.equal(noteBody.classList.contains("is-hidden"), true);
 });
 
 test("applyState updates the status dot based on save state", async () => {

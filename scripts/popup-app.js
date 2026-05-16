@@ -222,10 +222,9 @@
       }
     }
 
-    function revealNoteBody(noteBody) {
+    function showNoteBody(noteBody) {
       noteBody.classList.remove("is-hidden");
       noteBody.closest(".note-section")?.querySelector(".note-toggle")?.classList.add("is-hidden");
-      noteBody.querySelector(".note-input")?.focus();
     }
 
     function rerenderListPreservingNoteFocus(noteId) {
@@ -245,7 +244,7 @@
 
       const noteBody = next.closest(".note-body");
       if (noteBody?.classList.contains("is-hidden")) {
-        revealNoteBody(noteBody);
+        showNoteBody(noteBody);
       }
 
       next.focus();
@@ -1294,7 +1293,10 @@
 
       if (button.dataset.action === "toggle-note") {
         const noteBody = button.closest(".note-section")?.querySelector(".note-body");
-        if (noteBody) revealNoteBody(noteBody);
+        if (noteBody) {
+          showNoteBody(noteBody);
+          noteBody.querySelector(".note-input")?.focus();
+        }
         return;
       }
 

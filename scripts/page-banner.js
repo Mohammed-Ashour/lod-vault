@@ -63,10 +63,23 @@
       meta.dataset.tone = tone;
     }
 
+    function setBannerNoteExpanded(noteToggle, noteBody, expanded) {
+      if (noteToggle) {
+        noteToggle.classList.toggle("is-hidden", expanded);
+        noteToggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      }
+      if (noteBody) {
+        noteBody.classList.toggle("is-hidden", !expanded);
+      }
+    }
+
     function syncBannerNote(savedEntry, sourceEntry = getCurrentEntry()) {
       const textarea = getBannerNoteInput();
       if (!textarea) return;
 
+      const banner = getBanner();
+      const noteToggle = banner?.querySelector(".lodw-note-toggle");
+      const noteBody = banner?.querySelector(".lodw-note-body");
       const noteId = sourceEntry?.id || savedEntry?.id || "";
       const savedValue = savedEntry?.note || "";
       const isSameEntry = textarea.dataset.noteId === noteId;
@@ -77,10 +90,11 @@
         bannerNoteController.clear(textarea);
         textarea.value = "";
         textarea.dataset.noteId = "";
-        textarea.dataset.savedValue = "",
+        textarea.dataset.savedValue = "";
         textarea.dataset.dirty = "";
         textarea.disabled = true;
         textarea.placeholder = "Open a word to add a note.";
+        setBannerNoteExpanded(noteToggle, noteBody, false);
         setBannerNoteMeta("Open a word to add a note.");
         return;
       }
@@ -92,18 +106,11 @@
         : "Save to enable notes…";
       textarea.disabled = !savedEntry || isContextInvalidated();
 
-      const banner = getBanner();
-      const noteToggle = banner?.querySelector(".lodw-note-toggle");
-      const noteBody = banner?.querySelector(".lodw-note-body");
       if (noteToggle) noteToggle.disabled = !savedEntry || isContextInvalidated();
-      if (noteBody) {
-        if (savedValue) {
-          noteToggle?.classList.add("is-hidden");
-          noteBody.classList.remove("is-hidden");
-        } else if (!isSameEntry && !isFocused) {
-          noteToggle?.classList.remove("is-hidden");
-          noteBody.classList.add("is-hidden");
-        }
+      if (savedValue) {
+        setBannerNoteExpanded(noteToggle, noteBody, true);
+      } else if (!isSameEntry && !isFocused) {
+        setBannerNoteExpanded(noteToggle, noteBody, false);
       }
 
       if (!isDirty && (!isFocused || !isSameEntry)) {
@@ -121,11 +128,6 @@
       if (!isDirty) {
         setBannerNoteMeta(savedValue ? "Saved" : "Auto-saves");
       }
-    }
-
-    function statusText(savedEntry) {
-      if (!savedEntry) return "Not saved";
-      return "Saved";
     }
 
     function buttonLabel(listName, active) {
@@ -217,9 +219,7 @@
           if (!toggle || toggle.disabled) return;
           const noteBody = toggle.closest(".lodw-note-row")?.querySelector(".lodw-note-body");
           if (!noteBody) return;
-          toggle.classList.add("is-hidden");
-          toggle.setAttribute("aria-expanded", "true");
-          noteBody.classList.remove("is-hidden");
+          setBannerNoteExpanded(toggle, noteBody, true);
           noteBody.querySelector(".lodw-note-input")?.focus();
         });
       }
@@ -328,7 +328,6 @@
     }
 
     return {
-      statusText,
       ensureBanner,
       setButtonsBusy,
       handleInvalidatedContext,

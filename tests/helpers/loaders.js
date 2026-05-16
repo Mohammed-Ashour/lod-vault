@@ -322,10 +322,8 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/content.js"), "utf8")}
   sanitizeHeading: LodWrapperArticleReader.sanitizeHeading,
   extractTranslations: LodWrapperArticleReader.extractTranslations,
   extractCurrentEntry: LodWrapperArticleReader.extractCurrentEntry,
-  statusText: bannerController.statusText,
   infoText: LodWrapperArticleReader.infoText,
   infoTextFull: LodWrapperArticleReader.infoTextFull,
-  buttonLabel: bannerController.buttonLabel,
   ensureBanner: bannerController.ensureBanner,
   applyState: bannerController.applyState
 };`;

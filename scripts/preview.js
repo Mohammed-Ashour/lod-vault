@@ -9,9 +9,57 @@ let currentSearchQuery = "";
 let currentLang = "";
 let currentSort = "recent";
 let applyPreviewFilters = () => {};
+let currentEntriesById = new Map();
 
 const langNames = LodWrapperStore.TRANSLATION_LANGUAGE_LABELS;
 const langOrder = LodWrapperStore.TRANSLATION_LANGUAGE_ORDER;
+
+function getPreviewActiveElement() {
+  return frame.contentDocument?.activeElement || document.activeElement;
+}
+
+function setPreviewNoteStatus(textarea, message, tone = "") {
+  const status = textarea?.closest(".preview-note-section")?.querySelector(".preview-note-status");
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.tone = tone;
+}
+
+function setPreviewNoteExpanded(section, expanded) {
+  const toggle = section?.querySelector(".note-toggle");
+  const noteBody = section?.querySelector(".note-body");
+  if (toggle) {
+    toggle.classList.toggle("is-hidden", expanded);
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+  }
+  if (noteBody) {
+    noteBody.classList.toggle("is-hidden", !expanded);
+  }
+}
+
+const previewNoteAutosave = LodWrapperStore.createNoteAutosaveController({
+  getTimerKey: (textarea) => `preview-note:${textarea?.dataset?.noteId || ""}`,
+  getActiveElement: getPreviewActiveElement,
+  setStatus: setPreviewNoteStatus,
+  saveNote: (noteId, requestValue) => LodWrapperStore.saveNote(noteId, requestValue),
+  onSaved: async ({ textarea, savedEntry, changedSinceRequest }) => {
+    if (!savedEntry?.id) return;
+    currentEntriesById.set(savedEntry.id, savedEntry);
+
+    const entryElement = textarea.closest(".entry");
+    if (entryElement) {
+      entryElement.dataset.search = LodWrapperStore.buildSearchText(savedEntry);
+    }
+
+    const noteSection = textarea.closest(".preview-note-section");
+    if (noteSection && !changedSinceRequest && !savedEntry.note && getPreviewActiveElement() !== textarea) {
+      setPreviewNoteExpanded(noteSection, false);
+    }
+
+    applyPreviewFilters();
+  },
+  shouldKeepScheduling: (textarea) => Boolean(textarea?.isConnected)
+});
 
 refreshButton.addEventListener("click", renderPreview);
 flashcardsButton?.addEventListener("click", () => {
@@ -167,6 +215,77 @@ function injectPreviewStyles(doc) {
       opacity: 0.5;
       cursor: wait;
     }
+    .preview-note-section {
+      margin-top: 10px;
+    }
+    .preview-note-status {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #5f8fa8;
+      line-height: 1.4;
+    }
+    .preview-note-status[data-tone="saving"],
+    .preview-note-status[data-tone="success"] {
+      color: #a8dadc;
+    }
+    .preview-note-status[data-tone="error"] {
+      color: #f29ba2;
+    }
+    .note-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: #5f8fa8;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      opacity: 0.55;
+      transition: color 0.15s, opacity 0.15s;
+    }
+    .note-toggle:hover {
+      color: #a8dadc;
+      opacity: 1;
+    }
+    .note-toggle.is-hidden,
+    .note-body.is-hidden {
+      display: none;
+    }
+    .note-label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #5f8fa8;
+    }
+    .note-input {
+      display: block;
+      width: 100%;
+      min-height: 62px;
+      padding: 8px 10px;
+      border: 1px solid #213858;
+      border-radius: 6px;
+      background: #192d44;
+      color: #e4eef4;
+      font: inherit;
+      font-size: 12.5px;
+      line-height: 1.45;
+      resize: vertical;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.15);
+    }
+    .note-input::placeholder {
+      color: #5f8fa8;
+      opacity: 1;
+    }
+    .note-input:focus {
+      outline: none;
+      border-color: #39a7c4;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.15), 0 0 0 3px rgba(57,167,196,0.2);
+    }
     .audio-btn {
       display: inline-flex;
       align-items: center;
@@ -245,6 +364,7 @@ function attachPreviewSearch() {
 
   input.value = currentSearchQuery;
   input.addEventListener("input", applyPreviewFilters);
+  attachPreviewNoteEditors(doc);
   attachRemoveButtons(doc);
   attachAudioButtons(doc);
   attachMeaningToggles(doc);
@@ -287,6 +407,67 @@ function attachMeaningToggles(doc) {
       panel.classList.toggle("is-open", !isOpen);
     }
   });
+}
+
+function attachPreviewNoteEditors(doc) {
+  for (const entryElement of doc.querySelectorAll(".entry[data-id]")) {
+    if (entryElement.querySelector(".preview-note-section")) continue;
+
+    const id = entryElement.dataset.id;
+    const entry = currentEntriesById.get(id);
+    if (!entry) continue;
+
+    entryElement.querySelector(".note")?.remove();
+
+    const noteSection = doc.createElement("div");
+    noteSection.className = "preview-note-section";
+
+    const noteToggle = doc.createElement("button");
+    noteToggle.type = "button";
+    noteToggle.className = `note-toggle${entry.note ? " is-hidden" : ""}`;
+    noteToggle.setAttribute("aria-label", "Add a note");
+    noteToggle.setAttribute("aria-expanded", entry.note ? "true" : "false");
+    noteToggle.textContent = "+ Note";
+    noteToggle.addEventListener("click", () => {
+      setPreviewNoteExpanded(noteSection, true);
+      noteSection.querySelector(".note-input")?.focus();
+    });
+
+    const noteBody = doc.createElement("div");
+    noteBody.className = `note-body${entry.note ? "" : " is-hidden"}`;
+
+    const noteLabel = doc.createElement("label");
+    noteLabel.className = "note-label";
+    noteLabel.setAttribute("for", `preview-note-${id}`);
+    noteLabel.textContent = "Note";
+
+    const noteInput = doc.createElement("textarea");
+    noteInput.id = `preview-note-${id}`;
+    noteInput.className = "note-input";
+    noteInput.dataset.noteId = id;
+    noteInput.dataset.savedValue = entry.note || "";
+    noteInput.placeholder = "Add a note for this word...";
+    noteInput.value = entry.note || "";
+    noteInput.addEventListener("input", () => previewNoteAutosave.markDirty(noteInput));
+    noteInput.addEventListener("change", () => previewNoteAutosave.commit(noteInput));
+    noteInput.addEventListener("focusout", () => previewNoteAutosave.commit(noteInput));
+    noteInput.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        previewNoteAutosave.commit(noteInput);
+      }
+    });
+
+    const noteStatus = doc.createElement("p");
+    noteStatus.className = "preview-note-status";
+    noteStatus.textContent = entry.note
+      ? "Saved with this word."
+      : "Add a short note — it saves automatically.";
+
+    noteBody.append(noteLabel, noteInput, noteStatus);
+    noteSection.append(noteToggle, noteBody);
+    entryElement.appendChild(noteSection);
+  }
 }
 
 function attachRemoveButtons(doc) {
@@ -384,6 +565,7 @@ function sortEntries(entries, sortMode) {
 async function renderPreview() {
   let entries = await LodWrapperStore.getEntries();
   entries = sortEntries(entries, currentSort);
+  currentEntriesById = new Map(entries.map((entry) => [entry.id, entry]));
   populateLangSelect(entries);
 
   const html = LodWrapperStore.buildExportHtml(entries, { includeInlineScript: false });
@@ -421,6 +603,7 @@ async function downloadAnki() {
 }
 
 window.addEventListener("beforeunload", () => {
+  previewNoteAutosave.destroy();
   if (currentPreviewUrl) {
     URL.revokeObjectURL(currentPreviewUrl);
   }
