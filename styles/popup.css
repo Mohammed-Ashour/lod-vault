@@ -72,7 +72,7 @@ body {
 button {
   cursor: pointer;
   font: inherit;
-  font-weight: 600;
+  font-weight: 700;
   border-radius: var(--r-sm);
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
@@ -128,7 +128,7 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── Ghost button ─────────────────────────────── */
 .btn-ghost {
-  padding: 5px 10px;
+  padding: 5px 12px;
   font-size: 12px;
   background: rgba(57,167,196,0.04);
   border: 1px solid var(--border-s);
@@ -136,7 +136,7 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 }
 .btn-ghost:hover { background: rgba(57,167,196,0.10); border-color: var(--accent); color: #fff; }
 .header-sep { width: 1px; height: 14px; background: var(--border-s); flex-shrink: 0; align-self: center; }
-.btn-ghost.btn-secondary { color: var(--muted); font-size: 11px; }
+.btn-ghost.btn-secondary { color: var(--muted); }
 .btn-ghost.btn-secondary:hover { color: var(--accent-lt); }
 
 /* ── Auto badge ───────────────────────────────── */
@@ -190,7 +190,7 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .auto-toggle {
   flex-shrink: 0;
-  padding: 6px 12px;
+  padding: 5px 12px;
   font-size: 12px;
   background: rgba(57,167,196,0.04);
   border: 1px solid var(--border-s);
@@ -283,13 +283,13 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 .toggle-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
+  gap: 3px;
+  padding: 4px 8px;
   font-size: 12px;
   font-weight: 700;
   background: rgba(57,167,196,0.04);
   border: 1px solid var(--border-s);
-  border-radius: var(--r-full);
+  border-radius: var(--r-sm);
   color: var(--muted);
   transition: all 0.15s;
 }
@@ -310,14 +310,14 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px; height: 26px;
+  width: 24px; height: 24px;
   padding: 0;
   margin-left: auto;
   background: var(--d2);
   border: 1px solid var(--border-s);
   border-radius: var(--r-sm);
   color: var(--muted);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 300;
   transition: all 0.15s;
 }
@@ -398,8 +398,8 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .btn-tool {
   flex: 1;
-  padding: 6px 8px;
-  font-size: 11px;
+  padding: 5px 10px;
+  font-size: 12px;
   background: var(--d1);
   border: 1px solid var(--border-s);
   color: var(--muted);
@@ -491,8 +491,8 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── Action link ──────────────────────────────── */
 .btn-link {
-  padding: 3px 8px;
-  font-size: 11px;
+  padding: 5px 10px;
+  font-size: 12px;
   background: var(--d2);
   border: 1px solid var(--border-s);
   color: var(--muted);
@@ -502,6 +502,8 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── Saved list ───────────────────────────────── */
 .saved-list { padding: 8px 14px 12px; }
+
+/* Compact list-item pills — slightly smaller but still tappable */
 
 .saved-item {
   padding: 10px;
@@ -518,7 +520,7 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── Top-row controls ──────────────────────────── */
 .item-controls { display: flex; gap: 5px; align-items: center; flex-shrink: 0; }
-.saved-item .toggle-pill { padding: 2px 7px; font-size: 11px; gap: 2px; }
+.saved-item .toggle-pill { padding: 3px 7px; font-size: 11px; gap: 2px; border-radius: var(--r-sm); }
 .saved-item .toggle-pill-icon { font-size: 11px; }
 
 .control-btn {
@@ -557,7 +559,7 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
   font-weight: 600;
   background: var(--accent-dim);
   border: 1px solid var(--border-a);
-  border-radius: var(--r-full);
+  border-radius: var(--r-sm);
   color: var(--accent-lt);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;

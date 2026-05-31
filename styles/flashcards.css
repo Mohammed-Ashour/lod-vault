@@ -63,9 +63,9 @@ body {
   flex-wrap: wrap;
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   align-items: flex-start;
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: var(--d1);
   border-bottom: 1px solid var(--border-a);
   margin-bottom: 16px;
@@ -85,7 +85,7 @@ h1 { margin: 2px 0; font-size: 20px; font-weight: 800; color: #fff; }
 .muted { font-size: 12px; }
 
 /* ── Controls ────────────────────────────────────── */
-.controls { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.controls { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
 
 .control-group {
   display: flex;
@@ -98,7 +98,7 @@ h1 { margin: 2px 0; font-size: 20px; font-weight: 800; color: #fff; }
 
 select {
   min-width: 130px;
-  padding: 7px 28px 7px 10px;
+  padding: 6px 28px 6px 10px;
   border: 1px solid var(--border-s);
   border-radius: var(--r-sm);
   background: var(--d2);
@@ -117,7 +117,7 @@ select {
 select:focus { outline: none; border-color: var(--accent); }
 
 .secondary-button {
-  padding: 7px 14px;
+  padding: 6px 14px;
   border: 1px solid var(--border-s);
   border-radius: var(--r-sm);
   background: var(--d2);
@@ -250,12 +250,12 @@ select:focus { outline: none; border-color: var(--accent); }
 /* ── Rating bar ──────────────────────────────────── */
 .rating-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
 .rating-button {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid var(--border-s);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   background: var(--d1);
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   text-align: center;
@@ -305,7 +305,7 @@ select:focus { outline: none; border-color: var(--accent); }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px; height: 28px;
+  width: 26px; height: 26px;
   padding: 0;
   background: var(--d2);
   border: 1px solid var(--border-s);
@@ -316,7 +316,7 @@ select:focus { outline: none; border-color: var(--accent); }
   flex-shrink: 0;
   line-height: 1;
 }
-.audio-btn svg { width: 14px; height: 14px; }
+.audio-btn svg { width: 13px; height: 13px; }
 .audio-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 .audio-btn.is-playing { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); animation: audio-pulse 1s ease-in-out infinite; }
 .audio-btn.is-error { background: rgba(230,96,106,0.08); border-color: rgba(230,96,106,0.3); color: var(--danger); }

@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LODVault — Button & Control Consistency Audit</title>
+  <style>
+    :root {
+      --bg: #0b1520;
+      --surface: #111d2e;
+      --surface2: #192d44;
+      --surface3: #1f3a56;
+      --accent: #39a7c4;
+      --accent-dim: rgba(57,167,196,0.10);
+      --accent-lt: #a8dadc;
+      --danger: #e6606a;
+      --success: #5ec48a;
+      --warning: #e2c367;
+      --text: #e4eef4;
+      --text2: #b8cedb;
+      --muted: #6a8da6;
+      --border: #213858;
+      --border-a: rgba(57,167,196,0.24);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+
+    h1 { font-size: 28px; font-weight: 800; color: #fff; margin-bottom: 8px; }
+    h2 { font-size: 20px; font-weight: 700; color: #fff; margin: 32px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    h3 { font-size: 16px; font-weight: 700; color: var(--accent-lt); margin: 20px 0 8px; }
+
+    .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+
+    p, li { color: var(--text2); margin-bottom: 8px; }
+    li { margin-left: 20px; }
+
+    .intro { margin: 16px 0 24px; max-width: 680px; }
+
+    /* --- Issue cards --- */
+    .issue {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 12px;
+    }
+    .issue.severity-high { border-left: 3px solid var(--danger); }
+    .issue.severity-med   { border-left: 3px solid var(--warning); }
+    .issue.severity-low   { border-left: 3px solid var(--accent); }
+
+    .issue-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .issue-title h3 { margin: 0; font-size: 15px; }
+    .badge {
+      display: inline-flex;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .badge-high { background: rgba(230,96,106,0.12); color: var(--danger); }
+    .badge-med  { background: rgba(226,195,103,0.12); color: var(--warning); }
+    .badge-low  { background: var(--accent-dim); color: var(--accent); }
+
+    .issue-desc { font-size: 13px; color: var(--text2); }
+    .issue-fix { margin-top: 10px; padding: 10px 14px; background: var(--surface2); border-radius: 6px; border: 1px solid rgba(94,196,138,0.15); }
+    .issue-fix p { color: var(--success); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+    .issue-fix code { font-family: 'SF Mono', Menlo, monospace; font-size: 12px; color: var(--accent-lt); background: var(--surface3); padding: 1px 5px; border-radius: 3px; }
+
+    /* --- Comparison tables --- */
+    .comparison {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 16px;
+      font-size: 13px;
+    }
+    .comparison th {
+      text-align: left;
+      padding: 6px 10px;
+      background: var(--surface2);
+      color: var(--accent-lt);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+    .comparison td {
+      padding: 6px 10px;
+      border-bottom: 1px solid rgba(33,56,88,0.4);
+      color: var(--text2);
+    }
+    .comparison tr:hover td { background: rgba(57,167,196,0.04); }
+    .comparison .highlight { color: var(--danger); font-weight: 700; }
+    .comparison .ok { color: var(--success); }
+    .comparison .warn { color: var(--warning); }
+
+    /* --- Live mockups --- */
+    .mockup-section {
+      margin: 16px 0 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .mockup-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      overflow: hidden;
+    }
+    .mockup-panel h4 {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+    }
+    .mockup-panel.current { border-color: var(--danger); }
+    .mockup-panel.fixed { border-color: var(--success); }
+
+    .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+
+    /* Current-style buttons (unedited copies from CSS) */
+    .cur-btn-ghost {
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(57,167,196,0.04);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--accent-lt);
+      cursor: pointer;
+    }
+    .cur-btn-ghost-sec {
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(57,167,196,0.04);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .cur-btn-tool {
+      padding: 6px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .cur-btn-link {
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .cur-auto-toggle {
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(57,167,196,0.04);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--accent-lt);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .cur-toggle-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(57,167,196,0.04);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .cur-toggle-pill-sm {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(57,167,196,0.04);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .cur-secondary-btn {
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--accent-lt);
+      cursor: pointer;
+    }
+    .cur-rating-btn {
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--accent-lt);
+      cursor: pointer;
+    }
+    .cur-banner-btn {
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--accent-lt);
+      cursor: pointer;
+    }
+    .cur-audio-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px; height: 26px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .cur-audio-btn-lg {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    /* Fixed-style buttons */
+    .fix-btn {
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(57,167,196,0.04);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--accent-lt);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .fix-btn:hover { background: rgba(57,167,196,0.10); border-color: var(--accent); color: #fff; }
+    .fix-btn.muted-btn { color: var(--muted); }
+    .fix-btn.muted-btn:hover { color: var(--accent-lt); }
+    .fix-btn.primary-btn {
+      background: linear-gradient(135deg, var(--accent), #2e8fa8);
+      border: none;
+      color: #fff;
+    }
+    .fix-btn.primary-btn:hover { filter: brightness(1.1); }
+
+    .fix-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(57,167,196,0.04);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .fix-pill:hover { background: rgba(57,167,196,0.10); border-color: var(--border-a); color: var(--on-bg); }
+
+    .fix-rating {
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--accent-lt);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .fix-audio {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px; height: 26px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 6px 12px;
+      margin: 12px 0;
+      font-size: 13px;
+    }
+    .summary-grid dt { color: var(--muted); font-weight: 600; }
+    .summary-grid dd { color: var(--text2); }
+    .summary-grid .val { font-family: 'SF Mono', Menlo, monospace; font-size: 12px; color: var(--accent-lt); background: var(--surface2); padding: 1px 5px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <p class="eyebrow">UI Audit · May 2026</p>
+    <h1>Button &amp; Control Consistency Audit</h1>
+    <p class="intro">
+      This audit catalogues every interactive button/pill/toggle across the extension's four views
+      (popup, flashcards, preview/vault, content banner), measures size inconsistencies, and proposes
+      a unified sizing system to polish the UI.
+    </p>
+
+    <!-- ════════════════════════════════════════════════ -->
+    <h2>1. Current State — Measured Specifications</h2>
+    <!-- ════════════════════════════════════════════════ -->
+
+    <table class="comparison">
+      <thead>
+        <tr>
+          <th>Component</th>
+          <th>View</th>
+          <th>Padding</th>
+          <th>Font size</th>
+          <th>Radius</th>
+          <th>Computed&nbsp;H</th>
+          <th>Weight</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>.btn-ghost</code></td><td>Popup header</td>
+          <td>5px 10px</td><td>12px</td><td>6px</td><td class="highlight">~28px</td><td>600</td>
+        </tr>
+        <tr>
+          <td><code>.btn-ghost.btn-secondary</code></td><td>Popup header</td>
+          <td>5px 10px</td><td class="highlight">11px</td><td>6px</td><td class="highlight">~26px</td><td>600</td>
+        </tr>
+        <tr>
+          <td><code>.btn-tool</code></td><td>Popup tools</td>
+          <td>6px 8px</td><td class="highlight">11px</td><td>6px</td><td class="highlight">~26px</td><td>600</td>
+        </tr>
+        <tr>
+          <td><code>.btn-link</code></td><td>Popup sync</td>
+          <td class="highlight">3px 8px</td><td class="highlight">11px</td><td>6px</td><td class="highlight">~23px</td><td>600</td>
+        </tr>
+        <tr>
+          <td><code>.auto-toggle</code></td><td>Popup auto</td>
+          <td>6px 12px</td><td>12px</td><td>6px</td><td>~30px</td><td>600</td>
+        </tr>
+        <tr>
+          <td><code>.toggle-pill</code> (header)</td><td>Popup current word</td>
+          <td>4px 10px</td><td>12px</td><td>999px</td><td>~28px</td><td>700</td>
+        </tr>
+        <tr>
+          <td><code>.toggle-pill</code> (list)</td><td>Popup saved list</td>
+          <td class="highlight">2px 7px</td><td class="highlight">11px</td><td>999px</td><td class="highlight">~23px</td><td>700</td>
+        </tr>
+        <tr>
+          <td><code>.toggle-delete</code></td><td>Popup current word</td>
+          <td>— (26×26)</td><td>15px</td><td>6px</td><td>26px</td><td>300</td>
+        </tr>
+        <tr>
+          <td><code>.audio-btn</code> (popup)</td><td>Popup</td>
+          <td>— (26×26)</td><td>—</td><td>50%</td><td>26px</td><td>—</td>
+        </tr>
+        <tr>
+          <td><code>.audio-btn</code> (flash)</td><td>Flashcards</td>
+          <td>— (28×28)</td><td>—</td><td>50%</td><td class="highlight">28px</td><td>—</td>
+        </tr>
+        <tr>
+          <td><code>.secondary-button</code></td><td>Flashcards</td>
+          <td>7px 14px</td><td>12px</td><td>6px</td><td>~30px</td><td>700</td>
+        </tr>
+        <tr>
+          <td><code>.nav-button</code></td><td>Flashcards</td>
+          <td>(inherits .secondary-button)</td><td>12px</td><td>6px</td><td>~30px</td><td>700</td>
+        </tr>
+        <tr>
+          <td><code>.rating-button</code></td><td>Flashcards</td>
+          <td class="highlight">10px 12px</td><td class="highlight">13px</td><td>10px</td><td class="highlight">~36px</td><td>700</td>
+        </tr>
+        <tr>
+          <td><code>.toolbar-button</code></td><td>Preview/vault</td>
+          <td>5px 10px</td><td>12px</td><td>6px</td><td>~28px</td><td>600</td>
+        </tr>
+        <tr>
+          <td>Banner buttons</td><td>Content (lod.lu)</td>
+          <td class="highlight">3px 8px</td><td class="highlight">11px</td><td class="highlight">5px</td><td class="highlight">~23px</td><td>700</td>
+        </tr>
+        <tr>
+          <td><code>select</code> (flashcards)</td><td>Flashcards</td>
+          <td>7px 28px 7px 10px</td><td>12px</td><td>6px</td><td>~30px</td><td>inherit</td>
+        </tr>
+        <tr>
+          <td><code>.sync-language-chip</code></td><td>Popup</td>
+          <td>4px 9px</td><td>11px</td><td>6px</td><td>~25px</td><td>700</td>
+        </tr>
+        <tr>
+          <td><code>.status-chip</code></td><td>Popup</td>
+          <td>1px 7px</td><td>9px</td><td>999px</td><td>~17px</td><td>700</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p><strong>Height range:</strong> 17px (status chip) → 36px (rating button) — a 19px span for interactive controls.</p>
+
+    <!-- ════════════════════════════════════════════════ -->
+    <h2>2. Identified Issues</h2>
+    <!-- ════════════════════════════════════════════════ -->
+
+    <div class="issue severity-high">
+      <div class="issue-title">
+        <h3>No unified button sizing system</h3>
+        <span class="badge badge-high">High</span>
+      </div>
+      <p class="issue-desc">
+        There are <strong>5 distinct font sizes</strong> (9, 11, 12, 13, 15px) and <strong>8 distinct vertical paddings</strong>
+        across interactive elements. The popup alone has 4 different button heights. This creates visual discordance
+        when sections sit side-by-side and makes the UI feel cobbled together rather than designed.
+      </p>
+      <div class="issue-fix">
+        <p>✅ Fix: Adopt a 3-tier sizing system:</p>
+        <ul>
+          <li><strong>Compact</strong> — <code>padding: 4px 10px; font-size: 12px</code> → ~26px height. Used for pills, chips, inline toggles.</li>
+          <li><strong>Standard</strong> — <code>padding: 6px 14px; font-size: 12px</code> → ~30px height. Used for all primary action buttons.</li>
+          <li><strong>Touch</strong> — <code>padding: 8px 16px; font-size: 13px</code> → ~34px height. Used only for large touch-targets (card flip, nav).</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="issue severity-high">
+      <div class="issue-title">
+        <h3>Content banner buttons too small</h3>
+        <span class="badge badge-high">High</span>
+      </div>
+      <p class="issue-desc">
+        The Favorite/Study buttons embedded in lod.lu pages use <code>padding: 3px 8px; font-size: 11px; border-radius: 5px</code>.
+        At ~23px height, they're below the 24px minimum touch target recommended by WCAG and feel cramped compared
+        to the rest of the page. The targeted language ("★ Favorited" / "✓ Study") also runs long in active state.
+      </p>
+      <div class="issue-fix">
+        <p>✅ Fix: Increase to <code>padding: 4px 10px; font-size: 12px; border-radius: 6px</code>.
+        Shorten active labels: "★ Fav" / "✓ Study" (already partially done — verify consistency).</p>
+      </div>
+    </div>
+
+    <div class="issue severity-med">
+      <div class="issue-title">
+        <h3>Flashcards rating buttons oversized</h3>
+        <span class="badge badge-med">Medium</span>
+      </div>
+      <p class="issue-desc">
+        Hard/Good/Easy buttons use <code>padding: 10px 12px; font-size: 13px; border-radius: 10px</code>, giving ~36px height.
+        They consume a disproportionate share of vertical space on the card view. Despite being "action" buttons,
+        they don't need more than 30px to be comfortable.
+      </p>
+      <div class="issue-fix">
+        <p>✅ Fix: Change to <code>padding: 8px 10px; font-size: 12px; border-radius: 6px</code>.
+        Saves 6px per button row and keeps them clearly tappable on mobile.</p>
+      </div>
+    </div>
+
+    <div class="issue severity-med">
+      <div class="issue-title">
+        <h3>Popup header buttons inconsistent sizing</h3>
+        <span class="badge badge-med">Medium</span>
+      </div>
+      <p class="issue-desc">
+        <code>.btn-ghost</code> (Flashcards, Vault) uses <code>padding: 5px 10px; font-size: 12px</code>,
+        while <code>.btn-ghost.btn-secondary</code> (HTML, Anki) shrinks to <code>font-size: 11px</code>.
+        They sit in the same row with a visual separator, but the secondary ones look diminutive.
+      </p>
+      <div class="issue-fix">
+        <p>✅ Fix: Unify both to <code>padding: 5px 12px; font-size: 12px</code>.
+        The secondary vs primary distinction shifts to <code>color</code> and <code>opacity</code> only, not size.</p>
+      </div>
+    </div>
+
+    <div class="issue severity-med">
+      <div class="issue-title">
+        <h3>Saved-list toggle pills too small for touch</h3>
+        <span class="badge badge-med">Medium</span>
+      </div>
+      <p class="issue-desc">
+        List-item toggle pills use <code>padding: 2px 7px; font-size: 11px</code> → ~23px height.
+        This is below the WCAG 24px minimum touch target, and the pill is even harder to hit because it's inline.
+      </p>
+      <div class="issue-fix">
+        <p>✅ Fix: Increase to <code>padding: 3px 8px; font-size: 11px</code> → ~24px height.
+        Matches the current "compact" pill size but slightly more relaxed horizontally.</p>
+      </div>
+    </div>
+
+    <div class="issue severity-med">
+      <div class="issue-title">
+        <h3>Audio button size differs between popup and flashcards</h3>
+        <span class="badge badge-med">Medium</span>
+      </div>
+      <p class="issue-desc">
+        <code>.audio-btn</code> is 26×26 in the popup but 28×28 in flashcards — a 2px difference
+        that's visible when switching views. The SVG icon is also 13px vs 14px.
+      </p>
+      <div class="issue-fix">
+        <p>✅ Fix: Standardize to <code>26×26px</code> everywhere with <code>13×13px</code> icons.
+        The 26px size is enough for touch and visually consistent with other compact controls.</p>
+      </div>
+    </div>
+
+    <div class="issue severity-low">
+      <div class="issue-title">
+        <h3>Mixed border-radius values</h3>
+        <span class="badge badge-low">Low</span>
+      </div>
+      <p class="issue-desc">
+        Rectangular buttons use <code>border-radius: 5px</code> (hardcoded in content banner), <code>6px</code> (--r-sm),
+        and <code>10px</code> (--r-md). The banner hardcodes <code>5px</code> while the rest of the extension uses <code>var(--r-sm) = 6px</code>.
+      </p>
+      <div class="issue-fix">
+        <p>✅ Fix: Use <code>var(--r-sm)</code> (6px) for all rectangular buttons and <code>var(--r-full)</code> (999px) only for pills/chips across all views.</p>
+      </div>
+    </div>
+
+    <div class="issue severity-low">
+      <div class="issue-title">
+        <h3>Font-weight inconsistency on similar buttons</h3>
+        <span class="badge badge-low">Low</span>
+      </div>
+      <p class="issue-desc">
+        <code>.btn-ghost</code>, <code>.btn-tool</code>, <code>.btn-link</code>, <code>.auto-toggle</code> use <code>font-weight: 600</code>,
+        but <code>.secondary-button</code>, <code>.toggle-pill</code>, rating buttons, and banner buttons use <code>font-weight: 700</code>.
+        This makes buttons look subtly thinner or bolder depending on the view.
+      </p>
+      <div class="issue-fix">
+        <p>✅ Fix: Standardize to <code>font-weight: 700</code> for all standalone action buttons.
+        Use <code>600</code> only for very small inline elements (chips, meta links).</p>
+      </div>
+    </div>
+
+    <div class="issue severity-low">
+      <div class="issue-title">
+        <h3>Flashcard nav/control area wastes vertical space</h3>
+        <span class="badge badge-low">Low</span>
+      </div>
+      <p class="issue-desc">
+        The flashcard header uses <code>padding: 12px 16px</code> per side (24px vertical total)
+        plus controls in a flex-wrap row with <code>gap: 8px</code>. The controls include 3 selects
+        and 2 buttons, which could be more compact. The <code>select</code> padding (7px vertical)
+        makes them taller than the buttons.
+      </p>
+      <div class="issue-fix">
+        <p>✅ Fix: Reduce header padding to <code>10px 14px</code>. Reduce select padding to
+        <code>6px 28px 6px 10px</code>. Increase header gap to <code>10px</code> for better spacing.
+        This saves ~8px without hurting readability.</p>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════ -->
+    <h2>3. Visual Comparison — Before vs After</h2>
+    <!-- ════════════════════════════════════════════════ -->
+
+    <h3>Popup Header</h3>
+    <div class="mockup-section">
+      <div class="mockup-panel current">
+        <h4>Current · Popup Header</h4>
+        <div class="row" style="justify-content:flex-end; gap:4px;">
+          <span class="cur-btn-ghost">Flashcards</span>
+          <span class="cur-btn-ghost">Vault</span>
+          <span style="width:1px;height:14px;background:var(--border);"></span>
+          <span class="cur-btn-ghost-sec">HTML</span>
+          <span class="cur-btn-ghost-sec">Anki</span>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:6px;">→ Primary 12px/5px-10px, Secondary 11px/5px-10px — different visual weight</p>
+      </div>
+      <div class="mockup-panel fixed">
+        <h4>Fixed · Popup Header</h4>
+        <div class="row" style="justify-content:flex-end; gap:4px;">
+          <span class="fix-btn">Flashcards</span>
+          <span class="fix-btn">Vault</span>
+          <span style="width:1px;height:14px;background:var(--border);"></span>
+          <span class="fix-btn muted-btn">HTML</span>
+          <span class="fix-btn muted-btn">Anki</span>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:6px;">→ Both 12px/5px-12px. Distinction is color only, not size.</p>
+      </div>
+    </div>
+
+    <h3>Popup Action Row</h3>
+    <div class="mockup-section">
+      <div class="mockup-panel current">
+        <h4>Current · Tools + Sync + Toggle</h4>
+        <div class="row">
+          <span class="cur-btn-tool">Backup JSON</span>
+          <span class="cur-btn-tool">Restore JSON</span>
+          <span class="cur-btn-tool">Import history</span>
+        </div>
+        <div class="row">
+          <span class="cur-btn-link">Sync now</span>
+          <span class="cur-btn-link">Pull synced data</span>
+        </div>
+        <div class="row">
+          <span class="cur-auto-toggle">Turn on</span>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:6px;">→ 3 sizes: btn-tool 11px/6-8, btn-link 11px/3-8, auto-toggle 12px/6-12</p>
+      </div>
+      <div class="mockup-panel fixed">
+        <h4>Fixed · Unified "standard" tier</h4>
+        <div class="row">
+          <span class="fix-btn muted-btn">Backup JSON</span>
+          <span class="fix-btn muted-btn">Restore JSON</span>
+          <span class="fix-btn muted-btn">Import history</span>
+        </div>
+        <div class="row">
+          <span class="fix-btn muted-btn">Sync now</span>
+          <span class="fix-btn muted-btn">Pull synced data</span>
+        </div>
+        <div class="row">
+          <span class="fix-btn">Turn on</span>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:6px;">→ All at 12px/5-12px. Auto-toggle accent = primary, others = muted.</p>
+      </div>
+    </div>
+
+    <h3>Flashcards Actions</h3>
+    <div class="mockup-section">
+      <div class="mockup-panel current">
+        <h4>Current · Nav + Rating</h4>
+        <div class="row" style="gap:8px;">
+          <span class="cur-secondary-btn">← Prev</span>
+          <span class="cur-secondary-btn">Reveal</span>
+          <span class="cur-secondary-btn">Next →</span>
+        </div>
+        <div class="row" style="gap:8px; margin-top:8px;">
+          <span class="cur-rating-btn">Hard</span>
+          <span class="cur-rating-btn">Good</span>
+          <span class="cur-rating-btn">Easy</span>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:6px;">→ Nav 12px/7-14 (~30px), Rating 13px/10-12 (~36px)</p>
+      </div>
+      <div class="mockup-panel fixed">
+        <h4>Fixed · Unified nav, tighter rating</h4>
+        <div class="row" style="gap:8px;">
+          <span class="fix-btn">← Prev</span>
+          <span class="fix-btn primary-btn">Reveal</span>
+          <span class="fix-btn">Next →</span>
+        </div>
+        <div class="row" style="gap:8px; margin-top:8px;">
+          <span class="fix-rating" style="color:var(--danger);border-color:rgba(230,96,106,0.2);">Hard</span>
+          <span class="fix-rating" style="color:var(--accent-lt);border-color:var(--border-a);">Good</span>
+          <span class="fix-rating" style="color:var(--success);border-color:rgba(94,196,138,0.2);">Easy</span>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:6px;">→ Nav 12px/6-14, Rating 12px/8-10. Reveal uses primary accent.</p>
+      </div>
+    </div>
+
+    <h3>Content Banner (lod.lu)</h3>
+    <div class="mockup-section">
+      <div class="mockup-panel current">
+        <h4>Current · Banner Buttons</h4>
+        <div class="row">
+          <span class="cur-banner-btn">☆ Favorite</span>
+          <span class="cur-banner-btn">+ Study</span>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:6px;">→ 11px/3-8, border-radius 5px, ~23px height</p>
+      </div>
+      <div class="mockup-panel fixed">
+        <h4>Fixed · Bigger, consistent</h4>
+        <div class="row">
+          <span class="fix-btn" style="font-size:12px;padding:4px 10px;">☆ Favorite</span>
+          <span class="fix-btn" style="font-size:12px;padding:4px 10px;">+ Study</span>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:6px;">→ 12px/4-10, border-radius 6px, ~26px height</p>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════ -->
+    <h2>4. Proposed Unified Sizing System</h2>
+    <!-- ════════════════════════════════════════════════ -->
+
+    <table class="comparison">
+      <thead>
+        <tr>
+          <th>Tier</th>
+          <th>Use</th>
+          <th>Padding</th>
+          <th>Font</th>
+          <th>Weight</th>
+          <th>Radius</th>
+          <th>Height</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Compact</strong></td>
+          <td>Tiny: status chips, count badges</td>
+          <td>1-2px 6-8px</td><td>9-10px</td><td>700</td><td>999px</td><td>~17px</td>
+        </tr>
+        <tr>
+          <td><strong>Pill</strong></td>
+          <td>Fav/Study, language chips, inline tags</td>
+          <td class="ok">3-4px 9-10px</td><td class="ok">12px</td><td>700</td><td>999px</td><td class="ok">~26px</td>
+        </tr>
+        <tr>
+          <td><strong>Standard</strong></td>
+          <td>All action buttons, selects, links</td>
+          <td class="ok">5-6px 12-14px</td><td class="ok">12px</td><td>700</td><td>6px</td><td class="ok">~28-30px</td>
+        </tr>
+        <tr>
+          <td><strong>Nav</strong></td>
+          <td>Card Prev/Reveal/Next (large targets)</td>
+          <td>6px 14px</td><td>12px</td><td>700</td><td>6px</td><td>~30px</td>
+        </tr>
+        <tr>
+          <td><strong>Rating</strong></td>
+          <td>Flashcard Hard/Good/Easy</td>
+          <td class="ok">8px 10px</td><td class="ok">12px</td><td>700</td><td>6px</td><td class="ok">~32px</td>
+        </tr>
+        <tr style="border-bottom: 2px solid var(--accent);">
+          <td><strong>Icon</strong></td>
+          <td>Audio button</td>
+          <td>—</td><td>—</td><td>—</td><td>50%</td><td class="ok">26px</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- ════════════════════════════════════════════════ -->
+    <h2>5. Summary of All Changes</h2>
+    <!-- ════════════════════════════════════════════════ -->
+
+    <h3>popup.css</h3>
+    <table class="comparison">
+      <thead><tr><th>Selector</th><th>Property</th><th>Current</th><th>New</th></tr></thead>
+      <tbody>
+        <tr><td><code>.btn-ghost</code></td><td>padding</td><td>5px 10px</td><td class="ok">5px 12px</td></tr>
+        <tr><td><code>.btn-ghost</code></td><td>font-weight</td><td>600</td><td class="ok">700</td></tr>
+        <tr><td><code>.btn-ghost.btn-secondary</code></td><td>font-size</td><td class="highlight">11px</td><td class="ok">12px</td></tr>
+        <tr><td><code>.btn-ghost.btn-secondary</code></td><td>color (kept)</td><td>var(--muted)</td><td>var(--muted)</td></tr>
+        <tr><td><code>.btn-tool</code></td><td>padding</td><td class="highlight">6px 8px</td><td class="ok">5px 10px</td></tr>
+        <tr><td><code>.btn-tool</code></td><td>font-size</td><td class="highlight">11px</td><td class="ok">12px</td></tr>
+        <tr><td><code>.btn-tool</code></td><td>font-weight</td><td>600</td><td class="ok">700</td></tr>
+        <tr><td><code>.btn-link</code></td><td>padding</td><td class="highlight">3px 8px</td><td class="ok">5px 10px</td></tr>
+        <tr><td><code>.btn-link</code></td><td>font-size</td><td class="highlight">11px</td><td class="ok">12px</td></tr>
+        <tr><td><code>.btn-link</code></td><td>font-weight</td><td>600</td><td class="ok">700</td></tr>
+        <tr><td><code>.auto-toggle</code></td><td>padding</td><td>6px 12px</td><td class="ok">5px 12px</td></tr>
+        <tr><td><code>.toggle-pill</code> (in list)</td><td>padding</td><td class="highlight">2px 7px</td><td class="ok">3px 8px</td></tr>
+        <tr><td><code>.toggle-pill</code> (in list)</td><td>gap</td><td>2px</td><td class="ok">3px</td></tr>
+        <tr><td><code>.control-delete</code></td><td>size / font-size</td><td>26px / 15px</td><td class="ok">24px / 14px</td></tr>
+      </tbody>
+    </table>
+
+    <h3>flashcards.css</h3>
+    <table class="comparison">
+      <thead><tr><th>Selector</th><th>Property</th><th>Current</th><th>New</th></tr></thead>
+      <tbody>
+        <tr><td><code>.header</code></td><td>padding</td><td>12px 16px</td><td class="ok">10px 14px</td></tr>
+        <tr><td><code>.controls</code></td><td>gap</td><td>8px</td><td class="ok">10px</td></tr>
+        <tr><td><code>select</code></td><td>padding</td><td>7px 28px 7px 10px</td><td class="ok">6px 28px 6px 10px</td></tr>
+        <tr><td><code>.secondary-button</code></td><td>padding</td><td>7px 14px</td><td class="ok">6px 14px</td></tr>
+        <tr><td><code>.rating-button</code></td><td>padding</td><td class="highlight">10px 12px</td><td class="ok">8px 10px</td></tr>
+        <tr><td><code>.rating-button</code></td><td>font-size</td><td class="highlight">13px</td><td class="ok">12px</td></tr>
+        <tr><td><code>.rating-button</code></td><td>border-radius</td><td>var(--r-md) 10px</td><td class="ok">var(--r-sm) 6px</td></tr>
+        <tr><td><code>.audio-btn</code></td><td>size</td><td class="highlight">28px</td><td class="ok">26px</td></tr>
+        <tr><td><code>.audio-btn svg</code></td><td>size</td><td class="highlight">14px</td><td class="ok">13px</td></tr>
+        <tr><td><code>.card-word-row .audio-btn</code></td><td>alignment offset</td><td>—</td><td class="ok">align-self: center</td></tr>
+      </tbody>
+    </table>
+
+    <h3>content.css</h3>
+    <table class="comparison">
+      <thead><tr><th>Selector</th><th>Property</th><th>Current</th><th>New</th></tr></thead>
+      <tbody>
+        <tr><td><code>#lod-wrapper-banner button</code></td><td>padding</td><td class="highlight">3px 8px</td><td class="ok">4px 10px</td></tr>
+        <tr><td><code>#lod-wrapper-banner button</code></td><td>font-size</td><td class="highlight">11px</td><td class="ok">12px</td></tr>
+        <tr><td><code>#lod-wrapper-banner button</code></td><td>border-radius</td><td class="highlight">5px</td><td class="ok">6px</td></tr>
+        <tr><td><code>#lod-wrapper-banner button</code></td><td>line-height</td><td>1.4</td><td class="ok">1.3</td></tr>
+      </tbody>
+    </table>
+
+    <h3>preview.css</h3>
+    <table class="comparison">
+      <thead><tr><th>Selector</th><th>Property</th><th>Current</th><th>New</th></tr></thead>
+      <tbody>
+        <tr><td><code>.toolbar-button</code></td><td>font-weight</td><td>600</td><td class="ok">700</td></tr>
+        <tr><td><code>.toolbar-button</code></td><td>padding</td><td>5px 10px</td><td class="ok">5px 12px</td></tr>
+      </tbody>
+    </table>
+
+    <h3>lens-overlay.css</h3>
+    <table class="comparison">
+      <thead><tr><th>Selector</th><th>Property</th><th>Before</th><th>After</th></tr></thead>
+      <tbody>
+        <tr><td><code>.toggle-pill</code> (lens)</td><td>border-radius</td><td class="highlight">999px (pill)</td><td class="ok">6px (rect)</td></tr>
+        <tr><td><code>.toggle-pill</code> (lens)</td><td>padding</td><td>4px 10px</td><td class="ok">4px 8px</td></tr>
+        <tr><td><code>.toggle-pill</code> (lens)</td><td>gap</td><td>4px</td><td class="ok">3px</td></tr>
+        <tr><td><code>.bulk-expand / .bulk-collapse</code></td><td>—</td><td class="highlight">Two separate tiny buttons (10px, 3px 8px, radius 4px)</td><td class="ok">Merged into one <code>.bulk-toggle.toggle-pill</code> (rect, 12px, matches Study all)</td></tr>
+        <tr><td><code>.sentence-save</code></td><td>padding / gap</td><td class="highlight">2px 7px / 2px</td><td class="ok">3px 8px / 3px</td></tr>
+        <tr><td><code>.bulk-study</code></td><td>padding / gap</td><td class="highlight">4px 10px / 4px</td><td class="ok">4px 8px / 3px</td></tr>
+      </tbody>
+    </table>
+
+    <h2>6. Cross-view consistency rules</h2>
+    <ul>
+      <li><strong>Font-weight 700</strong> for all interactive labels (buttons, pills, selects). Use 600 only for meta-text.</li>
+      <li><strong>Border-radius 6px</strong> for all rectangles. No more 999px pill shapes on action buttons — pills are now rectangular with 6px radius everywhere (popup, flashcards, lens overlay, content banner).</li>
+      <li><strong>Audio buttons 26×26px</strong> everywhere, with 13×13px SVG icons.</li>
+      <li><strong>Font-size 12px</strong> for all action buttons and selects. 11px only inside compact list items.</li>
+      <li><strong>Standard button height ≈ 28-30px</strong>. Toll buttons (320px-wide popup) should all hit this target.</li>
+      <li><strong>Expand/Collapse merged</strong> into a single toggle button (#5) that toggles aria-pressed state, icon (⊞/⊟), and label text.</li>
+    </ul>
+  </div>
+</body>
+</html>
