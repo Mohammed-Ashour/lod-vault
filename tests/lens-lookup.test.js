@@ -27,6 +27,16 @@ test("normalizeSelection trims punctuation around selected text", () => {
   assert.equal(lensLookup.normalizeSelection("\n gees! \t"), "gees");
 });
 
+test("splitSentence preserves spaces and punctuation for rendering", () => {
+  const lensLookup = loadLensLookup();
+
+  assert.deepEqual(JSON.parse(JSON.stringify(lensLookup.splitSentence(" Haus, geet! "))), [
+    { text: "Haus,", isWord: true },
+    { text: " ", isWord: false },
+    { text: "geet", isWord: true }
+  ]);
+});
+
 test("lookup resolves a single search result into a vault entry", async () => {
   const calls = [];
   const lensLookup = loadLensLookup(async (url) => {
@@ -87,6 +97,49 @@ test("lookup resolves a single search result into a vault entry", async () => {
     fr: "maison"
   });
   assert.equal(calls.length, 2);
+});
+
+test("lookupSentence resolves each word while keeping render tokens", async () => {
+  const seenQueries = [];
+  const lensLookup = loadLensLookup(async (url) => {
+    const href = String(url);
+    if (href.includes("/search?")) {
+      const query = new URL(href).searchParams.get("query");
+      seenQueries.push(query);
+      return {
+        ok: true,
+        json: async () => ({
+          results: [
+            { article_id: `${query.toUpperCase()}1`, word_lb: query, pos: "X" }
+          ]
+        })
+      };
+    }
+
+    const id = decodeURIComponent(href.split("/entry/")[1] || "");
+    const word = id.replace(/1$/, "").toLowerCase();
+    return {
+      ok: true,
+      json: async () => ({
+        entry: {
+          lod_id: id,
+          lemma: word,
+          partOfSpeechLabel: "X",
+          microStructures: []
+        }
+      })
+    };
+  });
+
+  const result = await lensLookup.lookupSentence("Haus, geet");
+
+  assert.deepEqual(seenQueries, ["Haus", "geet"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.tokens)), [
+    { text: "Haus,", isWord: true },
+    { text: " ", isWord: false },
+    { text: "geet", isWord: true }
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.words.map((word) => word.status))), ["resolved", "resolved"]);
 });
 
 test("lookup returns candidates when multiple exact matches are found", async () => {
@@ -190,7 +243,29 @@ test("lookup can resolve an inflected form through the search endpoint", async (
   assert.equal(result.entry.word, "déidlech");
 });
 
- test("lookup prefers the runtime proxy fetch when available", async () => {
+ test("lookup does not fall back to page fetch when the runtime proxy fails", async () => {
+  let directFetchCalled = false;
+  const lensLookup = loadLensLookup(
+    async () => {
+      directFetchCalled = true;
+      return { ok: true, json: async () => ({ results: [] }) };
+    },
+    {
+      chrome: {
+        runtime: {
+          async sendMessage() {
+            return { ok: false, status: 0, error: "proxy unavailable" };
+          }
+        }
+      }
+    }
+  );
+
+  await assert.rejects(() => lensLookup.search("Haus"), /proxy unavailable/);
+  assert.equal(directFetchCalled, false);
+});
+
+test("lookup prefers the runtime proxy fetch when available", async () => {
   const seen = [];
   const lensLookup = loadLensLookup(
     async () => {

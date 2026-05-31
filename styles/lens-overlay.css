@@ -284,32 +284,43 @@
 
 #lodvault-lens-overlay-root .lodvault-lens-actions {
   display: flex;
-  gap: 0;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--lv-border-light);
 }
 
-#lodvault-lens-overlay-root .lodvault-lens-save {
+#lodvault-lens-overlay-root .toggle-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 0;
-  margin-right: 14px;
-  background: none;
-  border: none;
-  border-radius: 0;
+  gap: 3px;
+  padding: 4px 8px;
+  background: rgba(57, 167, 196, 0.04);
+  border: 1px solid var(--lv-border-light);
+  border-radius: 6px;
   color: var(--lv-muted);
   font: inherit;
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-weight: 700;
+  letter-spacing: 0;
   cursor: pointer;
-  transition: color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
 }
 
-#lodvault-lens-overlay-root .lodvault-lens-save:hover {
-  color: var(--lv-accent-lite);
+#lodvault-lens-overlay-root .toggle-pill:hover:enabled {
+  background: var(--lv-accent-soft);
+  border-color: var(--lv-border-strong);
+  color: var(--lv-text);
+}
+
+#lodvault-lens-overlay-root .toggle-pill:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-save {
+  margin: 0;
 }
 
 #lodvault-lens-overlay-root .toggle-pill-icon {
@@ -325,10 +336,13 @@
 /* ── Active states for save buttons ─────────────── */
 
 #lodvault-lens-overlay-root .toggle-fav.is-active {
+  background: rgba(226, 195, 103, 0.10);
+  border-color: rgba(226, 195, 103, 0.25);
   color: #e2c367;
 }
 
-#lodvault-lens-overlay-root .toggle-fav.is-active:hover {
+#lodvault-lens-overlay-root .toggle-fav.is-active:hover:enabled {
+  background: rgba(226, 195, 103, 0.18);
   color: #f0d56e;
 }
 
@@ -337,11 +351,14 @@
 }
 
 #lodvault-lens-overlay-root .toggle-study.is-active {
+  background: rgba(94, 196, 138, 0.10);
+  border-color: rgba(94, 196, 138, 0.25);
   color: var(--lv-success);
 }
 
-#lodvault-lens-overlay-root .toggle-study.is-active:hover {
-  color: #7dd4a8;
+#lodvault-lens-overlay-root .toggle-study.is-active:hover:enabled {
+  background: rgba(94, 196, 138, 0.18);
+  color: var(--lv-success);
 }
 
 #lodvault-lens-overlay-root .toggle-study.is-active .toggle-pill-icon {
@@ -406,6 +423,270 @@
 
 #lodvault-lens-overlay-root .is-hidden {
   display: none !important;
+}
+
+/* ─────────────────────────────────────────────────────
+   Sentence mode — accordion drill-down per word.
+   ───────────────────────────────────────────────────── */
+
+/* Sentence in-panel scaling — expand width for sentences */
+
+#lodvault-lens-overlay-root.lodvault-sentence-mode .lodvault-lens-panel {
+  width: 360px;
+  max-height: min(520px, calc(100vh - 24px));
+}
+
+/* Sentence block */
+
+#lodvault-lens-overlay-root .lodvault-lens-sentence-block {
+  background: var(--lv-d2);
+  border: 1px solid var(--lv-border-strong);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-sentence-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.6;
+  text-align: center;
+  word-wrap: break-word;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-word-chip {
+  display: inline;
+  padding: 1px 3px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-word-chip:hover {
+  background: var(--lv-accent-soft);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-word-chip.found {
+  border-bottom: 2px solid var(--lv-success);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-word-chip.ambiguous {
+  border-bottom: 2px dashed #e2c367;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-word-chip.not-found {
+  border-bottom: 2px dashed #f06060;
+  color: var(--lv-muted);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-word-chip.error {
+  border-bottom: 2px dashed #f06060;
+  color: var(--lv-muted);
+}
+
+/* Bulk actions bar */
+
+#lodvault-lens-overlay-root .lodvault-lens-sentence-bulk {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-bulk-toggle {
+  background: rgba(57, 167, 196, 0.04);
+  border: 1px solid var(--lv-border-light);
+  color: var(--lv-muted);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-bulk-toggle:hover {
+  background: var(--lv-accent-soft);
+  border-color: var(--lv-border-strong);
+  color: var(--lv-accent-lite);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-bulk-toggle.is-active {
+  background: rgba(57, 167, 196, 0.10);
+  border-color: var(--lv-border-strong);
+  color: var(--lv-accent-lite);
+}
+
+/* Accordion items */
+
+#lodvault-lens-overlay-root .lodvault-lens-sentence-words {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-accordion-item {
+  border: 1px solid var(--lv-border-light);
+  border-radius: 6px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-accordion-item:hover {
+  border-color: var(--lv-border-strong);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-accordion-open {
+  border-color: var(--lv-border-strong);
+}
+
+/* Accordion header */
+
+#lodvault-lens-overlay-root .lodvault-lens-accordion-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-accordion-header:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-ai-status {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-ai-found {
+  background: var(--lv-success);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-ai-ambiguous {
+  background: #e2c367;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-ai-not-found {
+  background: #f06060;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-ai-error {
+  background: #f06060;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-ai-word {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-ai-pos {
+  font-size: 11px;
+  color: var(--lv-muted);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-ai-quick {
+  font-size: 11px;
+  color: var(--lv-accent-lite);
+  margin-left: auto;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-ai-arrow {
+  font-size: 9px;
+  color: var(--lv-muted);
+  margin-left: 4px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-accordion-open .lodvault-lens-ai-arrow {
+  transform: rotate(90deg);
+}
+
+/* Accordion body */
+
+#lodvault-lens-overlay-root .lodvault-lens-accordion-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease-out;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-accordion-open .lodvault-lens-accordion-body {
+  max-height: 400px;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-accordion-inner {
+  padding: 0 10px 10px;
+  border-top: 1px solid var(--lv-border);
+}
+
+/* Accordion hint text (for not-found / ambiguous hint) */
+
+#lodvault-lens-overlay-root .lodvault-lens-accordion-hint {
+  font-size: 12px;
+  color: var(--lv-muted);
+  margin: 8px 0 4px;
+}
+
+/* Sentence candidate buttons (disambiguation) */
+
+#lodvault-lens-overlay-root .lodvault-lens-sentence-candidate {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border: 1px solid var(--lv-border-strong);
+  background: transparent;
+  color: var(--lv-text);
+  border-radius: 5px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  margin-top: 4px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-sentence-candidate:hover {
+  border-color: var(--lv-accent);
+  background: var(--lv-accent-soft);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-sentence-candidate strong {
+  color: #fff;
+  font-weight: 700;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-sentence-candidate span {
+  color: var(--lv-muted);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+/* Sentence save buttons inside accordion */
+
+#lodvault-lens-overlay-root .lodvault-lens-sentence-save {
+  padding: 3px 8px;
+  font-size: 11px;
+  gap: 3px;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-bulk-study {
+  padding: 4px 8px;
+  font-size: 12px;
+  gap: 3px;
+}
+
+/* Sentence loading state */
+
+#lodvault-lens-overlay-root .lodvault-lens-sentence-loading {
+  text-align: center;
+  color: var(--lv-muted);
+  font-size: 12px;
+  padding: 16px 0;
 }
 
 /* ─────────────────────────────────────────────────────

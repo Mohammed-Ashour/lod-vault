@@ -93,24 +93,11 @@
       throw new Error("Fetch is unavailable.");
     }
 
-    let response;
-    try {
-      response = await resolvedFetch(url, {
-        headers: {
-          Accept: "application/json"
-        }
-      });
-    } catch (primaryError) {
-      if (resolvedFetch !== runtimeProxyFetch || typeof globalThis.fetch !== "function") {
-        throw primaryError;
+    const response = await resolvedFetch(url, {
+      headers: {
+        Accept: "application/json"
       }
-
-      response = await globalThis.fetch(url, {
-        headers: {
-          Accept: "application/json"
-        }
-      });
-    }
+    });
 
     if (!response?.ok) {
       throw new Error(`LOD request failed (${response?.status || 0}).`);
@@ -338,6 +325,63 @@
     };
   }
 
+  function isSentence(text) {
+    const normalized = normalizeSelection(text);
+    if (!normalized) return false;
+    const words = normalized.split(/\s+/).filter(Boolean);
+    return words.length > 1;
+  }
+
+  function splitSentence(text) {
+    const normalized = normalizeSelection(text);
+    if (!normalized) return [];
+    return normalized
+      .split(/(\s+)/)
+      .filter((chunk) => chunk.length > 0)
+      .map((chunk) => ({
+        text: chunk,
+        isWord: Boolean(normalizeSelection(chunk))
+      }));
+  }
+
+  async function lookupSentence(text, options = {}) {
+    const normalizedQuery = normalizeSelection(text);
+    if (!normalizedQuery) {
+      return { words: [], query: "" };
+    }
+
+    const tokens = splitSentence(normalizedQuery);
+    const wordTokens = tokens.filter((t) => t.isWord);
+
+    const wordResults = await Promise.all(
+      wordTokens.map(async (token) => {
+        const word = normalizeSelection(token.text);
+        if (!word) {
+          return { text: token.text, word, status: "skipped", entry: null, candidates: [], suggestions: [] };
+        }
+        try {
+          const result = await lookup(word, options);
+          return {
+            text: token.text,
+            word: result.query,
+            status: result.status,
+            entry: result.entry || null,
+            candidates: result.candidates || [],
+            suggestions: result.suggestions || []
+          };
+        } catch {
+          return { text: token.text, word, status: "error", entry: null, candidates: [], suggestions: [] };
+        }
+      })
+    );
+
+    return {
+      query: normalizedQuery,
+      tokens,
+      words: wordResults
+    };
+  }
+
   globalThis.LodWrapperLensLookup = {
     API_ROOT,
     normalizeSelection,
@@ -352,6 +396,9 @@
     fetchEntry,
     suggest,
     lookup,
+    lookupSentence,
+    isSentence,
+    splitSentence,
     buildSuggestionUrl,
     buildSearchPageUrl,
     runtimeProxyFetch,
