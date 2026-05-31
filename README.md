@@ -66,6 +66,7 @@ The flashcards page lets you review your saved words in a focused study view, wi
 | 🤖 **Auto mode** | Automatically record every visited LOD article into Study and History |
 | 🔊 **Pronunciation audio** | Play LOD pronunciation audio from the popup and saved-word list |
 | 📝 **Notes** | Write your own note for each saved word (auto-saved) |
+| 🔎 **LOD Lens** | Select Luxembourgish text on supported pages to translate it in a floating overlay, then save it straight to your vault |
 | 🔍 **Search** | Filter your saved words in the popup |
 | 🃏 **Flashcards** | Review your saved words with a simple flashcard mode |
 | 👁 **Preview** | Browse your full word list in a clean page — no download needed |
@@ -115,6 +116,13 @@ If you prefer, you can still load it directly from source.
 
 The **LODVault** icon will appear in your browser toolbar.
 
+> If you change background source files locally, rebuild the service worker bundle before reloading the extension:
+>
+> ```bash
+> npm install
+> npm run build:background
+> ```
+
 > **Important:** Before uninstalling LODVault or switching between unpacked and published builds, use **Backup JSON**. In Chrome, uninstalling the extension may remove both its local data and its extension sync data, even when the extension ID stays the same.
 
 ---
@@ -139,6 +147,11 @@ The **LODVault** icon will appear in your browser toolbar.
 - Click **Flashcards** in the popup
 - Choose a deck: Study list, Favorites, or All saved
 - Click the card or **Reveal** to show the full meaning
+
+### Use LOD Lens on other sites
+- Select a Luxembourgish word or short phrase on a supported page
+- Click the floating **LODVault** trigger, use the page context menu, or press **Alt+Shift+L**
+- Review the LOD translation in the floating overlay and save it to **Favorites** or **Study**
 
 ### Preview and export
 - **Preview** — opens a live, searchable page of your saved words in a new tab

@@ -42,6 +42,8 @@ cp \
   scripts/content.js \
   scripts/entry-presenter.js \
   scripts/flashcards.js \
+  scripts/lens-lookup.js \
+  scripts/lens-overlay.js \
   scripts/lod-article.js \
   scripts/note-autosave.js \
   scripts/page-banner.js \
@@ -49,6 +51,7 @@ cp \
   scripts/popup.js \
   scripts/preview.js \
   scripts/shared.js \
+  scripts/selection-trigger.js \
   scripts/store-core.js \
   scripts/sync-coordinator.js \
   scripts/sync.js \
