@@ -314,7 +314,7 @@
       state.autoMode = Boolean(settings?.autoMode);
       state.syncLanguages = Array.isArray(settings?.syncLanguages) && settings.syncLanguages.length
         ? [...settings.syncLanguages]
-        : [...(store.DEFAULT_SETTINGS?.syncLanguages || ["en", "fr", "de"] )];
+        : [...(store.DEFAULT_SETTINGS?.syncLanguages || ["en", "fr", "de"])];
     }
 
     function getSyncCapacityHint(selectedCount) {

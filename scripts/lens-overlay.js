@@ -150,6 +150,7 @@
         const item = accordionHeader.closest(".lodvault-lens-accordion-item");
         if (item) {
           item.classList.toggle("lodvault-lens-accordion-open");
+          renderBulkAccordionToggleState();
         }
         return;
       }
@@ -189,19 +190,7 @@
       const bulkToggleBtn = event.target.closest(".lodvault-lens-bulk-toggle");
       if (bulkToggleBtn) {
         const isExpanded = bulkToggleBtn.getAttribute("aria-pressed") === "true";
-        if (isExpanded) {
-          toggleAllAccordion(false);
-          bulkToggleBtn.setAttribute("aria-pressed", "false");
-          bulkToggleBtn.querySelector(".toggle-pill-icon").textContent = "⊞";
-          bulkToggleBtn.querySelector(".toggle-pill-label").textContent = "Expand all";
-          bulkToggleBtn.classList.remove("is-active");
-        } else {
-          toggleAllAccordion(true);
-          bulkToggleBtn.setAttribute("aria-pressed", "true");
-          bulkToggleBtn.querySelector(".toggle-pill-icon").textContent = "⊟";
-          bulkToggleBtn.querySelector(".toggle-pill-label").textContent = "Collapse all";
-          bulkToggleBtn.classList.add("is-active");
-        }
+        toggleAllAccordion(!isExpanded);
         return;
       }
 
@@ -212,6 +201,7 @@
         const accordionItem = root.querySelector(`.lodvault-lens-accordion-item[data-word-idx="${idx}"]`);
         if (accordionItem) {
           accordionItem.classList.add("lodvault-lens-accordion-open");
+          renderBulkAccordionToggleState();
           accordionItem.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
         return;
@@ -279,10 +269,13 @@
 
   function setBusy(isBusy) {
     const root = ensureRoot();
-    root.querySelectorAll(".lodvault-lens-save").forEach((button) => {
-      button.disabled = Boolean(isBusy);
-    });
-    root.querySelectorAll(".lodvault-lens-sentence-save").forEach((button) => {
+    root.querySelectorAll([
+      ".lodvault-lens-save",
+      ".lodvault-lens-sentence-save",
+      ".lodvault-lens-bulk-study",
+      ".lodvault-lens-bulk-toggle",
+      ".lodvault-lens-sentence-candidate"
+    ].join(", ")).forEach((button) => {
       button.disabled = Boolean(isBusy);
     });
   }
@@ -603,6 +596,7 @@
     `;
 
     showSentenceMode();
+    renderBulkAccordionToggleState();
 
     // Sync saved states for resolved entries
     syncSentenceSavedStates(words);
@@ -730,11 +724,26 @@
     }
   }
 
+  function renderBulkAccordionToggleState() {
+    const root = ensureRoot();
+    const button = root.querySelector(".lodvault-lens-bulk-toggle");
+    if (!button) return;
+
+    const items = Array.from(root.querySelectorAll(".lodvault-lens-accordion-item"));
+    const allExpanded = items.length > 0 && items.every((item) => item.classList.contains("lodvault-lens-accordion-open"));
+
+    button.setAttribute("aria-pressed", allExpanded ? "true" : "false");
+    button.classList.toggle("is-active", allExpanded);
+    button.querySelector(".toggle-pill-icon").textContent = allExpanded ? "⊟" : "⊞";
+    button.querySelector(".toggle-pill-label").textContent = allExpanded ? "Collapse all" : "Expand all";
+  }
+
   function toggleAllAccordion(expand) {
     const root = ensureRoot();
     root.querySelectorAll(".lodvault-lens-accordion-item").forEach((item) => {
       item.classList.toggle("lodvault-lens-accordion-open", expand);
     });
+    renderBulkAccordionToggleState();
   }
 
   async function toggleBulkStudyFound() {
