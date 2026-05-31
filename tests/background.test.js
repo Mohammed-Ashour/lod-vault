@@ -322,6 +322,26 @@ test("background opens the lens overlay for content-script requests from the sen
   assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[1].args)), ["Moien alleguer"]);
 });
 
+test("background preserves long sentence selections when opening the lens overlay", async () => {
+  const background = loadBackgroundScript();
+  const longSelection = "  Dëst ass eng zimlech laang Auswiel mat villen Wierder déi net soll gekierzt ginn wann de Benotzer de Lens iwwer de Kontextmenü opmécht fir e komplette Saz nozeschloen.  ";
+
+  const response = await background.dispatchRuntimeMessage(
+    {
+      type: "lod-wrapper:open-lens-overlay",
+      selectionText: longSelection
+    },
+    {
+      tab: { id: 77 }
+    }
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(response)), { ok: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[1].args)), [
+    "Dëst ass eng zimlech laang Auswiel mat villen Wierder déi net soll gekierzt ginn wann de Benotzer de Lens iwwer de Kontextmenü opmécht fir e komplette Saz nozeschloen."
+  ]);
+});
+
 test("background command reads the current selection before opening the lens overlay", async () => {
   const background = loadBackgroundScript();
   const executeScriptCalls = [];
@@ -349,4 +369,27 @@ test("background command reads the current selection before opening the lens ove
     "scripts/lens-overlay.js"
   ]);
   assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[2].args)), ["déidlechen!"]);
+});
+
+test("background command preserves long selections for sentence lookup", async () => {
+  const background = loadBackgroundScript();
+  const executeScriptCalls = [];
+  const longSelection = "  Dëst ass eng aner laang Auswiel déi iwwer d'Tastaturkommando opgemaach gëtt an dowéinst och komplett beim Overlay ukomme muss ouni an der Mëtt ofgeschnidden ze ginn.  ";
+
+  background.chrome.tabs.query = async () => [{ id: 55 }];
+  background.chrome.scripting.executeScript = async (details) => {
+    executeScriptCalls.push(details);
+    if (typeof details?.func === "function" && !Array.isArray(details.args)) {
+      return [{ result: longSelection }];
+    }
+    return [];
+  };
+
+  background.commandsOnCommand.dispatch("open-lod-lens");
+  await wait(0);
+  await wait(0);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[2].args)), [
+    "Dëst ass eng aner laang Auswiel déi iwwer d'Tastaturkommando opgemaach gëtt an dowéinst och komplett beim Overlay ukomme muss ouni an der Mëtt ofgeschnidden ze ginn."
+  ]);
 });

@@ -234,15 +234,23 @@
       return;
     }
 
-    const width = 300;
     const padding = 12;
+    const gap = 10;
+    const panelRect = panel.getBoundingClientRect();
+    const width = Math.max(panelRect.width || panel.offsetWidth || 0, 300);
+    const height = Math.max(panelRect.height || panel.offsetHeight || 0, 220);
+    const minLeft = window.scrollX + padding;
+    const maxLeft = window.scrollX + window.innerWidth - width - padding;
+    const minTop = window.scrollY + padding;
+    const maxTop = window.scrollY + window.innerHeight - height - padding;
     let left = rect.left + window.scrollX;
-    let top = rect.bottom + window.scrollY + 10;
+    let top = rect.bottom + window.scrollY + gap;
 
-    left = Math.max(window.scrollX + padding, Math.min(left, window.scrollX + window.innerWidth - width - padding));
-    if (top > window.scrollY + window.innerHeight - 220) {
-      top = Math.max(window.scrollY + padding, rect.top + window.scrollY - 220);
+    left = Math.min(Math.max(left, minLeft), Math.max(minLeft, maxLeft));
+    if (top > maxTop) {
+      top = rect.top + window.scrollY - height - gap;
     }
+    top = Math.min(Math.max(top, minTop), Math.max(minTop, maxTop));
 
     panel.style.left = `${left}px`;
     panel.style.top = `${top}px`;
@@ -452,6 +460,7 @@
     const root = ensureRoot();
     root.querySelector(".lodvault-lens-sentence").classList.add("is-hidden");
     root.classList.remove("lodvault-sentence-mode");
+    positionPanel();
   }
 
   function showSentenceMode() {
@@ -460,6 +469,7 @@
     root.querySelector(".lodvault-lens-candidates").classList.add("is-hidden");
     root.querySelector(".lodvault-lens-sentence").classList.remove("is-hidden");
     root.classList.add("lodvault-sentence-mode");
+    positionPanel();
   }
 
   function wordStatusClass(status) {
@@ -879,13 +889,10 @@
   async function openSentenceMode(query, requestId, wordCount = getSentenceWordCount(query)) {
     const currentState = state();
 
-    // Hide single-word panels
-    const root = ensureRoot();
-    root.querySelector(".lodvault-lens-result").classList.add("is-hidden");
-    root.querySelector(".lodvault-lens-candidates").classList.add("is-hidden");
+    showSentenceMode();
 
+    const root = ensureRoot();
     const sentenceContainer = root.querySelector(".lodvault-lens-sentence");
-    sentenceContainer.classList.remove("is-hidden");
     sentenceContainer.innerHTML = `<p class="lodvault-lens-sentence-loading">Looking up ${escHtml(wordCount)} words…</p>`;
 
     setStatus(`Looking up ${wordCount} words…`);

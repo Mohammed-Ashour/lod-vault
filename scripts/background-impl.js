@@ -51,8 +51,7 @@ function scheduleHistoryHydrationResume(delayMs = 0) {
 function sanitizeLensQuery(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 120);
+    .trim();
 }
 
 async function getActiveSelectionText(tabId) {
