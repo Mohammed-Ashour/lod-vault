@@ -328,6 +328,27 @@
   line-height: 1;
 }
 
+#lodvault-lens-overlay-root .lodvault-lens-bulk-toggle .toggle-pill-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-bulk-toggle .toggle-pill-icon svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 #lodvault-lens-overlay-root .toggle-pill-label {
   text-transform: none;
   letter-spacing: 0;
@@ -363,6 +384,10 @@
 
 #lodvault-lens-overlay-root .toggle-study.is-active .toggle-pill-icon {
   color: var(--lv-success);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-bulk-toggle.is-active .toggle-pill-icon {
+  color: var(--lv-accent-lite);
 }
 
 /* ── Candidates ─────────────────────────────────── */

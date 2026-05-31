@@ -588,7 +588,7 @@
           <span class="toggle-pill-label">Study all</span>
         </button>
         <button type="button" class="lodvault-lens-bulk-toggle toggle-pill" aria-pressed="false">
-          <span class="toggle-pill-icon">⊞</span>
+          <span class="toggle-pill-icon"><svg viewBox="0 0 10 10"><line x1="5" y1="1" x2="5" y2="9"/><line x1="1" y1="5" x2="9" y2="5"/></svg></span>
           <span class="toggle-pill-label">Expand all</span>
         </button>
       </div>
@@ -734,7 +734,10 @@
 
     button.setAttribute("aria-pressed", allExpanded ? "true" : "false");
     button.classList.toggle("is-active", allExpanded);
-    button.querySelector(".toggle-pill-icon").textContent = allExpanded ? "⊟" : "⊞";
+    const icon = allExpanded
+      ? '<svg viewBox="0 0 10 10"><line x1="1" y1="5" x2="9" y2="5"/></svg>'
+      : '<svg viewBox="0 0 10 10"><line x1="5" y1="1" x2="5" y2="9"/><line x1="1" y1="5" x2="9" y2="5"/></svg>';
+    button.querySelector(".toggle-pill-icon").innerHTML = icon;
     button.querySelector(".toggle-pill-label").textContent = allExpanded ? "Collapse all" : "Expand all";
   }
 
