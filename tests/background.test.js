@@ -147,7 +147,7 @@ test("background pushes relevant local storage changes into sync storage", async
     }
   });
 
-  await wait(30);
+  await wait(50);
 
   assert.ok(background.syncStorageData["lodVault.m"]);
   assert.ok(Array.isArray(background.syncStorageData["lodVault.e.0"]));
@@ -173,7 +173,7 @@ test("background pulls relevant sync storage changes into local storage", async 
     ]
   });
 
-  await wait(30);
+  await wait(50);
 
   assert.equal(background.storageData["lodVault.entries"].HAUS1.word, "Haus");
   assert.deepEqual(background.storageData["lodVault.entries"].HAUS1.translations, { en: "house", fr: "maison" });
@@ -210,7 +210,7 @@ test("background uses pushEntry for a single-entry local mutation after sync is 
     }
   });
 
-  await wait(30);
+  await wait(50);
 
   assert.equal(pushEntryId, "HAUS1");
   assert.equal(pushAllCalls, 0);
@@ -273,8 +273,80 @@ test("background uses pushSettings for an autoMode-only settings mutation", asyn
     }
   });
 
-  await wait(30);
+  await wait(50);
 
   assert.equal(pushSettingsCalls, 1);
   assert.equal(pushAllCalls, 0);
+});
+
+test("background registers the lens context menu during boot", () => {
+  const background = loadBackgroundScript();
+  const menu = background.createdContextMenus[background.createdContextMenus.length - 1];
+
+  assert.equal(background.removedContextMenus.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(menu)), {
+    id: "lodvault-open-lens",
+    title: "Translate with LODVault",
+    contexts: ["selection"]
+  });
+});
+
+test("background opens the lens overlay for content-script requests from the sender tab", async () => {
+  const background = loadBackgroundScript();
+
+  const response = await background.dispatchRuntimeMessage(
+    {
+      type: "lod-wrapper:open-lens-overlay",
+      selectionText: "  Moien   alleguer  "
+    },
+    {
+      tab: { id: 77 }
+    }
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(response)), { ok: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(background.insertedCss)), [{
+    target: { tabId: 77 },
+    files: ["styles/lens-overlay.css"]
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[0])), {
+    target: { tabId: 77 },
+    files: [
+      "scripts/store-core.js",
+      "scripts/entry-presenter.js",
+      "scripts/shared.js",
+      "scripts/lens-lookup.js",
+      "scripts/lens-overlay.js"
+    ]
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[1].args)), ["Moien alleguer"]);
+});
+
+test("background command reads the current selection before opening the lens overlay", async () => {
+  const background = loadBackgroundScript();
+  const executeScriptCalls = [];
+
+  background.chrome.tabs.query = async () => [{ id: 55 }];
+  background.chrome.scripting.executeScript = async (details) => {
+    executeScriptCalls.push(details);
+    if (typeof details?.func === "function" && !Array.isArray(details.args)) {
+      return [{ result: "  déidlechen!  " }];
+    }
+    return [];
+  };
+
+  background.commandsOnCommand.dispatch("open-lod-lens");
+  await wait(0);
+  await wait(0);
+
+  assert.equal(executeScriptCalls.length, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[0].target)), { tabId: 55 });
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[1].files)), [
+    "scripts/store-core.js",
+    "scripts/entry-presenter.js",
+    "scripts/shared.js",
+    "scripts/lens-lookup.js",
+    "scripts/lens-overlay.js"
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[2].args)), ["déidlechen!"]);
 });

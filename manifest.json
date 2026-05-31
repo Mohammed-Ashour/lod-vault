@@ -6,7 +6,10 @@
   "description": "Save, study, and revisit Luxembourgish words directly from lod.lu.",
   "permissions": [
     "storage",
-    "tabs"
+    "tabs",
+    "activeTab",
+    "scripting",
+    "contextMenus"
   ],
   "optional_permissions": [
     "history"
@@ -14,7 +17,8 @@
   "host_permissions": [
     "https://lod.lu/artikel/*",
     "https://www.lod.lu/artikel/*",
-    "https://lod.lu/uploads/*"
+    "https://lod.lu/uploads/*",
+    "https://lod.lu/api/*"
   ],
   "action": {
     "default_title": "LODVault",
@@ -32,6 +36,26 @@
   },
   "background": {
     "service_worker": "scripts/background-bundle.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/icon32.png"
+      ],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ]
+    }
+  ],
+  "commands": {
+    "open-lod-lens": {
+      "suggested_key": {
+        "default": "Alt+Shift+L",
+        "mac": "Alt+Shift+L"
+      },
+      "description": "Open LOD Lens for the current selection"
+    }
   },
   "content_scripts": [
     {
@@ -51,6 +75,28 @@
       "css": [
         "styles/content.css"
       ]
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "exclude_matches": [
+        "https://lod.lu/*",
+        "https://www.lod.lu/*"
+      ],
+      "js": [
+        "scripts/store-core.js",
+        "scripts/entry-presenter.js",
+        "scripts/shared.js",
+        "scripts/lens-lookup.js",
+        "scripts/lens-overlay.js",
+        "scripts/selection-trigger.js"
+      ],
+      "css": [
+        "styles/lens-overlay.css"
+      ],
+      "run_at": "document_idle"
     }
   ]
 }

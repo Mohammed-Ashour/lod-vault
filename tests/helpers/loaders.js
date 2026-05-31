@@ -645,18 +645,52 @@ function loadBackgroundScript(initialStorage = {}) {
   const runtimeOnInstalled = createChromeEvent();
   const runtimeOnStartup = createChromeEvent();
   const runtimeOnMessage = createChromeEvent();
+  const contextMenusOnClicked = createChromeEvent();
+  const commandsOnCommand = createChromeEvent();
   const reloadedTabIds = [];
+  const createdContextMenus = [];
+  const removedContextMenus = [];
+  const executedScripts = [];
+  const insertedCss = [];
 
   chrome.runtime.getURL = (relativePath) => path.join(repoRoot, relativePath);
   chrome.runtime.onInstalled = runtimeOnInstalled;
   chrome.runtime.onStartup = runtimeOnStartup;
   chrome.runtime.onMessage = runtimeOnMessage;
+  chrome.runtime.lastError = null;
   chrome.tabs = {
     async query() {
       return [];
     },
     async reload(tabId) {
       reloadedTabIds.push(tabId);
+    }
+  };
+  chrome.contextMenus = {
+    onClicked: contextMenusOnClicked,
+    removeAll(callback) {
+      removedContextMenus.push(true);
+      createdContextMenus.length = 0;
+      callback?.();
+    },
+    create(options, callback) {
+      createdContextMenus.push(structuredClone(options));
+      callback?.();
+    }
+  };
+  chrome.commands = {
+    onCommand: commandsOnCommand
+  };
+  chrome.scripting = {
+    async insertCSS(details) {
+      insertedCss.push(structuredClone(details));
+    },
+    async executeScript(details) {
+      executedScripts.push(details);
+      if (typeof details?.func === "function") {
+        return [{ result: await details.func(...(details.args || [])) }];
+      }
+      return [];
     }
   };
 
@@ -698,10 +732,10 @@ function loadBackgroundScript(initialStorage = {}) {
   const source = fs.readFileSync(path.join(repoRoot, "scripts/background.js"), "utf8");
   vm.runInNewContext(source, context, { filename: "scripts/background.js" });
 
-  function dispatchStoreMutation(message) {
+  function dispatchRuntimeMessage(message, sender = null) {
     return new Promise((resolve) => {
       const listener = runtimeOnMessage.getListeners()[0];
-      listener(message, null, resolve);
+      listener(message, sender, resolve);
     });
   }
 
@@ -714,8 +748,17 @@ function loadBackgroundScript(initialStorage = {}) {
     runtimeOnInstalled,
     runtimeOnStartup,
     runtimeOnMessage,
+    contextMenusOnClicked,
+    commandsOnCommand,
     reloadedTabIds,
-    dispatchStoreMutation
+    createdContextMenus,
+    removedContextMenus,
+    executedScripts,
+    insertedCss,
+    dispatchRuntimeMessage,
+    dispatchStoreMutation(message) {
+      return dispatchRuntimeMessage(message, null);
+    }
   };
 }
 
