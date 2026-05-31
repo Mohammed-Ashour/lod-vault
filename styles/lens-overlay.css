@@ -1,0 +1,449 @@
+/* ─────────────────────────────────────────────────────
+   LODVault lens overlay — Ink & Glow
+   Minimal chrome, ink-on-dark, teal accent highlights.
+   Trigger: square with rounded corners (matches logo).
+   Panel: opaque dark, narrow, no borders except accents.
+   ───────────────────────────────────────────────────── */
+
+#lodvault-lens-overlay-root {
+  position: absolute;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --lv-d0: #0b1520;
+  --lv-d1: #111d2e;
+  --lv-d2: #192d44;
+  --lv-border: rgba(168, 218, 220, 0.06);
+  --lv-border-light: rgba(168, 218, 220, 0.10);
+  --lv-border-strong: rgba(57, 167, 196, 0.16);
+  --lv-accent: #39a7c4;
+  --lv-accent-soft: rgba(57, 167, 196, 0.10);
+  --lv-accent-lite: #a8dadc;
+  --lv-text: #e4eef4;
+  --lv-muted: #5a7d96;
+  --lv-success: #5ec48a;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-backdrop {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+}
+
+#lodvault-lens-overlay-root:not(.is-visible) {
+  display: none;
+}
+
+#lodvault-lens-overlay-root.is-visible {
+  display: block;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-panel,
+#lodvault-lens-overlay-root .lodvault-lens-backdrop {
+  pointer-events: auto;
+}
+
+/* ── Panel ─────────────────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-panel {
+  position: absolute;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  max-height: min(420px, calc(100vh - 24px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #111d2e;
+  color: var(--lv-text);
+  border: 1px solid var(--lv-border-strong);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  padding: 16px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* ── Close ──────────────────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--lv-muted);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.4;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-close:hover {
+  opacity: 1;
+  color: var(--lv-accent-lite);
+  background: rgba(57, 167, 196, 0.06);
+}
+
+/* ── Status ─────────────────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-status {
+  padding-right: 30px;
+  min-height: 16px;
+  color: var(--lv-muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+/* ── Result: top row ────────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-result-top {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+/* ── Word ──────────────────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-title-row {
+  display: inline;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-word {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.25;
+  display: inline;
+  border-bottom: 2px solid var(--lv-accent);
+  padding-bottom: 1px;
+}
+
+/* ── Saved badge ────────────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-saved {
+  display: inline;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--lv-success);
+  letter-spacing: 0.04em;
+  margin-left: 6px;
+}
+
+/* ── Meta ───────────────────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-meta {
+  margin: 4px 0 0;
+  color: var(--lv-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+/* ── Open link ──────────────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-open {
+  color: var(--lv-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-open:hover {
+  color: var(--lv-accent);
+  border-bottom-color: var(--lv-accent);
+}
+
+/* ── Meanings ──────────────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-meanings {
+  margin-top: 10px;
+}
+
+/* ── Meaning toggle ────────────────────────────── */
+
+#lodvault-lens-overlay-root .meaning-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  margin-top: 2px;
+  padding: 4px 0;
+  border-radius: 0;
+  background: none;
+  border: none;
+  border-bottom: 1px dashed rgba(57, 167, 196, 0.3);
+  color: var(--lv-accent-lite);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+#lodvault-lens-overlay-root .meaning-toggle:hover {
+  color: var(--lv-accent);
+  border-bottom-color: var(--lv-accent);
+}
+
+#lodvault-lens-overlay-root .meaning-toggle-arrow {
+  font-size: 9px;
+  transition: transform 0.2s;
+}
+
+#lodvault-lens-overlay-root .meaning-toggle[aria-expanded="true"] .meaning-toggle-arrow {
+  transform: rotate(90deg);
+}
+
+#lodvault-lens-overlay-root .meaning-toggle-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#lodvault-lens-overlay-root .meaning-toggle-count {
+  opacity: 0.5;
+  font-size: 10px;
+}
+
+/* ── Meaning expand ─────────────────────────────── */
+
+#lodvault-lens-overlay-root .meaning-expand {
+  display: none;
+  margin-top: 8px;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--lv-accent);
+  border-radius: 0;
+  background: none;
+}
+
+#lodvault-lens-overlay-root .meaning-expand.is-open {
+  display: block;
+}
+
+#lodvault-lens-overlay-root .meaning-row {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+#lodvault-lens-overlay-root .meaning-row + .meaning-row {
+  padding-top: 4px;
+}
+
+#lodvault-lens-overlay-root .meaning-label {
+  min-width: 24px;
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lv-accent-lite);
+}
+
+#lodvault-lens-overlay-root .meaning-label[data-lang="en"] { color: #7dd4a8; }
+#lodvault-lens-overlay-root .meaning-label[data-lang="fr"] { color: #f2a3aa; }
+#lodvault-lens-overlay-root .meaning-label[data-lang="de"] { color: #e2c367; }
+#lodvault-lens-overlay-root .meaning-label[data-lang="pt"] { color: #c4a8f0; }
+#lodvault-lens-overlay-root .meaning-label[data-lang="nl"] { color: #f0a86e; }
+
+#lodvault-lens-overlay-root .meaning-value {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--lv-text);
+  line-height: 1.35;
+}
+
+/* ── Example ────────────────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-example {
+  margin: 10px 0 0;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--lv-accent);
+  border-radius: 0;
+  background: none;
+  color: var(--lv-accent-lite);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.45;
+}
+
+/* ── Save actions ──────────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-actions {
+  display: flex;
+  gap: 0;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--lv-border-light);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 0;
+  margin-right: 14px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--lv-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-save:hover {
+  color: var(--lv-accent-lite);
+}
+
+#lodvault-lens-overlay-root .toggle-pill-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+#lodvault-lens-overlay-root .toggle-pill-label {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── Active states for save buttons ─────────────── */
+
+#lodvault-lens-overlay-root .toggle-fav.is-active {
+  color: #e2c367;
+}
+
+#lodvault-lens-overlay-root .toggle-fav.is-active:hover {
+  color: #f0d56e;
+}
+
+#lodvault-lens-overlay-root .toggle-fav.is-active .toggle-pill-icon {
+  color: #e2c367;
+}
+
+#lodvault-lens-overlay-root .toggle-study.is-active {
+  color: var(--lv-success);
+}
+
+#lodvault-lens-overlay-root .toggle-study.is-active:hover {
+  color: #7dd4a8;
+}
+
+#lodvault-lens-overlay-root .toggle-study.is-active .toggle-pill-icon {
+  color: var(--lv-success);
+}
+
+/* ── Candidates ─────────────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-label {
+  margin: 8px 0 6px;
+  color: var(--lv-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  font-weight: 700;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-candidate {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--lv-border-strong);
+  background: transparent;
+  color: var(--lv-text);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-candidate:hover {
+  border-color: var(--lv-accent);
+  background: rgba(57, 167, 196, 0.04);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-candidate-word {
+  display: block;
+  font-weight: 700;
+  color: #fff;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-candidate-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--lv-muted);
+  font-size: 11px;
+}
+
+/* ── Suggestion variant ─────────────────────────── */
+
+#lodvault-lens-overlay-root .lodvault-lens-suggestion {
+  /* inherits .lodvault-lens-candidate styles */
+}
+
+/* ── Hidden utility ─────────────────────────────── */
+
+#lodvault-lens-overlay-root .is-hidden {
+  display: none !important;
+}
+
+/* ─────────────────────────────────────────────────────
+   Selection trigger — square with rounded corners
+   Matches the LODVault logo shape (rounded square).
+   ───────────────────────────────────────────────────── */
+
+#lodvault-selection-trigger {
+  position: absolute;
+  z-index: 2147483647;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 4px;
+  border-radius: 7px;
+  border: 1.5px solid rgba(57, 167, 196, 0.45);
+  background: #111d2e;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#lodvault-selection-trigger:hover {
+  border-color: #39a7c4;
+  box-shadow: 0 3px 12px rgba(57, 167, 196, 0.2);
+}
+
+#lodvault-selection-trigger.is-hidden {
+  display: none !important;
+}
+
+#lodvault-selection-trigger .lodvault-selection-trigger-logo {
+  display: block;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+}
