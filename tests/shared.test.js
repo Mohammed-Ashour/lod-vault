@@ -106,7 +106,8 @@ test("importJson updates cached settings immediately even when storage change ev
     version: 2,
     settings: {
       autoMode: true,
-      syncLanguages: ["nl"]
+      syncLanguages: ["nl"],
+      sentenceMaxWords: 30
     },
     entries: []
   }));
