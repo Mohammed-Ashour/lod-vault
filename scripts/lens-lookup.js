@@ -1,6 +1,7 @@
 (() => {
   const API_LOCALE = "lb";
   const API_ROOT = `https://lod.lu/api/${API_LOCALE}`;
+  const DEFAULT_SENTENCE_LOOKUP_CONCURRENCY = 6;
 
   function cleanText(value) {
     return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -301,7 +302,7 @@
 
     const exactCandidates = candidates.filter((candidate) => scoreCandidate(candidate, result.query) >= 4);
 
-    if (candidates.length === 1) {
+    if (candidates.length === 1 && exactCandidates.length === 1) {
       return {
         ...result,
         status: "resolved",
@@ -322,6 +323,49 @@
       status: "ambiguous",
       entry: null,
       candidates: [...candidates].sort((left, right) => scoreCandidate(right, result.query) - scoreCandidate(left, result.query))
+    };
+  }
+
+  async function mapWithConcurrency(items, limit, mapper) {
+    const normalizedLimit = Math.max(1, Math.floor(Number(limit) || 1));
+    const results = new Array(items.length);
+    let nextIndex = 0;
+
+    async function worker() {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(normalizedLimit, items.length) }, () => worker())
+    );
+
+    return results;
+  }
+
+  function cloneLookupWordResult(result = {}, tokenText = result.text || "") {
+    return {
+      text: tokenText,
+      word: cleanText(result.word),
+      status: cleanText(result.status) || "error",
+      entry: result.entry
+        ? {
+            ...result.entry,
+            translations: { ...(result.entry.translations || {}) }
+          }
+        : null,
+      candidates: Array.isArray(result.candidates)
+        ? result.candidates.map((candidate) => ({
+            ...candidate,
+            matches: Array.isArray(candidate.matches) ? candidate.matches.slice() : []
+          }))
+        : [],
+      suggestions: Array.isArray(result.suggestions)
+        ? result.suggestions.map((suggestion) => ({ ...suggestion }))
+        : []
     };
   }
 
@@ -352,28 +396,44 @@
 
     const tokens = splitSentence(normalizedQuery);
     const wordTokens = tokens.filter((t) => t.isWord);
+    const uniqueWords = [...new Set(wordTokens.map((token) => normalizeSelection(token.text)).filter(Boolean))];
+    const lookupByWord = new Map();
 
-    const wordResults = await Promise.all(
-      wordTokens.map(async (token) => {
-        const word = normalizeSelection(token.text);
-        if (!word) {
-          return { text: token.text, word, status: "skipped", entry: null, candidates: [], suggestions: [] };
-        }
+    await mapWithConcurrency(
+      uniqueWords,
+      options.sentenceConcurrency || DEFAULT_SENTENCE_LOOKUP_CONCURRENCY,
+      async (word) => {
         try {
           const result = await lookup(word, options);
-          return {
-            text: token.text,
+          lookupByWord.set(word, {
+            text: word,
             word: result.query,
             status: result.status,
             entry: result.entry || null,
             candidates: result.candidates || [],
             suggestions: result.suggestions || []
-          };
+          });
         } catch {
-          return { text: token.text, word, status: "error", entry: null, candidates: [], suggestions: [] };
+          lookupByWord.set(word, {
+            text: word,
+            word,
+            status: "error",
+            entry: null,
+            candidates: [],
+            suggestions: []
+          });
         }
-      })
+      }
     );
+
+    const wordResults = wordTokens.map((token) => {
+      const word = normalizeSelection(token.text);
+      if (!word) {
+        return { text: token.text, word, status: "skipped", entry: null, candidates: [], suggestions: [] };
+      }
+
+      return cloneLookupWordResult(lookupByWord.get(word), token.text);
+    });
 
     return {
       query: normalizedQuery,
@@ -402,6 +462,7 @@
     buildSuggestionUrl,
     buildSearchPageUrl,
     runtimeProxyFetch,
-    getFetchImplementation
+    getFetchImplementation,
+    mapWithConcurrency
   };
 })();

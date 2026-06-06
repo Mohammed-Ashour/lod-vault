@@ -2,10 +2,13 @@
   const BUTTON_ID = "lodvault-selection-trigger";
   const OPEN_LENS_OVERLAY_MESSAGE_TYPE = "lod-wrapper:open-lens-overlay";
   const LOGO_URL = globalThis.chrome?.runtime?.getURL?.("icons/icon32.png") || "";
-  const LB_TEXT_MARKERS = ["déi", "gëtt", "ass", "net", "och", "vun", "fir", "mat", "eng", "hunn", "wéi", "wat", "ëmmer", "kënnt", "lëtzebuerg"];
+  const LB_TEXT_MARKERS = ["déi", "gëtt", "ass", "net", "och", "vun", "fir", "mat", "eng", "hunn", "wéi", "wat", "ëmmer", "kënnt", "lëtzebuergesch", "letzebuergesch"];
   let hideTimer = null;
   let lastSelectionText = "";
   let hadSelectionRect = false;
+  let languageHeuristicDirty = true;
+  let cachedLanguageHeuristicHref = "";
+  let cachedLanguageHeuristicResult = false;
 
   function getButton() {
     return document.getElementById(BUTTON_ID);
@@ -49,37 +52,74 @@
       || /\b(letzebuergesch|luxembourgish|lëtzebuergesch)\b/.test(href);
   }
 
+  function escapeRegex(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function hasMarkerWord(text, marker) {
+    const pattern = new RegExp(`(^|[^\\p{L}])${escapeRegex(marker)}(?=$|[^\\p{L}])`, "u");
+    return pattern.test(text);
+  }
+
   function getBodyTextSample() {
-    const bodyText = document.body?.innerText || document.body?.textContent || "";
+    const bodyText = document.body?.textContent || "";
     return String(bodyText).toLowerCase().slice(0, 6000);
   }
 
   function countLuxembourgishMarkers(text) {
-    return LB_TEXT_MARKERS.reduce((count, marker) => count + (text.includes(marker) ? 1 : 0), 0);
+    const normalized = String(text || "").toLowerCase();
+    return LB_TEXT_MARKERS.reduce((count, marker) => count + (hasMarkerWord(normalized, marker) ? 1 : 0), 0);
+  }
+
+  function selectionLooksLuxembourgish(selectionText) {
+    const normalized = normalizeSelection(selectionText).toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+
+    if (/[äëéèêïîôöûü]/u.test(normalized)) {
+      return true;
+    }
+
+    return countLuxembourgishMarkers(normalized) >= 1;
   }
 
   function pageLooksLuxembourgish() {
+    const href = String(location.href || "");
+    if (!languageHeuristicDirty && cachedLanguageHeuristicHref === href) {
+      return cachedLanguageHeuristicResult;
+    }
+
     const langSignals = collectLanguageSignals();
     if (langSignals.some(isLuxembourgishLangTag)) {
+      cachedLanguageHeuristicHref = href;
+      cachedLanguageHeuristicResult = true;
+      languageHeuristicDirty = false;
       return true;
     }
 
     if (hasLuxembourgishUrlHint()) {
+      cachedLanguageHeuristicHref = href;
+      cachedLanguageHeuristicResult = true;
+      languageHeuristicDirty = false;
       return true;
     }
 
     const textSample = getBodyTextSample();
     if (!textSample) {
+      cachedLanguageHeuristicHref = href;
+      cachedLanguageHeuristicResult = false;
+      languageHeuristicDirty = false;
       return false;
     }
 
     const markerCount = countLuxembourgishMarkers(textSample);
     const host = String(location.hostname || "").toLowerCase();
-    if (markerCount >= 4) {
-      return true;
-    }
-
-    return markerCount >= 2 && (host.endsWith(".lu") || host.includes("rtl.lu") || host.includes("wort.lu"));
+    cachedLanguageHeuristicHref = href;
+    cachedLanguageHeuristicResult = markerCount >= 4
+      || (markerCount >= 2 && (host.endsWith(".lu") || host.includes("rtl.lu") || host.includes("wort.lu")));
+    languageHeuristicDirty = false;
+    return cachedLanguageHeuristicResult;
   }
 
   function ensureButton() {
@@ -176,8 +216,9 @@
   function updateSelectionState() {
     const selectionText = normalizeSelection(window.getSelection?.()?.toString?.() || "");
     const rect = getSelectionRect();
+    const shouldEnableForPage = pageLooksLuxembourgish() || selectionLooksLuxembourgish(selectionText);
 
-    if (!pageLooksLuxembourgish()) {
+    if (!shouldEnableForPage) {
       lastSelectionText = "";
       hadSelectionRect = false;
       hideButton();
@@ -231,4 +272,27 @@
     if (!lastSelectionText || !hadSelectionRect) return;
     updateSelectionState();
   }, { passive: true });
+
+  const languageObserver = globalThis.MutationObserver
+    ? new MutationObserver(() => {
+        languageHeuristicDirty = true;
+      })
+    : null;
+
+  languageObserver?.observe(document.documentElement, {
+    subtree: true,
+    childList: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ["lang"]
+  });
+
+  globalThis.__LodWrapperSelectionTriggerTest = {
+    countLuxembourgishMarkers,
+    pageLooksLuxembourgish,
+    selectionLooksLuxembourgish,
+    markLanguageHeuristicDirty() {
+      languageHeuristicDirty = true;
+    }
+  };
 })();

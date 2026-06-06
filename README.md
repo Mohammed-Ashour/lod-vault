@@ -152,6 +152,7 @@ The **LODVault** icon will appear in your browser toolbar.
 - Select a Luxembourgish word or short phrase on a supported page
 - Click the floating **LODVault** trigger, use the page context menu, or press **Alt+Shift+L**
 - Review the LOD translation in the floating overlay and save it to **Favorites** or **Study**
+- Privacy note: LOD Lens runs in the browser and does not upload full page contents. Only the text you choose to look up is sent to the LOD dictionary API so the extension can fetch the translation.
 
 ### Preview and export
 - **Preview** — opens a live, searchable page of your saved words in a new tab

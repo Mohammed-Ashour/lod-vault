@@ -614,16 +614,30 @@
 
   async function syncSentenceSavedStates(words) {
     for (const [wordIdx, w] of words.entries()) {
+      if (state().sentence?.words !== words || !getRoot()?.classList.contains("is-visible")) {
+        return;
+      }
+
       if (w.status === "resolved" && w.entry?.id) {
         try {
           const savedEntry = await store.getEntry(w.entry.id);
+          if (state().sentence?.words !== words || !getRoot()?.classList.contains("is-visible")) {
+            return;
+          }
           w._savedEntry = savedEntry;
           renderSentenceWordSavedState(wordIdx, w);
         } catch {
+          if (state().sentence?.words !== words || !getRoot()?.classList.contains("is-visible")) {
+            return;
+          }
           w._savedEntry = null;
           renderSentenceWordSavedState(wordIdx, w);
         }
       }
+    }
+
+    if (state().sentence?.words !== words || !getRoot()?.classList.contains("is-visible")) {
+      return;
     }
     renderBulkStudySavedState(words);
   }

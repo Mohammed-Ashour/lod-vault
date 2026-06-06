@@ -142,6 +142,58 @@ test("lookupSentence resolves each word while keeping render tokens", async () =
   assert.deepEqual(JSON.parse(JSON.stringify(result.words.map((word) => word.status))), ["resolved", "resolved"]);
 });
 
+test("lookupSentence deduplicates repeated words and limits request concurrency", async () => {
+  const searchQueries = [];
+  let activeFetches = 0;
+  let maxActiveFetches = 0;
+  const delayMs = 10;
+  const wait = () => new Promise((resolve) => setTimeout(resolve, delayMs));
+  const lensLookup = loadLensLookup(async (url) => {
+    activeFetches += 1;
+    maxActiveFetches = Math.max(maxActiveFetches, activeFetches);
+    await wait();
+    const href = String(url);
+
+    try {
+      if (href.includes("/search?")) {
+        const query = new URL(href).searchParams.get("query");
+        searchQueries.push(query);
+        return {
+          ok: true,
+          json: async () => ({
+            results: [
+              { article_id: `${query.toUpperCase()}1`, word_lb: query, pos: "X" }
+            ]
+          })
+        };
+      }
+
+      const id = decodeURIComponent(href.split("/entry/")[1] || "");
+      return {
+        ok: true,
+        json: async () => ({
+          entry: {
+            lod_id: id,
+            lemma: id.replace(/1$/, ""),
+            partOfSpeechLabel: "X",
+            microStructures: []
+          }
+        })
+      };
+    } finally {
+      activeFetches -= 1;
+    }
+  });
+
+  const sentence = "Haus Haus geet geet ass ass mat mat an an haut haut moien moien";
+  const result = await lensLookup.lookupSentence(sentence);
+
+  assert.deepEqual(searchQueries, ["Haus", "geet", "ass", "mat", "an", "haut", "moien"]);
+  assert.ok(maxActiveFetches <= 6, `expected max concurrency <= 6, got ${maxActiveFetches}`);
+  assert.equal(result.words.length, 14);
+  assert.ok(result.words.every((word) => word.status === "resolved"));
+});
+
 test("lookup returns candidates when multiple exact matches are found", async () => {
   const lensLookup = loadLensLookup(async () => ({
     ok: true,
@@ -159,6 +211,24 @@ test("lookup returns candidates when multiple exact matches are found", async ()
   assert.equal(result.entry, null);
   assert.equal(result.candidates.length, 2);
   assert.equal(result.candidates[0].id, "GINN1");
+});
+
+test("lookup does not auto-resolve a single fuzzy search hit", async () => {
+  const lensLookup = loadLensLookup(async () => ({
+    ok: true,
+    json: async () => ({
+      results: [
+        { article_id: "MOIEN1", word_lb: "moien", pos: "INTJ" }
+      ]
+    })
+  }));
+
+  const result = await lensLookup.lookup("moi");
+
+  assert.equal(result.status, "ambiguous");
+  assert.equal(result.entry, null);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].id, "MOIEN1");
 });
 
 test("lookup returns first 5 suggestions when no exact result is found", async () => {
@@ -243,7 +313,7 @@ test("lookup can resolve an inflected form through the search endpoint", async (
   assert.equal(result.entry.word, "déidlech");
 });
 
- test("lookup does not fall back to page fetch when the runtime proxy fails", async () => {
+test("lookup does not fall back to page fetch when the runtime proxy fails", async () => {
   let directFetchCalled = false;
   const lensLookup = loadLensLookup(
     async () => {

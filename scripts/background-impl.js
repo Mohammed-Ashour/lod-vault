@@ -8,6 +8,13 @@ const LENS_PROXY_ALLOWED_LOCALE = "lb";
 const LENS_PROXY_SEARCH_PATH = `/api/${LENS_PROXY_ALLOWED_LOCALE}/search`;
 const LENS_PROXY_SUGGEST_PATH = `/api/${LENS_PROXY_ALLOWED_LOCALE}/suggest`;
 const LENS_PROXY_ENTRY_PREFIX = `/api/${LENS_PROXY_ALLOWED_LOCALE}/entry/`;
+const LENS_SCRIPT_FILES = [
+  "scripts/store-core.js",
+  "scripts/entry-presenter.js",
+  "scripts/shared.js",
+  "scripts/lens-lookup.js",
+  "scripts/lens-overlay.js"
+];
 const STORE_MUTATION_MESSAGE_TYPE = LodWrapperStore.STORE_MUTATION_MESSAGE_TYPE;
 const STORE_MUTATION_METHODS = new Set([
   "setAutoMode",
@@ -68,8 +75,21 @@ function isAllowedLensEntryPath(pathname) {
     return false;
   }
 
-  const entryId = pathname.slice(LENS_PROXY_ENTRY_PREFIX.length);
-  return Boolean(entryId) && !entryId.includes("/");
+  const rawEntryId = pathname.slice(LENS_PROXY_ENTRY_PREFIX.length);
+  if (!rawEntryId || /%2f|%5c/i.test(rawEntryId)) {
+    return false;
+  }
+
+  let decodedEntryId = "";
+  try {
+    decodedEntryId = decodeURIComponent(rawEntryId);
+  } catch {
+    return false;
+  }
+
+  return Boolean(decodedEntryId)
+    && !decodedEntryId.includes("/")
+    && !decodedEntryId.includes("\\");
 }
 
 function validateLensProxyUrl(value) {
@@ -152,18 +172,30 @@ async function getActiveSelectionText(tabId) {
   }
 }
 
-async function openLensOverlay(tabId, selectionText = "") {
+async function isLensOverlayInjected(tabId) {
   if (!tabId || !chrome.scripting?.executeScript) {
-    throw new Error("Cannot open lens overlay without a tab id.");
+    return false;
   }
 
-  const files = [
-    "scripts/store-core.js",
-    "scripts/entry-presenter.js",
-    "scripts/shared.js",
-    "scripts/lens-lookup.js",
-    "scripts/lens-overlay.js"
-  ];
+  try {
+    const [{ result } = {}] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => Boolean(
+        globalThis.LodWrapperStore
+        && globalThis.LodWrapperLensLookup
+        && globalThis.LodWrapperLensOverlay?.openFromSelection
+      )
+    });
+    return Boolean(result);
+  } catch {
+    return false;
+  }
+}
+
+async function ensureLensOverlayInjected(tabId) {
+  if (await isLensOverlayInjected(tabId)) {
+    return;
+  }
 
   await chrome.scripting.insertCSS?.({
     target: { tabId },
@@ -172,8 +204,16 @@ async function openLensOverlay(tabId, selectionText = "") {
 
   await chrome.scripting.executeScript({
     target: { tabId },
-    files
+    files: LENS_SCRIPT_FILES
   });
+}
+
+async function openLensOverlay(tabId, selectionText = "") {
+  if (!tabId || !chrome.scripting?.executeScript) {
+    throw new Error("Cannot open lens overlay without a tab id.");
+  }
+
+  await ensureLensOverlayInjected(tabId);
 
   await chrome.scripting.executeScript({
     target: { tabId },

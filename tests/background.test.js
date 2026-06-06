@@ -309,7 +309,10 @@ test("background opens the lens overlay for content-script requests from the sen
     target: { tabId: 77 },
     files: ["styles/lens-overlay.css"]
   }]);
-  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[0])), {
+  assert.equal(background.executedScripts.length, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[0].target)), { tabId: 77 });
+  assert.equal(typeof background.executedScripts[0].func, "function");
+  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[1])), {
     target: { tabId: 77 },
     files: [
       "scripts/store-core.js",
@@ -319,7 +322,7 @@ test("background opens the lens overlay for content-script requests from the sen
       "scripts/lens-overlay.js"
     ]
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[1].args)), ["Moien alleguer"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[2].args)), ["Moien alleguer"]);
 });
 
 test("background preserves long sentence selections when opening the lens overlay", async () => {
@@ -337,9 +340,47 @@ test("background preserves long sentence selections when opening the lens overla
   );
 
   assert.deepEqual(JSON.parse(JSON.stringify(response)), { ok: true });
-  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[1].args)), [
+  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[2].args)), [
     "Dëst ass eng zimlech laang Auswiel mat villen Wierder déi net soll gekierzt ginn wann de Benotzer de Lens iwwer de Kontextmenü opmécht fir e komplette Saz nozeschloen."
   ]);
+});
+
+ test("background reuses previously injected lens scripts in the same tab", async () => {
+  const background = loadBackgroundScript();
+  let overlayAvailable = false;
+  const executeScriptCalls = [];
+
+  background.chrome.scripting.executeScript = async (details) => {
+    executeScriptCalls.push(details);
+
+    if (typeof details?.func === "function" && !Array.isArray(details.args)) {
+      return [{ result: overlayAvailable }];
+    }
+
+    if (Array.isArray(details.files)) {
+      overlayAvailable = true;
+      return [];
+    }
+
+    return [];
+  };
+
+  await background.dispatchRuntimeMessage({
+    type: "lod-wrapper:open-lens-overlay",
+    selectionText: "Haus"
+  }, {
+    tab: { id: 77 }
+  });
+
+  await background.dispatchRuntimeMessage({
+    type: "lod-wrapper:open-lens-overlay",
+    selectionText: "Moien"
+  }, {
+    tab: { id: 77 }
+  });
+
+  assert.equal(executeScriptCalls.filter((call) => Array.isArray(call.files)).length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[4].args)), ["Moien"]);
 });
 
 test("background command reads the current selection before opening the lens overlay", async () => {
@@ -350,7 +391,10 @@ test("background command reads the current selection before opening the lens ove
   background.chrome.scripting.executeScript = async (details) => {
     executeScriptCalls.push(details);
     if (typeof details?.func === "function" && !Array.isArray(details.args)) {
-      return [{ result: "  déidlechen!  " }];
+      if (String(details.func).includes("window.getSelection")) {
+        return [{ result: "  déidlechen!  " }];
+      }
+      return [{ result: false }];
     }
     return [];
   };
@@ -359,16 +403,16 @@ test("background command reads the current selection before opening the lens ove
   await wait(0);
   await wait(0);
 
-  assert.equal(executeScriptCalls.length, 3);
+  assert.equal(executeScriptCalls.length, 4);
   assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[0].target)), { tabId: 55 });
-  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[1].files)), [
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[2].files)), [
     "scripts/store-core.js",
     "scripts/entry-presenter.js",
     "scripts/shared.js",
     "scripts/lens-lookup.js",
     "scripts/lens-overlay.js"
   ]);
-  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[2].args)), ["déidlechen!"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[3].args)), ["déidlechen!"]);
 });
 
 test("background command preserves long selections for sentence lookup", async () => {
@@ -380,7 +424,10 @@ test("background command preserves long selections for sentence lookup", async (
   background.chrome.scripting.executeScript = async (details) => {
     executeScriptCalls.push(details);
     if (typeof details?.func === "function" && !Array.isArray(details.args)) {
-      return [{ result: longSelection }];
+      if (String(details.func).includes("window.getSelection")) {
+        return [{ result: longSelection }];
+      }
+      return [{ result: false }];
     }
     return [];
   };
@@ -389,7 +436,7 @@ test("background command preserves long selections for sentence lookup", async (
   await wait(0);
   await wait(0);
 
-  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[2].args)), [
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[3].args)), [
     "Dëst ass eng aner laang Auswiel déi iwwer d'Tastaturkommando opgemaach gëtt an dowéinst och komplett beim Overlay ukomme muss ouni an der Mëtt ofgeschnidden ze ginn."
   ]);
 });
@@ -458,7 +505,9 @@ test("background rejects non-whitelisted lens proxy URLs before fetching", async
     "https://lod.lu/artikel/HAUS1",
     "https://lod.lu/api/lb/search?lang=en&query=Haus",
     "https://lod.lu/api/lb/suggest?query=Haus&extra=1",
-    "https://lod.lu/api/lb/entry/HAUS1?foo=bar"
+    "https://lod.lu/api/lb/entry/HAUS1?foo=bar",
+    "https://lod.lu/api/lb/entry/HAUS%2F1",
+    "https://lod.lu/api/lb/entry/HAUS%5C1"
   ]) {
     const response = await background.dispatchRuntimeMessage({
       type: "lod-wrapper:lens-fetch",
