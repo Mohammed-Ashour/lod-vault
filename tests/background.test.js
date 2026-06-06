@@ -147,7 +147,7 @@ test("background pushes relevant local storage changes into sync storage", async
     }
   });
 
-  await wait(30);
+  await wait(50);
 
   assert.ok(background.syncStorageData["lodVault.m"]);
   assert.ok(Array.isArray(background.syncStorageData["lodVault.e.0"]));
@@ -173,7 +173,7 @@ test("background pulls relevant sync storage changes into local storage", async 
     ]
   });
 
-  await wait(30);
+  await wait(50);
 
   assert.equal(background.storageData["lodVault.entries"].HAUS1.word, "Haus");
   assert.deepEqual(background.storageData["lodVault.entries"].HAUS1.translations, { en: "house", fr: "maison" });
@@ -210,7 +210,7 @@ test("background uses pushEntry for a single-entry local mutation after sync is 
     }
   });
 
-  await wait(30);
+  await wait(50);
 
   assert.equal(pushEntryId, "HAUS1");
   assert.equal(pushAllCalls, 0);
@@ -273,8 +273,251 @@ test("background uses pushSettings for an autoMode-only settings mutation", asyn
     }
   });
 
-  await wait(30);
+  await wait(50);
 
   assert.equal(pushSettingsCalls, 1);
   assert.equal(pushAllCalls, 0);
+});
+
+test("background registers the lens context menu during boot", () => {
+  const background = loadBackgroundScript();
+  const menu = background.createdContextMenus[background.createdContextMenus.length - 1];
+
+  assert.equal(background.removedContextMenus.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(menu)), {
+    id: "lodvault-open-lens",
+    title: "Translate with LODVault",
+    contexts: ["selection"]
+  });
+});
+
+test("background opens the lens overlay for content-script requests from the sender tab", async () => {
+  const background = loadBackgroundScript();
+
+  const response = await background.dispatchRuntimeMessage(
+    {
+      type: "lod-wrapper:open-lens-overlay",
+      selectionText: "  Moien   alleguer  "
+    },
+    {
+      tab: { id: 77 }
+    }
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(response)), { ok: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(background.insertedCss)), [{
+    target: { tabId: 77 },
+    files: ["styles/lens-overlay.css"]
+  }]);
+  assert.equal(background.executedScripts.length, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[0].target)), { tabId: 77 });
+  assert.equal(typeof background.executedScripts[0].func, "function");
+  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[1])), {
+    target: { tabId: 77 },
+    files: [
+      "scripts/store-core.js",
+      "scripts/entry-presenter.js",
+      "scripts/shared.js",
+      "scripts/lens-lookup.js",
+      "scripts/lens-overlay.js"
+    ]
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[2].args)), ["Moien alleguer"]);
+});
+
+test("background preserves long sentence selections when opening the lens overlay", async () => {
+  const background = loadBackgroundScript();
+  const longSelection = "  Dëst ass eng zimlech laang Auswiel mat villen Wierder déi net soll gekierzt ginn wann de Benotzer de Lens iwwer de Kontextmenü opmécht fir e komplette Saz nozeschloen.  ";
+
+  const response = await background.dispatchRuntimeMessage(
+    {
+      type: "lod-wrapper:open-lens-overlay",
+      selectionText: longSelection
+    },
+    {
+      tab: { id: 77 }
+    }
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(response)), { ok: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[2].args)), [
+    "Dëst ass eng zimlech laang Auswiel mat villen Wierder déi net soll gekierzt ginn wann de Benotzer de Lens iwwer de Kontextmenü opmécht fir e komplette Saz nozeschloen."
+  ]);
+});
+
+ test("background reuses previously injected lens scripts in the same tab", async () => {
+  const background = loadBackgroundScript();
+  let overlayAvailable = false;
+  const executeScriptCalls = [];
+
+  background.chrome.scripting.executeScript = async (details) => {
+    executeScriptCalls.push(details);
+
+    if (typeof details?.func === "function" && !Array.isArray(details.args)) {
+      return [{ result: overlayAvailable }];
+    }
+
+    if (Array.isArray(details.files)) {
+      overlayAvailable = true;
+      return [];
+    }
+
+    return [];
+  };
+
+  await background.dispatchRuntimeMessage({
+    type: "lod-wrapper:open-lens-overlay",
+    selectionText: "Haus"
+  }, {
+    tab: { id: 77 }
+  });
+
+  await background.dispatchRuntimeMessage({
+    type: "lod-wrapper:open-lens-overlay",
+    selectionText: "Moien"
+  }, {
+    tab: { id: 77 }
+  });
+
+  assert.equal(executeScriptCalls.filter((call) => Array.isArray(call.files)).length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[4].args)), ["Moien"]);
+});
+
+test("background command reads the current selection before opening the lens overlay", async () => {
+  const background = loadBackgroundScript();
+  const executeScriptCalls = [];
+
+  background.chrome.tabs.query = async () => [{ id: 55 }];
+  background.chrome.scripting.executeScript = async (details) => {
+    executeScriptCalls.push(details);
+    if (typeof details?.func === "function" && !Array.isArray(details.args)) {
+      if (String(details.func).includes("window.getSelection")) {
+        return [{ result: "  déidlechen!  " }];
+      }
+      return [{ result: false }];
+    }
+    return [];
+  };
+
+  background.commandsOnCommand.dispatch("open-lod-lens");
+  await wait(0);
+  await wait(0);
+
+  assert.equal(executeScriptCalls.length, 4);
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[0].target)), { tabId: 55 });
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[2].files)), [
+    "scripts/store-core.js",
+    "scripts/entry-presenter.js",
+    "scripts/shared.js",
+    "scripts/lens-lookup.js",
+    "scripts/lens-overlay.js"
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[3].args)), ["déidlechen!"]);
+});
+
+test("background command preserves long selections for sentence lookup", async () => {
+  const background = loadBackgroundScript();
+  const executeScriptCalls = [];
+  const longSelection = "  Dëst ass eng aner laang Auswiel déi iwwer d'Tastaturkommando opgemaach gëtt an dowéinst och komplett beim Overlay ukomme muss ouni an der Mëtt ofgeschnidden ze ginn.  ";
+
+  background.chrome.tabs.query = async () => [{ id: 55 }];
+  background.chrome.scripting.executeScript = async (details) => {
+    executeScriptCalls.push(details);
+    if (typeof details?.func === "function" && !Array.isArray(details.args)) {
+      if (String(details.func).includes("window.getSelection")) {
+        return [{ result: longSelection }];
+      }
+      return [{ result: false }];
+    }
+    return [];
+  };
+
+  background.commandsOnCommand.dispatch("open-lod-lens");
+  await wait(0);
+  await wait(0);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[3].args)), [
+    "Dëst ass eng aner laang Auswiel déi iwwer d'Tastaturkommando opgemaach gëtt an dowéinst och komplett beim Overlay ukomme muss ouni an der Mëtt ofgeschnidden ze ginn."
+  ]);
+});
+
+test("background only proxies the approved LOD Lens API endpoints", async () => {
+  const background = loadBackgroundScript();
+  const fetchCalls = [];
+  const bodies = [
+    { results: [{ article_id: "HAUS1" }] },
+    { items: [{ word: "Haus" }] },
+    { entry: { lod_id: "HAUS1" } }
+  ];
+  let bodyIndex = 0;
+
+  background.context.fetch = async (url, options) => {
+    fetchCalls.push({ url, options: JSON.parse(JSON.stringify(options)) });
+    const body = JSON.stringify(bodies[bodyIndex] || {});
+    bodyIndex += 1;
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return body;
+      }
+    };
+  };
+
+  const responses = [];
+  for (const url of [
+    "https://lod.lu/api/lb/search?lang=lb&query=Haus",
+    "https://lod.lu/api/lb/suggest?query=Haus",
+    "https://lod.lu/api/lb/entry/HAUS1"
+  ]) {
+    responses.push(await background.dispatchRuntimeMessage({
+      type: "lod-wrapper:lens-fetch",
+      url
+    }));
+  }
+
+  assert.equal(fetchCalls.length, 3);
+  assert.deepEqual(fetchCalls.map((call) => call.url), [
+    "https://lod.lu/api/lb/search?lang=lb&query=Haus",
+    "https://lod.lu/api/lb/suggest?query=Haus",
+    "https://lod.lu/api/lb/entry/HAUS1"
+  ]);
+  assert.ok(fetchCalls.every((call) => call.options.method === "GET"));
+  assert.ok(fetchCalls.every((call) => call.options.headers.Accept === "application/json"));
+  assert.deepEqual(JSON.parse(JSON.stringify(responses)), [
+    { ok: true, status: 200, json: { results: [{ article_id: "HAUS1" }] }, text: '{"results":[{"article_id":"HAUS1"}]}' },
+    { ok: true, status: 200, json: { items: [{ word: "Haus" }] }, text: '{"items":[{"word":"Haus"}]}' },
+    { ok: true, status: 200, json: { entry: { lod_id: "HAUS1" } }, text: '{"entry":{"lod_id":"HAUS1"}}' }
+  ]);
+});
+
+test("background rejects non-whitelisted lens proxy URLs before fetching", async () => {
+  const background = loadBackgroundScript();
+  let fetchCalls = 0;
+
+  background.context.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error("fetch should not be called for blocked URLs");
+  };
+
+  for (const url of [
+    "https://example.com/api/lb/search?lang=lb&query=Haus",
+    "https://lod.lu/artikel/HAUS1",
+    "https://lod.lu/api/lb/search?lang=en&query=Haus",
+    "https://lod.lu/api/lb/suggest?query=Haus&extra=1",
+    "https://lod.lu/api/lb/entry/HAUS1?foo=bar",
+    "https://lod.lu/api/lb/entry/HAUS%2F1",
+    "https://lod.lu/api/lb/entry/HAUS%5C1"
+  ]) {
+    const response = await background.dispatchRuntimeMessage({
+      type: "lod-wrapper:lens-fetch",
+      url
+    });
+
+    assert.equal(response.ok, false);
+    assert.equal(response.status, 400);
+    assert.match(response.error, /Blocked unauthorized LOD Lens request URL\./);
+  }
+
+  assert.equal(fetchCalls, 0);
 });

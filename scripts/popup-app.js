@@ -166,6 +166,8 @@
 
       if (hasSettingsChange) {
         await refreshSettingsState();
+        renderAutoMode();
+        renderSyncLanguages();
       }
 
       if (hasHistoryImportStateChange) {
