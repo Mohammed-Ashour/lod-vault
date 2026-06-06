@@ -393,3 +393,82 @@ test("background command preserves long selections for sentence lookup", async (
     "Dëst ass eng aner laang Auswiel déi iwwer d'Tastaturkommando opgemaach gëtt an dowéinst och komplett beim Overlay ukomme muss ouni an der Mëtt ofgeschnidden ze ginn."
   ]);
 });
+
+test("background only proxies the approved LOD Lens API endpoints", async () => {
+  const background = loadBackgroundScript();
+  const fetchCalls = [];
+  const bodies = [
+    { results: [{ article_id: "HAUS1" }] },
+    { items: [{ word: "Haus" }] },
+    { entry: { lod_id: "HAUS1" } }
+  ];
+  let bodyIndex = 0;
+
+  background.context.fetch = async (url, options) => {
+    fetchCalls.push({ url, options: JSON.parse(JSON.stringify(options)) });
+    const body = JSON.stringify(bodies[bodyIndex] || {});
+    bodyIndex += 1;
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return body;
+      }
+    };
+  };
+
+  const responses = [];
+  for (const url of [
+    "https://lod.lu/api/lb/search?lang=lb&query=Haus",
+    "https://lod.lu/api/lb/suggest?query=Haus",
+    "https://lod.lu/api/lb/entry/HAUS1"
+  ]) {
+    responses.push(await background.dispatchRuntimeMessage({
+      type: "lod-wrapper:lens-fetch",
+      url
+    }));
+  }
+
+  assert.equal(fetchCalls.length, 3);
+  assert.deepEqual(fetchCalls.map((call) => call.url), [
+    "https://lod.lu/api/lb/search?lang=lb&query=Haus",
+    "https://lod.lu/api/lb/suggest?query=Haus",
+    "https://lod.lu/api/lb/entry/HAUS1"
+  ]);
+  assert.ok(fetchCalls.every((call) => call.options.method === "GET"));
+  assert.ok(fetchCalls.every((call) => call.options.headers.Accept === "application/json"));
+  assert.deepEqual(JSON.parse(JSON.stringify(responses)), [
+    { ok: true, status: 200, json: { results: [{ article_id: "HAUS1" }] }, text: '{"results":[{"article_id":"HAUS1"}]}' },
+    { ok: true, status: 200, json: { items: [{ word: "Haus" }] }, text: '{"items":[{"word":"Haus"}]}' },
+    { ok: true, status: 200, json: { entry: { lod_id: "HAUS1" } }, text: '{"entry":{"lod_id":"HAUS1"}}' }
+  ]);
+});
+
+test("background rejects non-whitelisted lens proxy URLs before fetching", async () => {
+  const background = loadBackgroundScript();
+  let fetchCalls = 0;
+
+  background.context.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error("fetch should not be called for blocked URLs");
+  };
+
+  for (const url of [
+    "https://example.com/api/lb/search?lang=lb&query=Haus",
+    "https://lod.lu/artikel/HAUS1",
+    "https://lod.lu/api/lb/search?lang=en&query=Haus",
+    "https://lod.lu/api/lb/suggest?query=Haus&extra=1",
+    "https://lod.lu/api/lb/entry/HAUS1?foo=bar"
+  ]) {
+    const response = await background.dispatchRuntimeMessage({
+      type: "lod-wrapper:lens-fetch",
+      url
+    });
+
+    assert.equal(response.ok, false);
+    assert.equal(response.status, 400);
+    assert.match(response.error, /Blocked unauthorized LOD Lens request URL\./);
+  }
+
+  assert.equal(fetchCalls, 0);
+});

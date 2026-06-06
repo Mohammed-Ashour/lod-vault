@@ -5298,6 +5298,11 @@ const LENS_CONTEXT_MENU_ID = "lodvault-open-lens";
 const LENS_COMMAND_ID = "open-lod-lens";
 const OPEN_LENS_OVERLAY_MESSAGE_TYPE = "lod-wrapper:open-lens-overlay";
 const LENS_PROXY_MESSAGE_TYPE = "lod-wrapper:lens-fetch";
+const LENS_PROXY_ALLOWED_ORIGIN = "https://lod.lu";
+const LENS_PROXY_ALLOWED_LOCALE = "lb";
+const LENS_PROXY_SEARCH_PATH = `/api/${LENS_PROXY_ALLOWED_LOCALE}/search`;
+const LENS_PROXY_SUGGEST_PATH = `/api/${LENS_PROXY_ALLOWED_LOCALE}/suggest`;
+const LENS_PROXY_ENTRY_PREFIX = `/api/${LENS_PROXY_ALLOWED_LOCALE}/entry/`;
 const STORE_MUTATION_MESSAGE_TYPE = LodWrapperStore.STORE_MUTATION_MESSAGE_TYPE;
 const STORE_MUTATION_METHODS = new Set([
   "setAutoMode",
@@ -5347,6 +5352,79 @@ function sanitizeLensQuery(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function hasOnlyAllowedSearchParams(searchParams, allowedKeys) {
+  return [...new Set(searchParams.keys())].every((key) => allowedKeys.has(key));
+}
+
+function isAllowedLensEntryPath(pathname) {
+  if (!String(pathname || "").startsWith(LENS_PROXY_ENTRY_PREFIX)) {
+    return false;
+  }
+
+  const entryId = pathname.slice(LENS_PROXY_ENTRY_PREFIX.length);
+  return Boolean(entryId) && !entryId.includes("/");
+}
+
+function validateLensProxyUrl(value) {
+  const candidate = String(value || "").trim();
+  let parsed = null;
+
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error("Invalid LOD Lens request URL.");
+  }
+
+  if (
+    parsed.protocol !== "https:"
+    || parsed.origin !== LENS_PROXY_ALLOWED_ORIGIN
+    || parsed.username
+    || parsed.password
+    || parsed.hash
+  ) {
+    throw new Error("Blocked unauthorized LOD Lens request URL.");
+  }
+
+  if (parsed.pathname === LENS_PROXY_SEARCH_PATH) {
+    if (!hasOnlyAllowedSearchParams(parsed.searchParams, new Set(["lang", "query"]))) {
+      throw new Error("Blocked unauthorized LOD Lens request URL.");
+    }
+
+    const lang = sanitizeLensQuery(parsed.searchParams.get("lang"));
+    const query = sanitizeLensQuery(parsed.searchParams.get("query"));
+    if (lang !== LENS_PROXY_ALLOWED_LOCALE || !query) {
+      throw new Error("Blocked unauthorized LOD Lens request URL.");
+    }
+
+    parsed.search = `?lang=${encodeURIComponent(LENS_PROXY_ALLOWED_LOCALE)}&query=${encodeURIComponent(query)}`;
+    return parsed.toString();
+  }
+
+  if (parsed.pathname === LENS_PROXY_SUGGEST_PATH) {
+    if (!hasOnlyAllowedSearchParams(parsed.searchParams, new Set(["query"]))) {
+      throw new Error("Blocked unauthorized LOD Lens request URL.");
+    }
+
+    const query = sanitizeLensQuery(parsed.searchParams.get("query"));
+    if (!query) {
+      throw new Error("Blocked unauthorized LOD Lens request URL.");
+    }
+
+    parsed.search = `?query=${encodeURIComponent(query)}`;
+    return parsed.toString();
+  }
+
+  if (isAllowedLensEntryPath(parsed.pathname)) {
+    if ([...new Set(parsed.searchParams.keys())].length > 0) {
+      throw new Error("Blocked unauthorized LOD Lens request URL.");
+    }
+
+    return parsed.toString();
+  }
+
+  throw new Error("Blocked unauthorized LOD Lens request URL.");
 }
 
 async function getActiveSelectionText(tabId) {
@@ -5492,7 +5570,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === LENS_PROXY_MESSAGE_TYPE) {
-    fetch(String(message.url || ""), {
+    let requestUrl = "";
+
+    try {
+      requestUrl = validateLensProxyUrl(message.url);
+    } catch (error) {
+      sendResponse({
+        ok: false,
+        status: 400,
+        error: error?.message || String(error)
+      });
+      return;
+    }
+
+    fetch(requestUrl, {
       method: "GET",
       headers: { Accept: "application/json" }
     })
