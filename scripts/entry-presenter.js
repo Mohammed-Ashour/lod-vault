@@ -1,5 +1,5 @@
 (() => {
-  const store = globalThis.LodWrapperStoreCore || globalThis.LodWrapperStore || {};
+  const store = globalThis.LodVaultStoreCore || globalThis.LodVaultStore || {};
   const TRANSLATION_LANGUAGE_ORDER = store.TRANSLATION_LANGUAGE_ORDER || ["en", "fr", "de", "pt", "nl"];
   const TRANSLATION_LANGUAGE_LABELS = store.TRANSLATION_LANGUAGE_LABELS || {
     en: "English",
@@ -652,7 +652,7 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  globalThis.LodWrapperEntryPresenter = {
+  globalThis.LodVaultEntryPresenter = {
     escapeHtml,
     formatWhen,
     buildSearchText,

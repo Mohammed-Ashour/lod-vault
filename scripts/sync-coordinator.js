@@ -1,7 +1,7 @@
 (() => {
   function createSyncCoordinator(options = {}) {
-    const store = options.store || globalThis.LodWrapperStore || {};
-    const syncNamespace = options.syncNamespace || globalThis.LodWrapperSync || {};
+    const store = options.store || globalThis.LodVaultStore || {};
+    const syncNamespace = options.syncNamespace || globalThis.LodVaultSync || {};
     const syncAdapter = options.syncAdapter || syncNamespace.SyncAdapter || {};
     const logger = options.logger || console;
     const pushDebounceMs = Math.max(0, Number(options.pushDebounceMs ?? globalThis.__LOD_SYNC_PUSH_DEBOUNCE_MS__ ?? 2000) || 0);
@@ -336,7 +336,7 @@
     };
   }
 
-  globalThis.LodWrapperSyncCoordinator = {
+  globalThis.LodVaultSyncCoordinator = {
     createSyncCoordinator
   };
 })();

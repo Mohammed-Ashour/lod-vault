@@ -1,8 +1,8 @@
 const LOD_URL_PATTERNS = ["https://lod.lu/*", "https://www.lod.lu/*"];
 const LENS_CONTEXT_MENU_ID = "lodvault-open-lens";
 const LENS_COMMAND_ID = "open-lod-lens";
-const OPEN_LENS_OVERLAY_MESSAGE_TYPE = "lod-wrapper:open-lens-overlay";
-const LENS_PROXY_MESSAGE_TYPE = "lod-wrapper:lens-fetch";
+const OPEN_LENS_OVERLAY_MESSAGE_TYPE = "lodvault:open-lens-overlay";
+const LENS_PROXY_MESSAGE_TYPE = "lodvault:lens-fetch";
 const LENS_PROXY_ALLOWED_ORIGIN = "https://lod.lu";
 const LENS_PROXY_ALLOWED_LOCALE = "lb";
 const LENS_PROXY_SEARCH_PATH = `/api/${LENS_PROXY_ALLOWED_LOCALE}/search`;
@@ -13,9 +13,14 @@ const LENS_SCRIPT_FILES = [
   "scripts/entry-presenter.js",
   "scripts/shared.js",
   "scripts/lens-lookup.js",
-  "scripts/lens-overlay.js"
+  "scripts/lens-session.js",
+  "scripts/lens-render.js",
+  "scripts/lens-overlay-shell.js",
+  "scripts/lens-sentence-mode.js",
+  "scripts/lens-overlay-controller.js",
+  "scripts/lens-runtime.js"
 ];
-const STORE_MUTATION_MESSAGE_TYPE = LodWrapperStore.STORE_MUTATION_MESSAGE_TYPE;
+const STORE_MUTATION_MESSAGE_TYPE = LodVaultStore.STORE_MUTATION_MESSAGE_TYPE;
 const STORE_MUTATION_METHODS = new Set([
   "setAutoMode",
   "setSyncLanguages",
@@ -35,10 +40,10 @@ const STORE_MUTATION_METHODS = new Set([
 let storeMutationQueue = Promise.resolve();
 let historyHydrationResumeTimer = null;
 
-const syncCoordinator = LodWrapperSyncCoordinator.createSyncCoordinator({
-  store: LodWrapperStore,
-  syncNamespace: LodWrapperSync,
-  syncAdapter: LodWrapperSync.SyncAdapter,
+const syncCoordinator = LodVaultSyncCoordinator.createSyncCoordinator({
+  store: LodVaultStore,
+  syncNamespace: LodVaultSync,
+  syncAdapter: LodVaultSync.SyncAdapter,
   logger: console,
   pushDebounceMs: globalThis.__LOD_SYNC_PUSH_DEBOUNCE_MS__
 });
@@ -56,7 +61,7 @@ function scheduleHistoryHydrationResume(delayMs = 0) {
 
   historyHydrationResumeTimer = setTimeout(() => {
     historyHydrationResumeTimer = null;
-    LodWrapperStore.resumeHistoryImportHydration?.().catch?.(() => {});
+    LodVaultStore.resumeHistoryImportHydration?.().catch?.(() => {});
   }, Math.max(0, Number(delayMs) || 0));
 }
 
@@ -180,11 +185,7 @@ async function isLensOverlayInjected(tabId) {
   try {
     const [{ result } = {}] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => Boolean(
-        globalThis.LodWrapperStore
-        && globalThis.LodWrapperLensLookup
-        && globalThis.LodWrapperLensOverlay?.openFromSelection
-      )
+      func: () => Boolean(globalThis.LodVaultLensRuntime?.openFromSelection)
     });
     return Boolean(result);
   } catch {
@@ -218,7 +219,7 @@ async function openLensOverlay(tabId, selectionText = "") {
   await chrome.scripting.executeScript({
     target: { tabId },
     func: (text) => {
-      globalThis.LodWrapperLensOverlay?.openFromSelection?.(text);
+      globalThis.LodVaultLensRuntime?.openFromSelection?.(text);
     },
     args: [sanitizeLensQuery(selectionText)]
   });
@@ -287,7 +288,7 @@ chrome.commands?.onCommand?.addListener(async (command) => {
 
 chrome.storage.onChanged?.addListener((changes, areaName) => {
   syncCoordinator.handleStorageChanged(changes, areaName);
-  if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodWrapperStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
+  if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
     scheduleHistoryHydrationResume(25);
   }
 });
@@ -362,12 +363,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const method = String(message.method || "");
   const args = Array.isArray(message.args) ? message.args : [];
 
-  if (!STORE_MUTATION_METHODS.has(method) || typeof LodWrapperStore?.[method] !== "function") {
+  if (!STORE_MUTATION_METHODS.has(method) || typeof LodVaultStore?.[method] !== "function") {
     sendResponse({ ok: false, error: `Unsupported store mutation: ${method}` });
     return;
   }
 
-  enqueueStoreMutation(() => LodWrapperStore[method](...args))
+  enqueueStoreMutation(() => LodVaultStore[method](...args))
     .then((result) => sendResponse({ ok: true, result }))
     .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
 

@@ -6,12 +6,15 @@ const path = require("node:path");
 const manifestPath = path.join(__dirname, "..", "manifest.json");
 const backgroundBundlePath = path.join(__dirname, "..", "scripts", "background-bundle.js");
 
-test("manifest points to a checked-in background bundle", () => {
+test("manifest points to the generated background bundle artifact", () => {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   const bundleSource = fs.readFileSync(backgroundBundlePath, "utf8");
 
   assert.equal(manifest.background?.service_worker, "scripts/background-bundle.js");
-  assert.match(bundleSource, /background-impl\.js/);
+  assert.match(bundleSource, /Auto-generated bundle/);
+  assert.match(bundleSource, /DO NOT EDIT/);
+  assert.match(bundleSource, /generated packaging artifact/);
+  assert.match(bundleSource, /Source of truth/);
 });
 
 test("manifest injects content scripts on all lod.lu pages for SPA navigation", () => {
@@ -35,7 +38,7 @@ test("manifest exposes permissions needed for LOD Lens MVP", () => {
   assert.ok(manifest.commands?.["open-lod-lens"]);
 });
 
-test("manifest injects the lightweight selection trigger on regular web pages", () => {
+test("manifest injects only the lightweight selection trigger on regular web pages", () => {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   const contentScript = manifest.content_scripts?.[1];
 
@@ -48,13 +51,8 @@ test("manifest injects the lightweight selection trigger on regular web pages", 
     "https://lod.lu/*",
     "https://www.lod.lu/*"
   ]);
-  assert.ok(contentScript.js.includes("scripts/store-core.js"));
-  assert.ok(contentScript.js.includes("scripts/entry-presenter.js"));
-  assert.ok(contentScript.js.includes("scripts/shared.js"));
-  assert.ok(contentScript.js.includes("scripts/lens-lookup.js"));
-  assert.ok(contentScript.js.includes("scripts/lens-overlay.js"));
-  assert.ok(contentScript.js.includes("scripts/selection-trigger.js"));
-  assert.ok(contentScript.css.includes("styles/lens-overlay.css"));
+  assert.deepEqual(contentScript.js, ["scripts/selection-trigger.js"]);
+  assert.deepEqual(contentScript.css, ["styles/selection-trigger.css"]);
 });
 
 test("manifest exposes the floating trigger logo as a web-accessible resource", () => {

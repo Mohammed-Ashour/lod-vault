@@ -1,12 +1,12 @@
 (() => {
-  const store = globalThis.LodWrapperStore || globalThis.LodWrapperStoreCore || {};
+  const store = globalThis.LodVaultStore || globalThis.LodVaultStoreCore || {};
   const getIdFromUrl = typeof store.getIdFromUrl === "function"
     ? store.getIdFromUrl
     : (value) => {
         const match = String(value || "").match(/\/artikel\/([^/?#]+)/i);
         return match ? decodeURIComponent(match[1]) : "";
       };
-  const getPrimaryMeaning = globalThis.LodWrapperEntryPresenter?.getPrimaryMeaning || ((entry) => {
+  const getPrimaryMeaning = globalThis.LodVaultEntryPresenter?.getPrimaryMeaning || ((entry) => {
     if (entry?.translations?.en) return { lang: "en", label: "English", value: entry.translations.en };
     if (entry?.translations?.fr) return { lang: "fr", label: "Français", value: entry.translations.fr };
     if (entry?.translations?.de) return { lang: "de", label: "Deutsch", value: entry.translations.de };
@@ -403,7 +403,7 @@
     return parts.join(" · ");
   }
 
-  globalThis.LodWrapperArticleReader = {
+  globalThis.LodVaultArticleReader = {
     cleanWord,
     stitchTokens,
     collectText,

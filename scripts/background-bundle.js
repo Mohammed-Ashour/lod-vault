@@ -1,5 +1,7 @@
 // Auto-generated bundle — DO NOT EDIT.
 // Run: node scripts/build-background.mjs
+// Policy: this file is a generated packaging artifact checked in for extension loading/release builds.
+// Source of truth: scripts/build-background.mjs + scripts/background-impl.js + listed dependencies below.
 // Source files (in order):
 //   store-core.js
 //   note-autosave.js
@@ -11,7 +13,7 @@
 //   sync-coordinator.js
 //   background-impl.js
 
-globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
+globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
 // ── store-core.js ──────────────────────────────────────────────
 (() => {
@@ -347,8 +349,8 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
     return new Error("Extension updated — refresh the page.");
   }
 
-  const STORE_MUTATION_MESSAGE_TYPE = "lod-wrapper:store-mutate";
-  const STORE_MUTATIONS_RUN_DIRECTLY = Boolean(globalThis.__LOD_WRAPPER_DIRECT_STORE__);
+  const STORE_MUTATION_MESSAGE_TYPE = "lodvault:store-mutate";
+  const STORE_MUTATIONS_RUN_DIRECTLY = Boolean(globalThis.__LOD_VAULT_DIRECT_STORE__);
 
   function canProxyStoreMutations() {
     return !STORE_MUTATIONS_RUN_DIRECTLY
@@ -1322,7 +1324,7 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
   }
 
   function extractEntryFromHtml(html, url) {
-    const reader = globalThis.LodWrapperArticleReader;
+    const reader = globalThis.LodVaultArticleReader;
     if (typeof reader?.extractEntryFromHtml === "function") {
       return reader.extractEntryFromHtml(html, url);
     }
@@ -1929,7 +1931,7 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
     return runStoreMutation("getFlashcardStats", [], getFlashcardStatsDirect);
   }
 
-  globalThis.LodWrapperStoreCore = {
+  globalThis.LodVaultStoreCore = {
     STORAGE_KEY,
     LEGACY_STORAGE_KEY,
     SETTINGS_KEY,
@@ -2145,7 +2147,7 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
     };
   }
 
-  globalThis.LodWrapperNotes = {
+  globalThis.LodVaultNotes = {
     normalizeNoteValue,
     createNoteAutosaveController
   };
@@ -2154,7 +2156,7 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
 
 // ── entry-presenter.js ──────────────────────────────────────────────
 (() => {
-  const store = globalThis.LodWrapperStoreCore || globalThis.LodWrapperStore || {};
+  const store = globalThis.LodVaultStoreCore || globalThis.LodVaultStore || {};
   const TRANSLATION_LANGUAGE_ORDER = store.TRANSLATION_LANGUAGE_ORDER || ["en", "fr", "de", "pt", "nl"];
   const TRANSLATION_LANGUAGE_LABELS = store.TRANSLATION_LANGUAGE_LABELS || {
     en: "English",
@@ -2807,7 +2809,7 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  globalThis.LodWrapperEntryPresenter = {
+  globalThis.LodVaultEntryPresenter = {
     escapeHtml,
     formatWhen,
     buildSearchText,
@@ -2830,11 +2832,11 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
 
 // ── shared.js ──────────────────────────────────────────────
 (() => {
-  const core = globalThis.LodWrapperStoreCore || {};
-  const notes = globalThis.LodWrapperNotes || {};
-  const presenter = globalThis.LodWrapperEntryPresenter || {};
+  const core = globalThis.LodVaultStoreCore || {};
+  const notes = globalThis.LodVaultNotes || {};
+  const presenter = globalThis.LodVaultEntryPresenter || {};
 
-  globalThis.LodWrapperStore = {
+  globalThis.LodVaultStore = {
     ...core,
     ...notes,
     ...presenter
@@ -2844,14 +2846,14 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
 
 // ── lod-article.js ──────────────────────────────────────────────
 (() => {
-  const store = globalThis.LodWrapperStore || globalThis.LodWrapperStoreCore || {};
+  const store = globalThis.LodVaultStore || globalThis.LodVaultStoreCore || {};
   const getIdFromUrl = typeof store.getIdFromUrl === "function"
     ? store.getIdFromUrl
     : (value) => {
         const match = String(value || "").match(/\/artikel\/([^/?#]+)/i);
         return match ? decodeURIComponent(match[1]) : "";
       };
-  const getPrimaryMeaning = globalThis.LodWrapperEntryPresenter?.getPrimaryMeaning || ((entry) => {
+  const getPrimaryMeaning = globalThis.LodVaultEntryPresenter?.getPrimaryMeaning || ((entry) => {
     if (entry?.translations?.en) return { lang: "en", label: "English", value: entry.translations.en };
     if (entry?.translations?.fr) return { lang: "fr", label: "Français", value: entry.translations.fr };
     if (entry?.translations?.de) return { lang: "de", label: "Deutsch", value: entry.translations.de };
@@ -3248,7 +3250,7 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
     return parts.join(" · ");
   }
 
-  globalThis.LodWrapperArticleReader = {
+  globalThis.LodVaultArticleReader = {
     cleanWord,
     stitchTokens,
     collectText,
@@ -3491,7 +3493,7 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
   /*  Export                                                             */
   /* ------------------------------------------------------------------ */
 
-  globalThis.LodWrapperCompress = Object.freeze({
+  globalThis.LodVaultCompress = Object.freeze({
     compress,
     decompress,
     isAvailable,
@@ -3505,27 +3507,27 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
 
 // ── sync.js ──────────────────────────────────────────────
 (() => {
-  const STORAGE_KEY = globalThis.LodWrapperStore?.STORAGE_KEY || "lodVault.entries";
-  const LOCAL_SETTINGS_KEY = globalThis.LodWrapperStore?.SETTINGS_KEY || "lodVault.settings";
-  const LOCAL_DELETED_KEY = globalThis.LodWrapperStore?.DELETED_KEY || "lodVault.deleted";
-  const DEFAULT_SETTINGS = globalThis.LodWrapperStore?.DEFAULT_SETTINGS || {
+  const STORAGE_KEY = globalThis.LodVaultStore?.STORAGE_KEY || "lodVault.entries";
+  const LOCAL_SETTINGS_KEY = globalThis.LodVaultStore?.SETTINGS_KEY || "lodVault.settings";
+  const LOCAL_DELETED_KEY = globalThis.LodVaultStore?.DELETED_KEY || "lodVault.deleted";
+  const DEFAULT_SETTINGS = globalThis.LodVaultStore?.DEFAULT_SETTINGS || {
     autoMode: false,
     syncLanguages: ["en", "fr", "de"]
   };
-  const MAX_SYNC_LANGUAGES = globalThis.LodWrapperStore?.MAX_SYNC_LANGUAGES || 3;
-  const SYNC_LANGUAGE_TO_KEY = globalThis.LodWrapperStore?.SYNC_LANGUAGE_TO_KEY || {
+  const MAX_SYNC_LANGUAGES = globalThis.LodVaultStore?.MAX_SYNC_LANGUAGES || 3;
+  const SYNC_LANGUAGE_TO_KEY = globalThis.LodVaultStore?.SYNC_LANGUAGE_TO_KEY || {
     en: "e",
     fr: "f",
     de: "d",
     pt: "p",
     nl: "l"
   };
-  const SYNC_KEY_TO_LANGUAGE = globalThis.LodWrapperStore?.SYNC_KEY_TO_LANGUAGE || Object.freeze(
+  const SYNC_KEY_TO_LANGUAGE = globalThis.LodVaultStore?.SYNC_KEY_TO_LANGUAGE || Object.freeze(
     Object.fromEntries(Object.entries(SYNC_LANGUAGE_TO_KEY).map(([language, key]) => [key, language]))
   );
 
   const SYNC_FORMAT_VERSION = 4;
-  const COMPRESSION = globalThis.LodWrapperCompress || null;
+  const COMPRESSION = globalThis.LodVaultCompress || null;
   const SYNC_MANIFEST_KEY = "lodVault.m";
   const SYNC_SETTINGS_KEY = "lodVault.s";
   const SYNC_DELETED_KEY = "lodVault.d";
@@ -3538,7 +3540,7 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
 
   let initPromise = null;
 
-  const store = globalThis.LodWrapperStore || {};
+  const store = globalThis.LodVaultStore || {};
   const cleanText = typeof store.cleanText === "function" ? store.cleanText : (value) => (typeof value === "string" ? value.trim() : "");
   const normalizeVisitCount = typeof store.normalizeVisitCount === "function" ? store.normalizeVisitCount : (value) => { const number = Number(value); return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0; };
   const shouldKeepEntry = typeof store.shouldKeepEntry === "function" ? store.shouldKeepEntry : (entry) => Boolean(entry?.favorite || entry?.study || entry?.history);
@@ -4917,7 +4919,7 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
     return inspectSyncStorage();
   }
 
-  globalThis.LodWrapperSync = {
+  globalThis.LodVaultSync = {
     SYNC_FORMAT_VERSION,
     SYNC_MANIFEST_KEY,
     SYNC_SETTINGS_KEY,
@@ -4950,8 +4952,8 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
 // ── sync-coordinator.js ──────────────────────────────────────────────
 (() => {
   function createSyncCoordinator(options = {}) {
-    const store = options.store || globalThis.LodWrapperStore || {};
-    const syncNamespace = options.syncNamespace || globalThis.LodWrapperSync || {};
+    const store = options.store || globalThis.LodVaultStore || {};
+    const syncNamespace = options.syncNamespace || globalThis.LodVaultSync || {};
     const syncAdapter = options.syncAdapter || syncNamespace.SyncAdapter || {};
     const logger = options.logger || console;
     const pushDebounceMs = Math.max(0, Number(options.pushDebounceMs ?? globalThis.__LOD_SYNC_PUSH_DEBOUNCE_MS__ ?? 2000) || 0);
@@ -5286,7 +5288,7 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
     };
   }
 
-  globalThis.LodWrapperSyncCoordinator = {
+  globalThis.LodVaultSyncCoordinator = {
     createSyncCoordinator
   };
 })();
@@ -5296,8 +5298,8 @@ globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
 const LOD_URL_PATTERNS = ["https://lod.lu/*", "https://www.lod.lu/*"];
 const LENS_CONTEXT_MENU_ID = "lodvault-open-lens";
 const LENS_COMMAND_ID = "open-lod-lens";
-const OPEN_LENS_OVERLAY_MESSAGE_TYPE = "lod-wrapper:open-lens-overlay";
-const LENS_PROXY_MESSAGE_TYPE = "lod-wrapper:lens-fetch";
+const OPEN_LENS_OVERLAY_MESSAGE_TYPE = "lodvault:open-lens-overlay";
+const LENS_PROXY_MESSAGE_TYPE = "lodvault:lens-fetch";
 const LENS_PROXY_ALLOWED_ORIGIN = "https://lod.lu";
 const LENS_PROXY_ALLOWED_LOCALE = "lb";
 const LENS_PROXY_SEARCH_PATH = `/api/${LENS_PROXY_ALLOWED_LOCALE}/search`;
@@ -5308,9 +5310,14 @@ const LENS_SCRIPT_FILES = [
   "scripts/entry-presenter.js",
   "scripts/shared.js",
   "scripts/lens-lookup.js",
-  "scripts/lens-overlay.js"
+  "scripts/lens-session.js",
+  "scripts/lens-render.js",
+  "scripts/lens-overlay-shell.js",
+  "scripts/lens-sentence-mode.js",
+  "scripts/lens-overlay-controller.js",
+  "scripts/lens-runtime.js"
 ];
-const STORE_MUTATION_MESSAGE_TYPE = LodWrapperStore.STORE_MUTATION_MESSAGE_TYPE;
+const STORE_MUTATION_MESSAGE_TYPE = LodVaultStore.STORE_MUTATION_MESSAGE_TYPE;
 const STORE_MUTATION_METHODS = new Set([
   "setAutoMode",
   "setSyncLanguages",
@@ -5330,10 +5337,10 @@ const STORE_MUTATION_METHODS = new Set([
 let storeMutationQueue = Promise.resolve();
 let historyHydrationResumeTimer = null;
 
-const syncCoordinator = LodWrapperSyncCoordinator.createSyncCoordinator({
-  store: LodWrapperStore,
-  syncNamespace: LodWrapperSync,
-  syncAdapter: LodWrapperSync.SyncAdapter,
+const syncCoordinator = LodVaultSyncCoordinator.createSyncCoordinator({
+  store: LodVaultStore,
+  syncNamespace: LodVaultSync,
+  syncAdapter: LodVaultSync.SyncAdapter,
   logger: console,
   pushDebounceMs: globalThis.__LOD_SYNC_PUSH_DEBOUNCE_MS__
 });
@@ -5351,7 +5358,7 @@ function scheduleHistoryHydrationResume(delayMs = 0) {
 
   historyHydrationResumeTimer = setTimeout(() => {
     historyHydrationResumeTimer = null;
-    LodWrapperStore.resumeHistoryImportHydration?.().catch?.(() => {});
+    LodVaultStore.resumeHistoryImportHydration?.().catch?.(() => {});
   }, Math.max(0, Number(delayMs) || 0));
 }
 
@@ -5475,11 +5482,7 @@ async function isLensOverlayInjected(tabId) {
   try {
     const [{ result } = {}] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => Boolean(
-        globalThis.LodWrapperStore
-        && globalThis.LodWrapperLensLookup
-        && globalThis.LodWrapperLensOverlay?.openFromSelection
-      )
+      func: () => Boolean(globalThis.LodVaultLensRuntime?.openFromSelection)
     });
     return Boolean(result);
   } catch {
@@ -5513,7 +5516,7 @@ async function openLensOverlay(tabId, selectionText = "") {
   await chrome.scripting.executeScript({
     target: { tabId },
     func: (text) => {
-      globalThis.LodWrapperLensOverlay?.openFromSelection?.(text);
+      globalThis.LodVaultLensRuntime?.openFromSelection?.(text);
     },
     args: [sanitizeLensQuery(selectionText)]
   });
@@ -5582,7 +5585,7 @@ chrome.commands?.onCommand?.addListener(async (command) => {
 
 chrome.storage.onChanged?.addListener((changes, areaName) => {
   syncCoordinator.handleStorageChanged(changes, areaName);
-  if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodWrapperStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
+  if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
     scheduleHistoryHydrationResume(25);
   }
 });
@@ -5657,12 +5660,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const method = String(message.method || "");
   const args = Array.isArray(message.args) ? message.args : [];
 
-  if (!STORE_MUTATION_METHODS.has(method) || typeof LodWrapperStore?.[method] !== "function") {
+  if (!STORE_MUTATION_METHODS.has(method) || typeof LodVaultStore?.[method] !== "function") {
     sendResponse({ ok: false, error: `Unsupported store mutation: ${method}` });
     return;
   }
 
-  enqueueStoreMutation(() => LodWrapperStore[method](...args))
+  enqueueStoreMutation(() => LodVaultStore[method](...args))
     .then((result) => sendResponse({ ok: true, result }))
     .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
 

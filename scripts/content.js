@@ -1,4 +1,4 @@
-const BANNER_ID = "lod-wrapper-banner";
+const BANNER_ID = "lodvault-banner";
 let contextInvalidated = false;
 let refreshDebounce = null;
 let domObserver = null;
@@ -7,14 +7,14 @@ let lastAutoRecordKey = "";
 let currentAutoMode = false;
 let lastPopupStateKey = "";
 let observerLastUrl = location.href;
-let observerHadHeading = Boolean(LodWrapperArticleReader.getHeadingElement());
+let observerHadHeading = Boolean(LodVaultArticleReader.getHeadingElement());
 
-const { extractCurrentEntry } = LodWrapperArticleReader;
+const { extractCurrentEntry } = LodVaultArticleReader;
 
 let bannerController = null;
 
 function isExtensionContextInvalidated(error) {
-  return LodWrapperStore.isExtensionContextInvalidated(error) || String(error || "").includes("Extension updated — refresh the page");
+  return LodVaultStore.isExtensionContextInvalidated(error) || String(error || "").includes("Extension updated — refresh the page");
 }
 
 function serializePopupEntryState(entry) {
@@ -55,7 +55,7 @@ function notifyPopup(entry, savedEntry) {
 
   try {
     chrome.runtime.sendMessage({
-      type: "lod-wrapper:page-state-changed",
+      type: "lodvault:page-state-changed",
       entry: entry || null,
       savedEntry: savedEntry || null
     });
@@ -83,10 +83,10 @@ function handleInvalidatedContext() {
   bannerController?.handleInvalidatedContext();
 }
 
-bannerController = LodWrapperPageBanner.createController({
+bannerController = LodVaultPageBanner.createController({
   bannerId: BANNER_ID,
-  store: LodWrapperStore,
-  articleReader: LodWrapperArticleReader,
+  store: LodVaultStore,
+  articleReader: LodVaultArticleReader,
   getCurrentEntry: () => extractCurrentEntry(),
   getCurrentAutoMode: () => currentAutoMode,
   onPopupStateChange: notifyPopup,
@@ -122,7 +122,7 @@ async function maybeAutoRecord(entry, savedEntry, autoMode = currentAutoMode) {
   }
 
   lastAutoRecordKey = autoRecordKey;
-  return LodWrapperStore.recordAutoVisit(entry);
+  return LodVaultStore.recordAutoVisit(entry);
 }
 
 async function refreshUI() {
@@ -143,11 +143,11 @@ async function refreshUI() {
       return;
     }
 
-    let savedEntry = await LodWrapperStore.getEntry(entry.id);
-    currentAutoMode = await LodWrapperStore.getAutoMode();
+    let savedEntry = await LodVaultStore.getEntry(entry.id);
+    currentAutoMode = await LodVaultStore.getAutoMode();
     savedEntry = await maybeAutoRecord(entry, savedEntry, currentAutoMode);
     if (savedEntry) {
-      savedEntry = await LodWrapperStore.refreshEntryData(entry) || savedEntry;
+      savedEntry = await LodVaultStore.refreshEntryData(entry) || savedEntry;
     }
     applyState(savedEntry, entry);
     notifyPopup(entry, savedEntry);
@@ -175,7 +175,7 @@ async function handleListToggle(listName) {
 
   bannerController.setButtonsBusy(true);
   try {
-    const savedEntry = await LodWrapperStore.toggleList(entry, listName);
+    const savedEntry = await LodVaultStore.toggleList(entry, listName);
     bannerController.clearRenderKey();
     applyState(savedEntry, entry);
     notifyPopup(entry, savedEntry);
@@ -229,7 +229,7 @@ function installDomObserver() {
 
   domObserver = new MutationObserver((mutations) => {
     const nextUrl = location.href;
-    const hasHeading = Boolean(LodWrapperArticleReader.getHeadingElement());
+    const hasHeading = Boolean(LodVaultArticleReader.getHeadingElement());
     const urlChanged = nextUrl !== observerLastUrl;
     const headingAppeared = !observerHadHeading && hasHeading;
     const articleContentChanged = hasHeading && mutations.some((mutation) => mutationTouchesArticleContent(mutation));
@@ -251,7 +251,7 @@ function installLocationHooks() {
   if (locationHooksInstalled) return;
   locationHooksInstalled = true;
 
-  const notifyLocationChange = () => window.dispatchEvent(new Event("lod-wrapper:locationchange"));
+  const notifyLocationChange = () => window.dispatchEvent(new Event("lodvault:locationchange"));
 
   for (const methodName of ["pushState", "replaceState"]) {
     const original = history[methodName];
@@ -264,12 +264,12 @@ function installLocationHooks() {
 
   window.addEventListener("popstate", notifyLocationChange);
   window.addEventListener("hashchange", notifyLocationChange);
-  window.addEventListener("lod-wrapper:locationchange", () => {
+  window.addEventListener("lodvault:locationchange", () => {
     bannerController.clearRenderKey();
     lastAutoRecordKey = "";
     lastPopupStateKey = "";
     observerLastUrl = location.href;
-    observerHadHeading = Boolean(LodWrapperArticleReader.getHeadingElement());
+    observerHadHeading = Boolean(LodVaultArticleReader.getHeadingElement());
     scheduleRefresh(0);
   });
 }
@@ -281,19 +281,19 @@ document.addEventListener("click", (event) => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type === "lod-wrapper:get-current-entry") {
+  if (message?.type === "lodvault:get-current-entry") {
     sendResponse({ entry: extractCurrentEntry() });
     return;
   }
 
-  if (message?.type === "lod-wrapper:sync-state") {
+  if (message?.type === "lodvault:sync-state") {
     bannerController.clearRenderKey();
     applyState(message.entry || null, extractCurrentEntry());
     sendResponse({ ok: true });
     return;
   }
 
-  if (message?.type === "lod-wrapper:refresh-ui") {
+  if (message?.type === "lodvault:refresh-ui") {
     bannerController.clearRenderKey();
     if (typeof message.autoRecordKey === "string") {
       lastAutoRecordKey = message.autoRecordKey;
@@ -305,14 +305,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return;
   }
 
-  if (message?.type === "lod-wrapper:toggle-list") {
+  if (message?.type === "lodvault:toggle-list") {
     const entry = extractCurrentEntry();
     if (!entry) {
       sendResponse({ entry: null, sourceEntry: null });
       return;
     }
 
-    LodWrapperStore.toggleList(entry, message.listName)
+    LodVaultStore.toggleList(entry, message.listName)
       .then((savedEntry) => {
         bannerController.clearRenderKey();
         applyState(savedEntry, entry);

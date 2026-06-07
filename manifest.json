@@ -86,15 +86,10 @@
         "https://www.lod.lu/*"
       ],
       "js": [
-        "scripts/store-core.js",
-        "scripts/entry-presenter.js",
-        "scripts/shared.js",
-        "scripts/lens-lookup.js",
-        "scripts/lens-overlay.js",
         "scripts/selection-trigger.js"
       ],
       "css": [
-        "styles/lens-overlay.css"
+        "styles/selection-trigger.css"
       ],
       "run_at": "document_idle"
     }

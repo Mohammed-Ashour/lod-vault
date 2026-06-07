@@ -1,4 +1,4 @@
-globalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;
+globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 importScripts(
   chrome.runtime.getURL("scripts/store-core.js"),
   chrome.runtime.getURL("scripts/note-autosave.js"),

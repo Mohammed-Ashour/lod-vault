@@ -1,9 +1,9 @@
 (() => {
-  const core = globalThis.LodWrapperStoreCore || {};
-  const notes = globalThis.LodWrapperNotes || {};
-  const presenter = globalThis.LodWrapperEntryPresenter || {};
+  const core = globalThis.LodVaultStoreCore || {};
+  const notes = globalThis.LodVaultNotes || {};
+  const presenter = globalThis.LodVaultEntryPresenter || {};
 
-  globalThis.LodWrapperStore = {
+  globalThis.LodVaultStore = {
     ...core,
     ...notes,
     ...presenter

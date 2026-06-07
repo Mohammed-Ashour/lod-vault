@@ -331,8 +331,8 @@
     return new Error("Extension updated — refresh the page.");
   }
 
-  const STORE_MUTATION_MESSAGE_TYPE = "lod-wrapper:store-mutate";
-  const STORE_MUTATIONS_RUN_DIRECTLY = Boolean(globalThis.__LOD_WRAPPER_DIRECT_STORE__);
+  const STORE_MUTATION_MESSAGE_TYPE = "lodvault:store-mutate";
+  const STORE_MUTATIONS_RUN_DIRECTLY = Boolean(globalThis.__LOD_VAULT_DIRECT_STORE__);
 
   function canProxyStoreMutations() {
     return !STORE_MUTATIONS_RUN_DIRECTLY
@@ -1306,7 +1306,7 @@
   }
 
   function extractEntryFromHtml(html, url) {
-    const reader = globalThis.LodWrapperArticleReader;
+    const reader = globalThis.LodVaultArticleReader;
     if (typeof reader?.extractEntryFromHtml === "function") {
       return reader.extractEntryFromHtml(html, url);
     }
@@ -1913,7 +1913,7 @@
     return runStoreMutation("getFlashcardStats", [], getFlashcardStatsDirect);
   }
 
-  globalThis.LodWrapperStoreCore = {
+  globalThis.LodVaultStoreCore = {
     STORAGE_KEY,
     LEGACY_STORAGE_KEY,
     SETTINGS_KEY,

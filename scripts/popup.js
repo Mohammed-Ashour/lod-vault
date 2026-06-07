@@ -1,4 +1,4 @@
-const popupApp = LodWrapperPopupApp.createApp({ store: LodWrapperStore, chrome });
+const popupApp = LodVaultPopupApp.createApp({ store: LodVaultStore, chrome });
 
 document.addEventListener("DOMContentLoaded", () => {
   popupApp.init();

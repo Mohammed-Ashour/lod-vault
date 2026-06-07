@@ -56,7 +56,7 @@
     }
 
     const response = await runtime.sendMessage({
-      type: "lod-wrapper:lens-fetch",
+      type: "lodvault:lens-fetch",
       url: String(url || "")
     });
 
@@ -442,7 +442,7 @@
     };
   }
 
-  globalThis.LodWrapperLensLookup = {
+  globalThis.LodVaultLensLookup = {
     API_ROOT,
     normalizeSelection,
     buildSearchUrl,
