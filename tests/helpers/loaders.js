@@ -652,6 +652,9 @@ function loadBackgroundScript(initialStorage = {}) {
   const removedContextMenus = [];
   const executedScripts = [];
   const insertedCss = [];
+  const grantedOrigins = new Set();
+  const permissionRequests = [];
+  const permissionContainsCalls = [];
 
   chrome.runtime.getURL = (relativePath) => path.join(repoRoot, relativePath);
   chrome.runtime.onInstalled = runtimeOnInstalled;
@@ -661,6 +664,9 @@ function loadBackgroundScript(initialStorage = {}) {
   chrome.tabs = {
     async query() {
       return [];
+    },
+    async get(tabId) {
+      return { id: tabId, url: "https://example.com/" };
     },
     async reload(tabId) {
       reloadedTabIds.push(tabId);
@@ -691,6 +697,19 @@ function loadBackgroundScript(initialStorage = {}) {
         return [{ result: await details.func(...(details.args || [])) }];
       }
       return [];
+    }
+  };
+  chrome.permissions = {
+    async contains(details = {}) {
+      const origins = Array.isArray(details.origins) ? details.origins : [];
+      permissionContainsCalls.push(structuredClone(origins));
+      return origins.every((origin) => grantedOrigins.has(origin));
+    },
+    async request(details = {}) {
+      const origins = Array.isArray(details.origins) ? details.origins : [];
+      permissionRequests.push(structuredClone(origins));
+      origins.forEach((origin) => grantedOrigins.add(origin));
+      return true;
     }
   };
 
@@ -755,6 +774,8 @@ function loadBackgroundScript(initialStorage = {}) {
     removedContextMenus,
     executedScripts,
     insertedCss,
+    permissionRequests,
+    permissionContainsCalls,
     dispatchRuntimeMessage,
     dispatchStoreMutation(message) {
       return dispatchRuntimeMessage(message, null);

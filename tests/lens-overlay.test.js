@@ -138,6 +138,59 @@ function loadLensOverlay({ lookupOverrides = {}, storeOverrides = {} } = {}) {
   };
 }
 
+test("lens overlay bulk study keeps going when saved-entry hydration fails for one word", async () => {
+  const toggledIds = [];
+  const { dom, overlay, getRoot } = loadLensOverlay({
+    lookupOverrides: {
+      async lookupSentence() {
+        return {
+          query: "Haus geet",
+          tokens: splitSentence("Haus geet"),
+          words: [
+            {
+              word: "Haus",
+              status: "resolved",
+              entry: { id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1", translations: { en: "house" } }
+            },
+            {
+              word: "geet",
+              status: "resolved",
+              entry: { id: "GEET1", word: "geet", url: "https://lod.lu/artikel/GEET1", translations: { en: "goes" } }
+            }
+          ]
+        };
+      }
+    },
+    storeOverrides: {
+      async getEntry(entryId) {
+        if (entryId === "HAUS1") {
+          throw new Error("storage unavailable");
+        }
+        return null;
+      },
+      async toggleList(entry, listName) {
+        toggledIds.push(`${entry.id}:${listName}`);
+        return { ...entry, study: true };
+      }
+    }
+  });
+
+  await overlay.openFromSelection("Haus geet");
+  await wait(dom, 0);
+  await wait(dom, 0);
+
+  const root = getRoot();
+  const bulkStudyButton = root.querySelector(".lodvault-lens-bulk-study");
+  assert.ok(bulkStudyButton, "expected the sentence bulk study button");
+
+  bulkStudyButton.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await wait(dom, 0);
+  await wait(dom, 0);
+
+  assert.deepEqual(toggledIds, ["HAUS1:study", "GEET1:study"]);
+  assert.equal(root.querySelector(".lodvault-lens-status").textContent, "Added 2 words to Study.");
+});
+
 test("lens overlay ignores stale sentence lookup completions after the overlay closes", async () => {
   const lookupSentence = createDeferred();
   const { dom, overlay, getRoot } = loadLensOverlay({

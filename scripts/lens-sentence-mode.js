@@ -154,12 +154,26 @@
     }
 
     async function hydrateSavedEntries(words) {
-      return Promise.all(words.map(async (word) => ({
-        word,
-        savedEntry: typeof word._savedEntry === "undefined"
-          ? await store.getEntry(word.entry.id)
-          : word._savedEntry
-      })));
+      return Promise.all(words.map(async (word) => {
+        if (typeof word._savedEntry !== "undefined") {
+          return {
+            word,
+            savedEntry: word._savedEntry
+          };
+        }
+
+        try {
+          return {
+            word,
+            savedEntry: await store.getEntry(word.entry.id)
+          };
+        } catch {
+          return {
+            word,
+            savedEntry: null
+          };
+        }
+      }));
     }
 
     async function toggleBulkStudy() {

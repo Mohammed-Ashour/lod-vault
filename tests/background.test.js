@@ -350,6 +350,53 @@ test("background preserves long sentence selections when opening the lens overla
   ]);
 });
 
+test("background requests optional site access before injecting the lens runtime from the floating trigger", async () => {
+  const background = loadBackgroundScript();
+  let granted = false;
+  const executeScriptCalls = [];
+
+  background.chrome.permissions.contains = async () => granted;
+  background.chrome.permissions.request = async (details = {}) => {
+    granted = true;
+    background.permissionRequests.push(JSON.parse(JSON.stringify(details.origins || [])));
+    return true;
+  };
+  background.chrome.scripting.insertCSS = async (details) => {
+    if (!granted) {
+      throw new Error("Missing host permission");
+    }
+    background.insertedCss.push(JSON.parse(JSON.stringify(details)));
+  };
+  background.chrome.scripting.executeScript = async (details) => {
+    executeScriptCalls.push(details);
+    if (!granted) {
+      throw new Error("Missing host permission");
+    }
+    if (typeof details?.func === "function") {
+      return [{ result: false }];
+    }
+    return [];
+  };
+
+  const response = await background.dispatchRuntimeMessage({
+    type: "lodvault:open-lens-overlay",
+    selectionText: "Moien"
+  }, {
+    tab: {
+      id: 77,
+      url: "https://www.rtl.lu/news"
+    }
+  });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(response)), { ok: true });
+  assert.deepEqual(background.permissionRequests, [["https://www.rtl.lu/*"]]);
+  assert.equal(executeScriptCalls.length, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(background.insertedCss)), [{
+    target: { tabId: 77 },
+    files: ["styles/lens-overlay.css"]
+  }]);
+});
+
  test("background reuses previously injected lens scripts in the same tab", async () => {
   const background = loadBackgroundScript();
   let overlayAvailable = false;

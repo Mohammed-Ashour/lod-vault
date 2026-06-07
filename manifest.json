@@ -15,12 +15,14 @@
     "history"
   ],
   "host_permissions": [
-    "http://*/*",
-    "https://*/*",
     "https://lod.lu/artikel/*",
     "https://www.lod.lu/artikel/*",
     "https://lod.lu/uploads/*",
     "https://lod.lu/api/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
   "action": {
     "default_title": "LODVault",

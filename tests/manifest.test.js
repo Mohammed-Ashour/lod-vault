@@ -34,9 +34,9 @@ test("manifest exposes permissions needed for LOD Lens MVP", () => {
   assert.ok(manifest.permissions.includes("contextMenus"));
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("scripting"));
-  assert.ok(manifest.host_permissions.includes("http://*/*"));
-  assert.ok(manifest.host_permissions.includes("https://*/*"));
   assert.ok(manifest.host_permissions.includes("https://lod.lu/api/*"));
+  assert.ok(manifest.optional_host_permissions.includes("http://*/*"));
+  assert.ok(manifest.optional_host_permissions.includes("https://*/*"));
   assert.ok(manifest.commands?.["open-lod-lens"]);
 });
 

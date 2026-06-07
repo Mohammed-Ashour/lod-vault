@@ -157,6 +157,64 @@ function validateLensProxyUrl(value) {
   throw new Error("Blocked unauthorized LOD Lens request URL.");
 }
 
+function getTabOriginPattern(tabUrl) {
+  let parsed = null;
+
+  try {
+    parsed = new URL(String(tabUrl || ""));
+  } catch {
+    return "";
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return "";
+  }
+
+  return `${parsed.origin}/*`;
+}
+
+async function getTabUrl(tabId, fallbackUrl = "") {
+  if (fallbackUrl) {
+    return String(fallbackUrl);
+  }
+
+  if (!tabId || typeof chrome.tabs?.get !== "function") {
+    return "";
+  }
+
+  try {
+    return String((await chrome.tabs.get(tabId))?.url || "");
+  } catch {
+    return "";
+  }
+}
+
+async function hasLensSitePermission(tabUrl) {
+  const originPattern = getTabOriginPattern(tabUrl);
+  if (!originPattern || typeof chrome.permissions?.contains !== "function") {
+    return false;
+  }
+
+  try {
+    return Boolean(await chrome.permissions.contains({ origins: [originPattern] }));
+  } catch {
+    return false;
+  }
+}
+
+async function requestLensSitePermission(tabUrl) {
+  const originPattern = getTabOriginPattern(tabUrl);
+  if (!originPattern || typeof chrome.permissions?.request !== "function") {
+    return false;
+  }
+
+  try {
+    return Boolean(await chrome.permissions.request({ origins: [originPattern] }));
+  } catch {
+    return false;
+  }
+}
+
 async function getActiveSelectionText(tabId) {
   const resolvedTabId = typeof tabId === "number"
     ? tabId
@@ -209,9 +267,20 @@ async function ensureLensOverlayInjected(tabId) {
   });
 }
 
-async function openLensOverlay(tabId, selectionText = "") {
+async function openLensOverlay(tabId, selectionText = "", { tabUrl = "", requestSitePermission = false } = {}) {
   if (!tabId || !chrome.scripting?.executeScript) {
     throw new Error("Cannot open lens overlay without a tab id.");
+  }
+
+  const resolvedTabUrl = requestSitePermission
+    ? await getTabUrl(tabId, tabUrl)
+    : String(tabUrl || "");
+
+  if (requestSitePermission && resolvedTabUrl && !(await hasLensSitePermission(resolvedTabUrl))) {
+    const granted = await requestLensSitePermission(resolvedTabUrl);
+    if (!granted) {
+      throw new Error("LODVault needs site access to open Lens on this page.");
+    }
   }
 
   await ensureLensOverlayInjected(tabId);
@@ -270,7 +339,9 @@ chrome.runtime.onStartup?.addListener(() => {
 chrome.contextMenus?.onClicked?.addListener((info, tab) => {
   if (info.menuItemId !== LENS_CONTEXT_MENU_ID) return;
   if (!tab?.id) return;
-  openLensOverlay(tab.id, info.selectionText || "").catch(() => {});
+  openLensOverlay(tab.id, info.selectionText || "", {
+    tabUrl: tab.url || ""
+  }).catch(() => {});
 });
 
 chrome.commands?.onCommand?.addListener(async (command) => {
@@ -280,7 +351,9 @@ chrome.commands?.onCommand?.addListener(async (command) => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
     const selectionText = await getActiveSelectionText(tab.id);
-    await openLensOverlay(tab.id, selectionText);
+    await openLensOverlay(tab.id, selectionText, {
+      tabUrl: tab.url || ""
+    });
   } catch (_error) {
     // Ignore lens overlay failures.
   }
@@ -305,7 +378,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return;
     }
 
-    openLensOverlay(tabId, message.selectionText || "")
+    openLensOverlay(tabId, message.selectionText || "", {
+      tabUrl: sender?.tab?.url || "",
+      requestSitePermission: true
+    })
       .then(() => sendResponse({ ok: true }))
       .catch((error) => sendResponse({
         ok: false,
