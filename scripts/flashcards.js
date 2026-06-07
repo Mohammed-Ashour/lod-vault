@@ -79,7 +79,7 @@ window.addEventListener("pagehide", () => {
 });
 
 async function loadEntries() {
-  state.entries = await LodWrapperStore.getEntries();
+  state.entries = await LodVaultStore.getEntries();
 
   if (!state.entries.some((entry) => entry.study)) {
     state.filter = state.entries.some((entry) => entry.favorite) ? "favorites" : "all";
@@ -91,15 +91,15 @@ async function loadEntries() {
 }
 
 async function loadFlashcardMeta() {
-  if (typeof LodWrapperStore.getFlashcardMeta !== "function") {
+  if (typeof LodVaultStore.getFlashcardMeta !== "function") {
     state.flashcardMeta = {};
     return;
   }
-  state.flashcardMeta = await LodWrapperStore.getFlashcardMeta();
+  state.flashcardMeta = await LodVaultStore.getFlashcardMeta();
 }
 
-const normalizeFlashcardMeta = LodWrapperStore.normalizeFlashcardMeta;
-const computeStreak = LodWrapperStore.computeFlashcardStreak;
+const normalizeFlashcardMeta = LodVaultStore.normalizeFlashcardMeta;
+const computeStreak = LodVaultStore.computeFlashcardStreak;
 
 function computeStats() {
   const meta = state.flashcardMeta;
@@ -175,9 +175,9 @@ function onSessionSizeChange(event) {
 
 async function handleStorageChange(changes, areaName) {
   if (areaName !== "local") return;
-  const entryKey = LodWrapperStore.STORAGE_KEY;
-  const legacyKey = LodWrapperStore.LEGACY_STORAGE_KEY;
-  const metaKey = LodWrapperStore.FLASHCARD_META_KEY;
+  const entryKey = LodVaultStore.STORAGE_KEY;
+  const legacyKey = LodVaultStore.LEGACY_STORAGE_KEY;
+  const metaKey = LodVaultStore.FLASHCARD_META_KEY;
   if (!changes?.[entryKey] && !changes?.[legacyKey] && !changes?.[metaKey]) return;
   await loadEntries();
   await loadFlashcardMeta();
@@ -298,7 +298,7 @@ function onAudioClick(event) {
   event.stopPropagation();
   const entry = currentEntry();
   if (entry) {
-    LodWrapperStore.playLodAudio(entry);
+    LodVaultStore.playLodAudio(entry);
   }
 }
 
@@ -308,7 +308,7 @@ function onFlashcardClick(event) {
     event.stopPropagation();
     const entry = currentEntry();
     if (entry) {
-      LodWrapperStore.playLodAudio(entry);
+      LodVaultStore.playLodAudio(entry);
     }
     return;
   }
@@ -352,8 +352,8 @@ function renderDeck() {
   }
 
   if (state.direction === "rev") {
-    const meaning = typeof LodWrapperStore.getPrimaryMeaning === "function"
-      ? LodWrapperStore.getPrimaryMeaning(entry)
+    const meaning = typeof LodVaultStore.getPrimaryMeaning === "function"
+      ? LodVaultStore.getPrimaryMeaning(entry)
       : null;
     if (elements.cardWord) {
       elements.cardWord.textContent = meaning ? meaning.value : entry.word;
@@ -373,8 +373,8 @@ function renderDeck() {
   }
 
   if (elements.cardAudio) {
-    const audioUrl = typeof LodWrapperStore.getAudioUrl === "function"
-      ? LodWrapperStore.getAudioUrl(entry)
+    const audioUrl = typeof LodVaultStore.getAudioUrl === "function"
+      ? LodVaultStore.getAudioUrl(entry)
       : null;
     elements.cardAudio.style.display = audioUrl ? "" : "none";
     elements.cardAudio.dataset.audioId = entry.id || "";
@@ -399,7 +399,7 @@ function renderDeck() {
 }
 
 function buildMeaningMarkup(entry) {
-  const rows = LodWrapperStore.buildMeaningRowsMarkup(entry);
+  const rows = LodVaultStore.buildMeaningRowsMarkup(entry);
 
   if (!rows) {
     return '<p class="muted">No saved meanings yet. Re-save this word from lod.lu to capture its translated meanings.</p>';
@@ -416,7 +416,7 @@ function buildMeaningMarkup(entry) {
 function buildAnswerMarkup(entry) {
   const chips = [];
   if (entry.pos) {
-    chips.push(`<span class="chip">Type: ${LodWrapperStore.escapeHtml(entry.pos)}</span>`);
+    chips.push(`<span class="chip">Type: ${LodVaultStore.escapeHtml(entry.pos)}</span>`);
   }
 
   const directionBadge = state.direction === "rev"
@@ -424,13 +424,13 @@ function buildAnswerMarkup(entry) {
     : "";
 
   return `
-    <h3>${LodWrapperStore.escapeHtml(entry.word)}${LodWrapperStore.buildAudioBtnMarkup ? LodWrapperStore.buildAudioBtnMarkup(entry) : ""}</h3>
+    <h3>${LodVaultStore.escapeHtml(entry.word)}${LodVaultStore.buildAudioBtnMarkup ? LodVaultStore.buildAudioBtnMarkup(entry) : ""}</h3>
     ${chips.length || directionBadge ? `<div class="chip-row">${chips.join("")}${directionBadge}</div>` : ""}
     ${buildMeaningMarkup(entry)}
-    ${entry.inflection ? `<p><strong>Inflection:</strong> ${LodWrapperStore.escapeHtml(entry.inflection)}</p>` : ""}
-    ${entry.example ? `<blockquote>${LodWrapperStore.escapeHtml(entry.example)}</blockquote>` : ""}
-    ${entry.note ? `<div class="note"><strong>Note:</strong> ${LodWrapperStore.escapeHtml(entry.note)}</div>` : ""}
-    <p><a href="${LodWrapperStore.escapeHtml(entry.url)}" target="_blank" rel="noreferrer">Open on LOD</a></p>
+    ${entry.inflection ? `<p><strong>Inflection:</strong> ${LodVaultStore.escapeHtml(entry.inflection)}</p>` : ""}
+    ${entry.example ? `<blockquote>${LodVaultStore.escapeHtml(entry.example)}</blockquote>` : ""}
+    ${entry.note ? `<div class="note"><strong>Note:</strong> ${LodVaultStore.escapeHtml(entry.note)}</div>` : ""}
+    <p><a href="${LodVaultStore.escapeHtml(entry.url)}" target="_blank" rel="noreferrer">Open on LOD</a></p>
   `;
 }
 
@@ -466,8 +466,8 @@ async function rateCard(rating) {
   const entry = currentEntry();
   if (!entry) return;
 
-  if (typeof LodWrapperStore.recordFlashcardReview === "function") {
-    await LodWrapperStore.recordFlashcardReview(entry.id, rating, state.direction);
+  if (typeof LodVaultStore.recordFlashcardReview === "function") {
+    await LodVaultStore.recordFlashcardReview(entry.id, rating, state.direction);
     await loadFlashcardMeta();
     computeStats();
     renderStats();

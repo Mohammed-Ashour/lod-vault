@@ -1,6 +1,6 @@
 (() => {
   function createApp(options = {}) {
-    const store = options.store || globalThis.LodWrapperStore;
+    const store = options.store || globalThis.LodVaultStore;
     const chromeApi = options.chrome || chrome;
     const HISTORY_IMPORT_RANGE_DAYS = Object.freeze({
       "7d": 7,
@@ -116,7 +116,7 @@
     }
 
     async function handlePageStateMessage(message, sender) {
-      if (message?.type !== "lod-wrapper:page-state-changed") return;
+      if (message?.type !== "lodvault:page-state-changed") return;
       if (state.currentTabId && sender?.tab?.id && sender.tab.id !== state.currentTabId) return;
 
       state.currentEntry = message.entry || null;
@@ -216,7 +216,7 @@
 
       try {
         await chromeApi.tabs.sendMessage(state.currentTabId, {
-          type: "lod-wrapper:sync-state",
+          type: "lodvault:sync-state",
           entry: savedEntry
         });
       } catch {
@@ -333,7 +333,7 @@
     }
 
     function getSyncNamespace() {
-      return globalThis.LodWrapperSync;
+      return globalThis.LodVaultSync;
     }
 
     function supportsManualSyncNow() {
@@ -912,7 +912,7 @@
       }
 
       try {
-        const response = await chromeApi.tabs.sendMessage(tab.id, { type: "lod-wrapper:get-current-entry" });
+        const response = await chromeApi.tabs.sendMessage(tab.id, { type: "lodvault:get-current-entry" });
         if (requestId !== state.currentPageRequestId) return;
         state.currentEntry = response?.entry || null;
       } catch {
@@ -935,7 +935,7 @@
 
       try {
         await chromeApi.tabs.sendMessage(state.currentTabId, {
-          type: "lod-wrapper:refresh-ui",
+          type: "lodvault:refresh-ui",
           ...options
         });
       } catch {
@@ -974,7 +974,7 @@
 
       try {
         const response = await chromeApi.tabs.sendMessage(state.currentTabId, {
-          type: "lod-wrapper:toggle-list",
+          type: "lodvault:toggle-list",
           listName
         });
 
@@ -1246,7 +1246,7 @@
       if (state.currentTabId) {
         try {
           await chromeApi.tabs.sendMessage(state.currentTabId, {
-            type: "lod-wrapper:sync-state",
+            type: "lodvault:sync-state",
             entry: savedEntry
           });
         } catch {
@@ -1764,7 +1764,7 @@
     };
   }
 
-  globalThis.LodWrapperPopupApp = {
+  globalThis.LodVaultPopupApp = {
     createApp
   };
 })();

@@ -77,7 +77,7 @@ test("content script stays idle on non-article pages", async () => {
   });
 
   await context.refreshUI();
-  assert.equal(dom.window.document.getElementById("lod-wrapper-banner"), null);
+  assert.equal(dom.window.document.getElementById("lodvault-banner"), null);
 });
 
 test("content script can recover when URL changes to article without history events", async () => {
@@ -86,7 +86,7 @@ test("content script can recover when URL changes to article without history eve
     url: "https://lod.lu/"
   });
 
-  const initialBanner = dom.window.document.getElementById("lod-wrapper-banner");
+  const initialBanner = dom.window.document.getElementById("lodvault-banner");
   assert.ok(!initialBanner || initialBanner.style.display === "none");
 
   dom.reconfigure({ url: "https://lod.lu/artikel/HAUS1" });
@@ -94,7 +94,7 @@ test("content script can recover when URL changes to article without history eve
 
   await wait(150);
 
-  const banner = dom.window.document.getElementById("lod-wrapper-banner");
+  const banner = dom.window.document.getElementById("lodvault-banner");
   assert.ok(banner);
   assert.equal(banner.querySelector(".lodw-word").textContent, "Haus");
 });
@@ -118,10 +118,10 @@ test("content script refreshes when article details hydrate after the heading al
 
   await wait(50);
 
-  const initialBanner = dom.window.document.getElementById("lod-wrapper-banner");
+  const initialBanner = dom.window.document.getElementById("lodvault-banner");
   assert.ok(initialBanner);
   assert.equal(initialBanner.querySelector(".lodw-info").textContent.trim(), "");
-  const initialMessageCount = sentRuntimeMessages.filter((message) => message.type === "lod-wrapper:page-state-changed").length;
+  const initialMessageCount = sentRuntimeMessages.filter((message) => message.type === "lodvault:page-state-changed").length;
 
   const meta = dom.window.document.createElement("meta");
   meta.setAttribute("name", "description");
@@ -138,10 +138,10 @@ test("content script refreshes when article details hydrate after the heading al
 
   await wait(180);
 
-  const banner = dom.window.document.getElementById("lod-wrapper-banner");
+  const banner = dom.window.document.getElementById("lodvault-banner");
   assert.match(banner.querySelector(".lodw-info").textContent, /English: house/);
 
-  const pageStateMessages = sentRuntimeMessages.filter((message) => message.type === "lod-wrapper:page-state-changed");
+  const pageStateMessages = sentRuntimeMessages.filter((message) => message.type === "lodvault:page-state-changed");
   assert.ok(pageStateMessages.length > initialMessageCount);
   assert.equal(pageStateMessages.at(-1).entry.pos, "noun");
   assert.deepEqual({ ...pageStateMessages.at(-1).entry.translations }, {
@@ -174,7 +174,7 @@ test("applyState injects the banner under the heading and updates button state",
   const entry = api.extractCurrentEntry();
   api.applyState({ favorite: true, study: false, note: "remember this" }, entry);
 
-  const banner = dom.window.document.getElementById("lod-wrapper-banner");
+  const banner = dom.window.document.getElementById("lodvault-banner");
   assert.ok(banner);
   assert.equal(banner.previousElementSibling.tagName, "H1");
   assert.equal(banner.querySelector(".lodw-word").textContent, "Haus");
@@ -202,7 +202,7 @@ test("applyState keeps the banner note disabled until the word is saved", async 
   const entry = api.extractCurrentEntry();
   api.applyState(null, entry);
 
-  const banner = dom.window.document.getElementById("lod-wrapper-banner");
+  const banner = dom.window.document.getElementById("lodvault-banner");
   const noteInput = banner.querySelector('.lodw-note-input');
   const noteMeta = banner.querySelector('.lodw-meta');
 
@@ -216,7 +216,7 @@ test("applyState keeps the banner note toggle aria-expanded in sync with visibil
   const entry = api.extractCurrentEntry();
 
   api.applyState({ study: true, history: true }, entry);
-  const banner = dom.window.document.getElementById("lod-wrapper-banner");
+  const banner = dom.window.document.getElementById("lodvault-banner");
   const noteToggle = banner.querySelector(".lodw-note-toggle");
   const noteBody = banner.querySelector(".lodw-note-body");
 
@@ -247,7 +247,7 @@ test("applyState updates the status dot based on save state", async () => {
 
   // Not saved → default gray dot
   api.applyState(null, entry);
-  const dot = dom.window.document.querySelector("#lod-wrapper-banner .lodw-dot");
+  const dot = dom.window.document.querySelector("#lodvault-banner .lodw-dot");
   assert.equal(dot.classList.contains("is-saved"), false);
   assert.equal(dot.classList.contains("is-favorited"), false);
 
@@ -268,7 +268,7 @@ test("applyState shows the word name and note toggle in the banner", async () =>
   const entry = api.extractCurrentEntry();
   api.applyState({ favorite: true, study: false }, entry);
 
-  const banner = dom.window.document.getElementById("lod-wrapper-banner");
+  const banner = dom.window.document.getElementById("lodvault-banner");
   const word = banner.querySelector(".lodw-word");
   const noteToggle = banner.querySelector(".lodw-note-toggle");
 
@@ -282,7 +282,7 @@ test("message listener returns the extracted entry for popup requests", () => {
   const listener = getMessageListener();
 
   let response = null;
-  listener({ type: "lod-wrapper:get-current-entry" }, null, (value) => {
+  listener({ type: "lodvault:get-current-entry" }, null, (value) => {
     response = value;
   });
 

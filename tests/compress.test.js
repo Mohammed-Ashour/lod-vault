@@ -28,10 +28,10 @@ function loadCompressModule() {
 
   context.globalThis = context;
   vm.runInNewContext(source, context, { filename: "scripts/compress.js" });
-  return context.LodWrapperCompress;
+  return context.LodVaultCompress;
 }
 
-test("LodWrapperCompress round-trips short text", async () => {
+test("LodVaultCompress round-trips short text", async () => {
   const compress = loadCompressModule();
   const original = "Hello, LODVault!";
   const compressed = await compress.compress(original);
@@ -41,7 +41,7 @@ test("LodWrapperCompress round-trips short text", async () => {
   assert.ok(typeof compressed === "string");
 });
 
-test("LodWrapperCompress round-trips long JSON-like text", async () => {
+test("LodVaultCompress round-trips long JSON-like text", async () => {
   const compress = loadCompressModule();
 
   const shared = {
@@ -70,7 +70,7 @@ test("LodWrapperCompress round-trips long JSON-like text", async () => {
   assert.ok(typeof compressed === "string");
 });
 
-test("LodWrapperCompress achieves meaningful compression on JSON arrays", async () => {
+test("LodVaultCompress achieves meaningful compression on JSON arrays", async () => {
   const compress = loadCompressModule();
 
   const shared = {
@@ -105,7 +105,7 @@ test("LodWrapperCompress achieves meaningful compression on JSON arrays", async 
   assert.ok(ratio < 0.60, `compression ratio ${ratio.toFixed(2)} should be < 0.60 (original=${originalLength}B, compressed=${compressedLength}B)`);
 });
 
-test("LodWrapperCompress handles empty string", async () => {
+test("LodVaultCompress handles empty string", async () => {
   const compress = loadCompressModule();
   const compressed = await compress.compress("");
   const decompressed = await compress.decompress(compressed);
@@ -113,7 +113,7 @@ test("LodWrapperCompress handles empty string", async () => {
   assert.equal(decompressed, "");
 });
 
-test("LodWrapperCompress handles Unicode characters", async () => {
+test("LodVaultCompress handles Unicode characters", async () => {
   const compress = loadCompressModule();
   const original = "Lëtzebuergesch — Haiser, Beem, a Schoulen.";
   const compressed = await compress.compress(original);
@@ -122,19 +122,19 @@ test("LodWrapperCompress handles Unicode characters", async () => {
   assert.equal(decompressed, original);
 });
 
-test("LodWrapperCompress reports availability", () => {
+test("LodVaultCompress reports availability", () => {
   const compress = loadCompressModule();
   assert.equal(compress.isAvailable(), true);
 });
 
-test("LodWrapperCompress decompress returns input unchanged on invalid base64", async () => {
+test("LodVaultCompress decompress returns input unchanged on invalid base64", async () => {
   const compress = loadCompressModule();
   const result = await compress.decompress("not-valid-base64!!!");
   // Catch path returns the original value
   assert.equal(result, "not-valid-base64!!!");
 });
 
-test("LodWrapperCompress base64 round-trips custom implementation", async () => {
+test("LodVaultCompress base64 round-trips custom implementation", async () => {
   const compress = loadCompressModule();
 
   // Verify internal base64 by round-tripping through compress/decompress
@@ -146,7 +146,7 @@ test("LodWrapperCompress base64 round-trips custom implementation", async () => 
   assert.equal(decompressed, original);
 });
 
-test("LodWrapperCompress fallback when _setAvailableForTest(false)", async () => {
+test("LodVaultCompress fallback when _setAvailableForTest(false)", async () => {
   const compress = loadCompressModule();
 
   compress._setAvailableForTest(false);

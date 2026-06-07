@@ -43,7 +43,12 @@ cp \
   scripts/entry-presenter.js \
   scripts/flashcards.js \
   scripts/lens-lookup.js \
-  scripts/lens-overlay.js \
+  scripts/lens-overlay-shell.js \
+  scripts/lens-overlay-controller.js \
+  scripts/lens-render.js \
+  scripts/lens-runtime.js \
+  scripts/lens-session.js \
+  scripts/lens-sentence-mode.js \
   scripts/lod-article.js \
   scripts/note-autosave.js \
   scripts/page-banner.js \

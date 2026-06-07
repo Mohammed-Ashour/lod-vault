@@ -23,12 +23,14 @@ const IIFE_SCRIPTS = [
 
 const BANNER = `// Auto-generated bundle — DO NOT EDIT.
 // Run: node scripts/build-background.mjs
+// Policy: this file is a generated packaging artifact checked in for extension loading/release builds.
+// Source of truth: scripts/build-background.mjs + scripts/background-impl.js + listed dependencies below.
 // Source files (in order):
 ${IIFE_SCRIPTS.map((f) => `//   ${f}`).join("\n")}
 //   background-impl.js
 `;
 
-const parts = [BANNER, "\nglobalThis.__LOD_WRAPPER_DIRECT_STORE__ = true;\n"];
+const parts = [BANNER, "\nglobalThis.__LOD_VAULT_DIRECT_STORE__ = true;\n"];
 
 for (const name of IIFE_SCRIPTS) {
   const path = resolve(scriptsDir, name);

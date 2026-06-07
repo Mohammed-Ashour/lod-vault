@@ -122,6 +122,8 @@ The **LODVault** icon will appear in your browser toolbar.
 > npm install
 > npm run build:background
 > ```
+>
+> `scripts/background-bundle.js` is a generated packaging artifact. Treat `scripts/background-impl.js` and `scripts/build-background.mjs` as the source of truth.
 
 > **Important:** Before uninstalling LODVault or switching between unpacked and published builds, use **Backup JSON**. In Chrome, uninstalling the extension may remove both its local data and its extension sync data, even when the extension ID stays the same.
 
@@ -182,9 +184,10 @@ npm test
 - export HTML generation
 - popup rendering, sync language selection, default recent list behavior, and search filtering
 - flashcard deck refresh behavior when extension storage changes
-- background mutation queue behavior, sync bridging, and LOD tab reloads on install
+- background mutation queue behavior, sync bridging, LOD tab reloads on install, and Lens runtime injection
 - content-script extraction from LOD article pages
 - injected banner rendering, messaging, and saved-entry enrichment
+- Lens trigger heuristics plus stale-session protection for async sentence actions
 - compact sync serialization, merge behavior, sharding, and quota fallback logic
 
 ---

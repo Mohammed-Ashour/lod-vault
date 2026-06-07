@@ -1,6 +1,6 @@
 (() => {
   const BUTTON_ID = "lodvault-selection-trigger";
-  const OPEN_LENS_OVERLAY_MESSAGE_TYPE = "lod-wrapper:open-lens-overlay";
+  const OPEN_LENS_OVERLAY_MESSAGE_TYPE = "lodvault:open-lens-overlay";
   const LOGO_URL = globalThis.chrome?.runtime?.getURL?.("icons/icon32.png") || "";
   const LB_TEXT_MARKERS = ["déi", "gëtt", "ass", "net", "och", "vun", "fir", "mat", "eng", "hunn", "wéi", "wat", "ëmmer", "kënnt", "lëtzebuergesch", "letzebuergesch"];
   let hideTimer = null;
@@ -204,12 +204,6 @@
       return;
     }
 
-    const overlay = globalThis.LodWrapperLensOverlay;
-    if (overlay?.openFromSelection) {
-      await overlay.openFromSelection(selectionText);
-      return;
-    }
-
     await requestLensOverlay(selectionText);
   }
 
@@ -287,7 +281,7 @@
     attributeFilter: ["lang"]
   });
 
-  globalThis.__LodWrapperSelectionTriggerTest = {
+  globalThis.__LodVaultSelectionTriggerTest = {
     countLuxembourgishMarkers,
     pageLooksLuxembourgish,
     selectionLooksLuxembourgish,

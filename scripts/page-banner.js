@@ -1,6 +1,6 @@
 (() => {
   function createController(options = {}) {
-    const BANNER_ID = options.bannerId || "lod-wrapper-banner";
+    const BANNER_ID = options.bannerId || "lodvault-banner";
     const getCurrentEntry = typeof options.getCurrentEntry === "function"
       ? options.getCurrentEntry
       : () => null;
@@ -16,8 +16,8 @@
     const onInvalidate = typeof options.onInvalidate === "function"
       ? options.onInvalidate
       : null;
-    const store = options.store || globalThis.LodWrapperStore || {};
-    const articleReader = options.articleReader || globalThis.LodWrapperArticleReader || {};
+    const store = options.store || globalThis.LodVaultStore || {};
+    const articleReader = options.articleReader || globalThis.LodVaultArticleReader || {};
 
     let lastRenderKey = "";
     const bannerNoteController = store.createNoteAutosaveController({
@@ -337,7 +337,7 @@
     };
   }
 
-  globalThis.LodWrapperPageBanner = {
+  globalThis.LodVaultPageBanner = {
     createController
   };
 })();

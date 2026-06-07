@@ -485,7 +485,7 @@ test("SyncAdapter.pullAll fallback persists merged state when the store helper i
     }
   });
 
-  fixture.context.LodWrapperStore.applyRemoteVaultStateDirect = undefined;
+  fixture.context.LodVaultStore.applyRemoteVaultStateDirect = undefined;
 
   const result = await fixture.sync.SyncAdapter.pullAll({ repush: false });
 

@@ -223,7 +223,7 @@
   /*  Export                                                             */
   /* ------------------------------------------------------------------ */
 
-  globalThis.LodWrapperCompress = Object.freeze({
+  globalThis.LodVaultCompress = Object.freeze({
     compress,
     decompress,
     isAvailable,

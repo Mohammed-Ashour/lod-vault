@@ -198,7 +198,7 @@ function loadSharedStore(initialStorage = {}, options = {}) {
   ]);
 
   return {
-    store: context.LodWrapperStore,
+    store: context.LodVaultStore,
     chrome,
     storageData: data.local,
     syncStorageData: data.sync,
@@ -247,14 +247,14 @@ function loadSyncScript(initialStorage = {}, options = {}) {
     "scripts/sync.js"
   ]);
 
-  if (!enableCompression && context.LodWrapperCompress) {
-    context.LodWrapperCompress._setAvailableForTest(false);
+  if (!enableCompression && context.LodVaultCompress) {
+    context.LodVaultCompress._setAvailableForTest(false);
   }
 
   return {
-    store: context.LodWrapperStore,
-    sync: context.LodWrapperSync,
-    compress: context.LodWrapperCompress,
+    store: context.LodVaultStore,
+    sync: context.LodVaultSync,
+    compress: context.LodVaultCompress,
     chrome,
     storageData: data.local,
     syncStorageData: data.sync,
@@ -289,7 +289,7 @@ function loadContentScript({
     }
   };
 
-  const LodWrapperStore = {
+  const LodVaultStore = {
     getIdFromUrl(value) {
       const match = String(value || "").match(/\/artikel\/([^/?#]+)/i);
       return match ? decodeURIComponent(match[1]) : "";
@@ -316,14 +316,14 @@ function loadContentScript({
 ${fs.readFileSync(path.join(repoRoot, "scripts/page-banner.js"), "utf8")}
 ${fs.readFileSync(path.join(repoRoot, "scripts/content.js"), "utf8")}
 ;globalThis.__contentTest = {
-  cleanWord: LodWrapperArticleReader.cleanWord,
-  stitchTokens: LodWrapperArticleReader.stitchTokens,
-  collectText: LodWrapperArticleReader.collectText,
-  sanitizeHeading: LodWrapperArticleReader.sanitizeHeading,
-  extractTranslations: LodWrapperArticleReader.extractTranslations,
-  extractCurrentEntry: LodWrapperArticleReader.extractCurrentEntry,
-  infoText: LodWrapperArticleReader.infoText,
-  infoTextFull: LodWrapperArticleReader.infoTextFull,
+  cleanWord: LodVaultArticleReader.cleanWord,
+  stitchTokens: LodVaultArticleReader.stitchTokens,
+  collectText: LodVaultArticleReader.collectText,
+  sanitizeHeading: LodVaultArticleReader.sanitizeHeading,
+  extractTranslations: LodVaultArticleReader.extractTranslations,
+  extractCurrentEntry: LodVaultArticleReader.extractCurrentEntry,
+  infoText: LodVaultArticleReader.infoText,
+  infoTextFull: LodVaultArticleReader.infoTextFull,
   ensureBanner: bannerController.ensureBanner,
   applyState: bannerController.applyState
 };`;
@@ -340,8 +340,8 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/content.js"), "utf8")}
     Element: dom.window.Element,
     HTMLElement: dom.window.HTMLElement,
     chrome,
-    LodWrapperStore,
-    LodWrapperEntryPresenter: entryPresenterOverrides,
+    LodVaultStore,
+    LodVaultEntryPresenter: entryPresenterOverrides,
     console,
     URL: dom.window.URL,
     setTimeout: dom.window.setTimeout.bind(dom.window),
@@ -356,7 +356,7 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/content.js"), "utf8")}
     dom,
     api: context.__contentTest,
     chrome,
-    LodWrapperStore,
+    LodVaultStore,
     sentRuntimeMessages,
     getMessageListener: () => messageListener,
     context
@@ -389,7 +389,7 @@ async function loadPopupScript({
     entryCount: 0
   });
 
-  const LodWrapperStore = {
+  const LodVaultStore = {
     STORAGE_KEY: "lodVault.entries",
     LEGACY_STORAGE_KEY: "lodWrapper.entries",
     HISTORY_IMPORT_STATE_KEY: "lodVault.historyImport",
@@ -481,10 +481,10 @@ async function loadPopupScript({
           : [];
       },
       async sendMessage(_tabId, message) {
-        if (message?.type === "lod-wrapper:get-current-entry") {
+        if (message?.type === "lodvault:get-current-entry") {
           return { entry: currentEntry };
         }
-        if (message?.type === "lod-wrapper:toggle-list") {
+        if (message?.type === "lodvault:toggle-list") {
           return { entry: currentEntry ? { ...currentEntry, [message.listName]: true } : null, sourceEntry: currentEntry };
         }
         return { ok: true };
@@ -530,8 +530,8 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
     Element: dom.window.Element,
     HTMLElement: dom.window.HTMLElement,
     chrome,
-    LodWrapperStore,
-    LodWrapperSync: syncOverrides || undefined,
+    LodVaultStore,
+    LodVaultSync: syncOverrides || undefined,
     console,
     URL: dom.window.URL,
     Blob,
@@ -552,7 +552,7 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
     chrome,
     createdTabs,
     context,
-    LodWrapperStore,
+    LodVaultStore,
     runtimeOnMessage,
     tabsOnActivated,
     tabsOnUpdated
@@ -570,7 +570,7 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {} } = {}) 
   let currentEntries = entries.map((entry) => structuredClone(entry));
   const storageOnChanged = createChromeEvent();
 
-  const LodWrapperStore = {
+  const LodVaultStore = {
     STORAGE_KEY: "lodVault.entries",
     LEGACY_STORAGE_KEY: "lodWrapper.entries",
     FLASHCARD_META_KEY: "lodVault.flashcardMeta",
@@ -613,7 +613,7 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {} } = {}) 
     Element: dom.window.Element,
     HTMLElement: dom.window.HTMLElement,
     chrome,
-    LodWrapperStore,
+    LodVaultStore,
     console,
     URL: dom.window.URL,
     setTimeout: dom.window.setTimeout.bind(dom.window),
@@ -636,7 +636,7 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {} } = {}) 
       currentEntries = nextEntries.map((entry) => structuredClone(entry));
     },
     context,
-    LodWrapperStore
+    LodVaultStore
   };
 }
 
@@ -652,6 +652,9 @@ function loadBackgroundScript(initialStorage = {}) {
   const removedContextMenus = [];
   const executedScripts = [];
   const insertedCss = [];
+  const grantedOrigins = new Set();
+  const permissionRequests = [];
+  const permissionContainsCalls = [];
 
   chrome.runtime.getURL = (relativePath) => path.join(repoRoot, relativePath);
   chrome.runtime.onInstalled = runtimeOnInstalled;
@@ -661,6 +664,9 @@ function loadBackgroundScript(initialStorage = {}) {
   chrome.tabs = {
     async query() {
       return [];
+    },
+    async get(tabId) {
+      return { id: tabId, url: "https://example.com/" };
     },
     async reload(tabId) {
       reloadedTabIds.push(tabId);
@@ -691,6 +697,19 @@ function loadBackgroundScript(initialStorage = {}) {
         return [{ result: await details.func(...(details.args || [])) }];
       }
       return [];
+    }
+  };
+  chrome.permissions = {
+    async contains(details = {}) {
+      const origins = Array.isArray(details.origins) ? details.origins : [];
+      permissionContainsCalls.push(structuredClone(origins));
+      return origins.every((origin) => grantedOrigins.has(origin));
+    },
+    async request(details = {}) {
+      const origins = Array.isArray(details.origins) ? details.origins : [];
+      permissionRequests.push(structuredClone(origins));
+      origins.forEach((origin) => grantedOrigins.add(origin));
+      return true;
     }
   };
 
@@ -755,6 +774,8 @@ function loadBackgroundScript(initialStorage = {}) {
     removedContextMenus,
     executedScripts,
     insertedCss,
+    permissionRequests,
+    permissionContainsCalls,
     dispatchRuntimeMessage,
     dispatchStoreMutation(message) {
       return dispatchRuntimeMessage(message, null);

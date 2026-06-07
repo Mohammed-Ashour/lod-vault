@@ -17,7 +17,7 @@ function loadLensLookup(fetchImpl = async () => ({ ok: true, json: async () => (
   };
   context.globalThis = context;
   vm.runInNewContext(source, context, { filename: "scripts/lens-lookup.js" });
-  return context.LodWrapperLensLookup;
+  return context.LodVaultLensLookup;
 }
 
 test("normalizeSelection trims punctuation around selected text", () => {
@@ -383,5 +383,5 @@ test("lookup prefers the runtime proxy fetch when available", async () => {
   assert.equal(result.status, "resolved");
   assert.equal(result.entry.id, "HAUS1");
   assert.equal(seen.length, 2);
-  assert.ok(seen.every((message) => message.type === "lod-wrapper:lens-fetch"));
+  assert.ok(seen.every((message) => message.type === "lodvault:lens-fetch"));
 });

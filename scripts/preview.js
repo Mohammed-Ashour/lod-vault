@@ -11,8 +11,8 @@ let currentSort = "recent";
 let applyPreviewFilters = () => {};
 let currentEntriesById = new Map();
 
-const langNames = LodWrapperStore.TRANSLATION_LANGUAGE_LABELS;
-const langOrder = LodWrapperStore.TRANSLATION_LANGUAGE_ORDER;
+const langNames = LodVaultStore.TRANSLATION_LANGUAGE_LABELS;
+const langOrder = LodVaultStore.TRANSLATION_LANGUAGE_ORDER;
 
 function getPreviewActiveElement() {
   return frame.contentDocument?.activeElement || document.activeElement;
@@ -37,18 +37,18 @@ function setPreviewNoteExpanded(section, expanded) {
   }
 }
 
-const previewNoteAutosave = LodWrapperStore.createNoteAutosaveController({
+const previewNoteAutosave = LodVaultStore.createNoteAutosaveController({
   getTimerKey: (textarea) => `preview-note:${textarea?.dataset?.noteId || ""}`,
   getActiveElement: getPreviewActiveElement,
   setStatus: setPreviewNoteStatus,
-  saveNote: (noteId, requestValue) => LodWrapperStore.saveNote(noteId, requestValue),
+  saveNote: (noteId, requestValue) => LodVaultStore.saveNote(noteId, requestValue),
   onSaved: async ({ textarea, savedEntry, changedSinceRequest }) => {
     if (!savedEntry?.id) return;
     currentEntriesById.set(savedEntry.id, savedEntry);
 
     const entryElement = textarea.closest(".entry");
     if (entryElement) {
-      entryElement.dataset.search = LodWrapperStore.buildSearchText(savedEntry);
+      entryElement.dataset.search = LodVaultStore.buildSearchText(savedEntry);
     }
 
     const noteSection = textarea.closest(".preview-note-section");
@@ -126,10 +126,10 @@ function populateLangSelect(entries) {
 /* ── preview styles ──────────────────────────────── */
 
 function injectPreviewStyles(doc) {
-  if (doc.getElementById("lod-wrapper-preview-style")) return;
+  if (doc.getElementById("lodvault-preview-style")) return;
 
   const style = doc.createElement("style");
-  style.id = "lod-wrapper-preview-style";
+  style.id = "lodvault-preview-style";
   style.textContent = `
     .preview-entry-actions {
       margin-top: 12px;
@@ -375,13 +375,13 @@ function attachPreviewSearch() {
 /* ── toggle pills & delete ──────────────────────── */
 
 async function handlePreviewToggle(id, listName) {
-  const savedEntry = await LodWrapperStore.getEntry(id);
+  const savedEntry = await LodVaultStore.getEntry(id);
   if (!savedEntry) return;
-  await LodWrapperStore.toggleList(savedEntry, listName);
+  await LodVaultStore.toggleList(savedEntry, listName);
 }
 
 function attachAudioButtons(doc) {
-  const ctrl = LodWrapperStore.createAudioController(doc);
+  const ctrl = LodVaultStore.createAudioController(doc);
   doc.addEventListener("click", (event) => {
     const btn = event.target.closest(".audio-btn");
     if (!btn) return;
@@ -525,7 +525,7 @@ function attachRemoveButtons(doc) {
     delBtn.addEventListener("click", async () => {
       delBtn.disabled = true;
       try {
-        await LodWrapperStore.removeEntry(id);
+        await LodVaultStore.removeEntry(id);
         await renderPreview();
       } finally {
         delBtn.disabled = false;
@@ -563,12 +563,12 @@ function sortEntries(entries, sortMode) {
 }
 
 async function renderPreview() {
-  let entries = await LodWrapperStore.getEntries();
+  let entries = await LodVaultStore.getEntries();
   entries = sortEntries(entries, currentSort);
   currentEntriesById = new Map(entries.map((entry) => [entry.id, entry]));
   populateLangSelect(entries);
 
-  const html = LodWrapperStore.buildExportHtml(entries, { includeInlineScript: false });
+  const html = LodVaultStore.buildExportHtml(entries, { includeInlineScript: false });
   const count = `${entries.length} saved word${entries.length === 1 ? "" : "s"}`;
   const blob = new Blob([html], { type: "text/html" });
   const url = URL.createObjectURL(blob);
@@ -587,19 +587,19 @@ async function renderPreview() {
 }
 
 async function downloadHtml() {
-  let entries = await LodWrapperStore.getEntries();
+  let entries = await LodVaultStore.getEntries();
   entries = sortEntries(entries, currentSort);
-  const html = LodWrapperStore.buildExportHtml(entries);
+  const html = LodVaultStore.buildExportHtml(entries);
   const date = new Date().toISOString().slice(0, 10);
-  LodWrapperStore.downloadTextFile(`lodvault-export-${date}.html`, html, "text/html");
+  LodVaultStore.downloadTextFile(`lodvault-export-${date}.html`, html, "text/html");
 }
 
 async function downloadAnki() {
-  let entries = await LodWrapperStore.getEntries();
+  let entries = await LodVaultStore.getEntries();
   entries = sortEntries(entries, currentSort);
-  const text = LodWrapperStore.buildAnkiExport(entries);
+  const text = LodVaultStore.buildAnkiExport(entries);
   const date = new Date().toISOString().slice(0, 10);
-  LodWrapperStore.downloadTextFile(`lodvault-anki-${date}.txt`, text, "text/tab-separated-values");
+  LodVaultStore.downloadTextFile(`lodvault-anki-${date}.txt`, text, "text/tab-separated-values");
 }
 
 window.addEventListener("beforeunload", () => {

@@ -1,25 +1,25 @@
 (() => {
-  const STORAGE_KEY = globalThis.LodWrapperStore?.STORAGE_KEY || "lodVault.entries";
-  const LOCAL_SETTINGS_KEY = globalThis.LodWrapperStore?.SETTINGS_KEY || "lodVault.settings";
-  const LOCAL_DELETED_KEY = globalThis.LodWrapperStore?.DELETED_KEY || "lodVault.deleted";
-  const DEFAULT_SETTINGS = globalThis.LodWrapperStore?.DEFAULT_SETTINGS || {
+  const STORAGE_KEY = globalThis.LodVaultStore?.STORAGE_KEY || "lodVault.entries";
+  const LOCAL_SETTINGS_KEY = globalThis.LodVaultStore?.SETTINGS_KEY || "lodVault.settings";
+  const LOCAL_DELETED_KEY = globalThis.LodVaultStore?.DELETED_KEY || "lodVault.deleted";
+  const DEFAULT_SETTINGS = globalThis.LodVaultStore?.DEFAULT_SETTINGS || {
     autoMode: false,
     syncLanguages: ["en", "fr", "de"]
   };
-  const MAX_SYNC_LANGUAGES = globalThis.LodWrapperStore?.MAX_SYNC_LANGUAGES || 3;
-  const SYNC_LANGUAGE_TO_KEY = globalThis.LodWrapperStore?.SYNC_LANGUAGE_TO_KEY || {
+  const MAX_SYNC_LANGUAGES = globalThis.LodVaultStore?.MAX_SYNC_LANGUAGES || 3;
+  const SYNC_LANGUAGE_TO_KEY = globalThis.LodVaultStore?.SYNC_LANGUAGE_TO_KEY || {
     en: "e",
     fr: "f",
     de: "d",
     pt: "p",
     nl: "l"
   };
-  const SYNC_KEY_TO_LANGUAGE = globalThis.LodWrapperStore?.SYNC_KEY_TO_LANGUAGE || Object.freeze(
+  const SYNC_KEY_TO_LANGUAGE = globalThis.LodVaultStore?.SYNC_KEY_TO_LANGUAGE || Object.freeze(
     Object.fromEntries(Object.entries(SYNC_LANGUAGE_TO_KEY).map(([language, key]) => [key, language]))
   );
 
   const SYNC_FORMAT_VERSION = 4;
-  const COMPRESSION = globalThis.LodWrapperCompress || null;
+  const COMPRESSION = globalThis.LodVaultCompress || null;
   const SYNC_MANIFEST_KEY = "lodVault.m";
   const SYNC_SETTINGS_KEY = "lodVault.s";
   const SYNC_DELETED_KEY = "lodVault.d";
@@ -32,7 +32,7 @@
 
   let initPromise = null;
 
-  const store = globalThis.LodWrapperStore || {};
+  const store = globalThis.LodVaultStore || {};
   const cleanText = typeof store.cleanText === "function" ? store.cleanText : (value) => (typeof value === "string" ? value.trim() : "");
   const normalizeVisitCount = typeof store.normalizeVisitCount === "function" ? store.normalizeVisitCount : (value) => { const number = Number(value); return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0; };
   const shouldKeepEntry = typeof store.shouldKeepEntry === "function" ? store.shouldKeepEntry : (entry) => Boolean(entry?.favorite || entry?.study || entry?.history);
@@ -1411,7 +1411,7 @@
     return inspectSyncStorage();
   }
 
-  globalThis.LodWrapperSync = {
+  globalThis.LodVaultSync = {
     SYNC_FORMAT_VERSION,
     SYNC_MANIFEST_KEY,
     SYNC_SETTINGS_KEY,

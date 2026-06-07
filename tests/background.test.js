@@ -16,7 +16,7 @@ test("background serializes store mutations through a shared queue", async () =>
   });
   let callCount = 0;
 
-  background.context.LodWrapperStore.saveNote = async () => {
+  background.context.LodVaultStore.saveNote = async () => {
     callCount += 1;
     const label = String(callCount);
     order.push(`start-${label}`);
@@ -28,12 +28,12 @@ test("background serializes store mutations through a shared queue", async () =>
   };
 
   const first = background.dispatchStoreMutation({
-    type: "lod-wrapper:store-mutate",
+    type: "lodvault:store-mutate",
     method: "saveNote",
     args: ["HAUS1", "one"]
   });
   const second = background.dispatchStoreMutation({
-    type: "lod-wrapper:store-mutate",
+    type: "lodvault:store-mutate",
     method: "saveNote",
     args: ["BEEM1", "two"]
   });
@@ -103,7 +103,7 @@ test("background resumes queued history hydration when the service worker starts
   });
   let resumeCalls = 0;
 
-  background.context.LodWrapperStore.resumeHistoryImportHydration = async () => {
+  background.context.LodVaultStore.resumeHistoryImportHydration = async () => {
     resumeCalls += 1;
     return true;
   };
@@ -184,16 +184,16 @@ test("background uses pushEntry for a single-entry local mutation after sync is 
   let pushEntryId = null;
   let pushAllCalls = 0;
 
-  background.context.LodWrapperSync.SyncAdapter.init = async () => ({ ok: true, mode: "noop" });
+  background.context.LodVaultSync.SyncAdapter.init = async () => ({ ok: true, mode: "noop" });
   background.runtimeOnStartup.dispatch();
   await wait(0);
   await wait(0);
 
-  background.context.LodWrapperSync.SyncAdapter.pushEntry = async (id) => {
+  background.context.LodVaultSync.SyncAdapter.pushEntry = async (id) => {
     pushEntryId = id;
     return { ok: true, mode: "entry" };
   };
-  background.context.LodWrapperSync.SyncAdapter.pushAll = async () => {
+  background.context.LodVaultSync.SyncAdapter.pushAll = async () => {
     pushAllCalls += 1;
     return { ok: true, mode: "full" };
   };
@@ -220,12 +220,12 @@ test("background pushes new words immediately without waiting for debounce", asy
   const background = loadBackgroundScript();
   let pushEntryId = null;
 
-  background.context.LodWrapperSync.SyncAdapter.init = async () => ({ ok: true, mode: "noop" });
+  background.context.LodVaultSync.SyncAdapter.init = async () => ({ ok: true, mode: "noop" });
   background.runtimeOnStartup.dispatch();
   await wait(0);
   await wait(0);
 
-  background.context.LodWrapperSync.SyncAdapter.pushEntry = async (id) => {
+  background.context.LodVaultSync.SyncAdapter.pushEntry = async (id) => {
     pushEntryId = id;
     return { ok: true, mode: "entry" };
   };
@@ -252,16 +252,16 @@ test("background uses pushSettings for an autoMode-only settings mutation", asyn
   let pushSettingsCalls = 0;
   let pushAllCalls = 0;
 
-  background.context.LodWrapperSync.SyncAdapter.init = async () => ({ ok: true, mode: "noop" });
+  background.context.LodVaultSync.SyncAdapter.init = async () => ({ ok: true, mode: "noop" });
   background.runtimeOnStartup.dispatch();
   await wait(0);
   await wait(0);
 
-  background.context.LodWrapperSync.SyncAdapter.pushSettings = async () => {
+  background.context.LodVaultSync.SyncAdapter.pushSettings = async () => {
     pushSettingsCalls += 1;
     return { ok: true, mode: "settings" };
   };
-  background.context.LodWrapperSync.SyncAdapter.pushAll = async () => {
+  background.context.LodVaultSync.SyncAdapter.pushAll = async () => {
     pushAllCalls += 1;
     return { ok: true, mode: "full" };
   };
@@ -296,7 +296,7 @@ test("background opens the lens overlay for content-script requests from the sen
 
   const response = await background.dispatchRuntimeMessage(
     {
-      type: "lod-wrapper:open-lens-overlay",
+      type: "lodvault:open-lens-overlay",
       selectionText: "  Moien   alleguer  "
     },
     {
@@ -319,7 +319,12 @@ test("background opens the lens overlay for content-script requests from the sen
       "scripts/entry-presenter.js",
       "scripts/shared.js",
       "scripts/lens-lookup.js",
-      "scripts/lens-overlay.js"
+      "scripts/lens-session.js",
+      "scripts/lens-render.js",
+      "scripts/lens-overlay-shell.js",
+      "scripts/lens-sentence-mode.js",
+      "scripts/lens-overlay-controller.js",
+      "scripts/lens-runtime.js"
     ]
   });
   assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[2].args)), ["Moien alleguer"]);
@@ -331,7 +336,7 @@ test("background preserves long sentence selections when opening the lens overla
 
   const response = await background.dispatchRuntimeMessage(
     {
-      type: "lod-wrapper:open-lens-overlay",
+      type: "lodvault:open-lens-overlay",
       selectionText: longSelection
     },
     {
@@ -343,6 +348,53 @@ test("background preserves long sentence selections when opening the lens overla
   assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[2].args)), [
     "Dëst ass eng zimlech laang Auswiel mat villen Wierder déi net soll gekierzt ginn wann de Benotzer de Lens iwwer de Kontextmenü opmécht fir e komplette Saz nozeschloen."
   ]);
+});
+
+test("background requests optional site access before injecting the lens runtime from the floating trigger", async () => {
+  const background = loadBackgroundScript();
+  let granted = false;
+  const executeScriptCalls = [];
+
+  background.chrome.permissions.contains = async () => granted;
+  background.chrome.permissions.request = async (details = {}) => {
+    granted = true;
+    background.permissionRequests.push(JSON.parse(JSON.stringify(details.origins || [])));
+    return true;
+  };
+  background.chrome.scripting.insertCSS = async (details) => {
+    if (!granted) {
+      throw new Error("Missing host permission");
+    }
+    background.insertedCss.push(JSON.parse(JSON.stringify(details)));
+  };
+  background.chrome.scripting.executeScript = async (details) => {
+    executeScriptCalls.push(details);
+    if (!granted) {
+      throw new Error("Missing host permission");
+    }
+    if (typeof details?.func === "function") {
+      return [{ result: false }];
+    }
+    return [];
+  };
+
+  const response = await background.dispatchRuntimeMessage({
+    type: "lodvault:open-lens-overlay",
+    selectionText: "Moien"
+  }, {
+    tab: {
+      id: 77,
+      url: "https://www.rtl.lu/news"
+    }
+  });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(response)), { ok: true });
+  assert.deepEqual(background.permissionRequests, [["https://www.rtl.lu/*"]]);
+  assert.equal(executeScriptCalls.length, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(background.insertedCss)), [{
+    target: { tabId: 77 },
+    files: ["styles/lens-overlay.css"]
+  }]);
 });
 
  test("background reuses previously injected lens scripts in the same tab", async () => {
@@ -366,14 +418,14 @@ test("background preserves long sentence selections when opening the lens overla
   };
 
   await background.dispatchRuntimeMessage({
-    type: "lod-wrapper:open-lens-overlay",
+    type: "lodvault:open-lens-overlay",
     selectionText: "Haus"
   }, {
     tab: { id: 77 }
   });
 
   await background.dispatchRuntimeMessage({
-    type: "lod-wrapper:open-lens-overlay",
+    type: "lodvault:open-lens-overlay",
     selectionText: "Moien"
   }, {
     tab: { id: 77 }
@@ -410,7 +462,12 @@ test("background command reads the current selection before opening the lens ove
     "scripts/entry-presenter.js",
     "scripts/shared.js",
     "scripts/lens-lookup.js",
-    "scripts/lens-overlay.js"
+    "scripts/lens-session.js",
+    "scripts/lens-render.js",
+    "scripts/lens-overlay-shell.js",
+    "scripts/lens-sentence-mode.js",
+    "scripts/lens-overlay-controller.js",
+    "scripts/lens-runtime.js"
   ]);
   assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[3].args)), ["déidlechen!"]);
 });
@@ -471,7 +528,7 @@ test("background only proxies the approved LOD Lens API endpoints", async () => 
     "https://lod.lu/api/lb/entry/HAUS1"
   ]) {
     responses.push(await background.dispatchRuntimeMessage({
-      type: "lod-wrapper:lens-fetch",
+      type: "lodvault:lens-fetch",
       url
     }));
   }
@@ -510,7 +567,7 @@ test("background rejects non-whitelisted lens proxy URLs before fetching", async
     "https://lod.lu/api/lb/entry/HAUS%5C1"
   ]) {
     const response = await background.dispatchRuntimeMessage({
-      type: "lod-wrapper:lens-fetch",
+      type: "lodvault:lens-fetch",
       url
     });
 

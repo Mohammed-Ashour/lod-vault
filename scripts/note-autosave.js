@@ -151,7 +151,7 @@
     };
   }
 
-  globalThis.LodWrapperNotes = {
+  globalThis.LodVaultNotes = {
     normalizeNoteValue,
     createNoteAutosaveController
   };
