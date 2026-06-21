@@ -10,7 +10,7 @@
   // The import runs directly against chrome.storage.local (the tab is a
   // full extension page with store access) via store.importJsonDirect,
   // avoiding the background message-proxy round-trip.
-  const store = globalThis.LodWrapperStore || {};
+  const store = globalThis.LodVaultStore || {};
   const fileInput = document.getElementById("file-input");
   const dropzone = document.getElementById("dropzone");
   const statusEl = document.getElementById("status");
