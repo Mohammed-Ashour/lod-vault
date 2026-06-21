@@ -31,8 +31,12 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build Chrome + Firefox packages
-        run: npm run build
+      # Build both packages AND run Mozilla's web-ext lint on the Firefox
+      # package as a release gate. Fails on AMO errors (blocks the release);
+      # warnings are surfaced but non-fatal. `npm run lint` runs `npm run build`
+      # internally, so dist/*.zip are ready for the release step below.
+      - name: Build + web-ext lint (Firefox/AMO gate)
+        run: npm run lint
 
       # softprops/action-gh-release creates the Release for the tag if it does
       # not exist and attaches every file in `files`.

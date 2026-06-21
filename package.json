@@ -8,9 +8,11 @@
     "test": "node --test",
     "build:background": "node scripts/build-background.mjs",
     "build": "node scripts/build.mjs",
+    "lint": "npm run build && web-ext lint --source-dir dist/firefox",
     "package:release": "npm run build"
   },
   "devDependencies": {
-    "jsdom": "^26.0.0"
+    "jsdom": "^26.0.0",
+    "web-ext": "^10.4.0"
   }
 }
