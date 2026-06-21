@@ -9,9 +9,11 @@
     "build:background": "node scripts/build-background.mjs",
     "build": "node scripts/build.mjs",
     "lint": "npm run build && web-ext lint --source-dir dist/firefox",
+    "test:e2e": "npm run build && playwright test",
     "package:release": "npm run build"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.0",
     "jsdom": "^26.0.0",
     "web-ext": "^10.4.0"
   }
