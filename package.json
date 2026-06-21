@@ -7,7 +7,8 @@
   "scripts": {
     "test": "node --test",
     "build:background": "node scripts/build-background.mjs",
-    "package:release": "npm run build:background && bash scripts/build_release_zip.sh"
+    "build": "node scripts/build.mjs",
+    "package:release": "npm run build"
   },
   "devDependencies": {
     "jsdom": "^26.0.0"
