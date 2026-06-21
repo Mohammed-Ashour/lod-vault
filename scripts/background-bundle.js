@@ -1980,6 +1980,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     markPortableBackupExported,
     buildJsonExport,
     importJson,
+    importJsonDirect,
     importBrowserHistory,
     resumeHistoryImportHydration,
     applyRemoteVaultStateDirect,

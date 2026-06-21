@@ -1622,7 +1622,17 @@
 
       try {
         const text = await file.text();
-        const result = await store.importJson(text);
+        // Run the import directly in the popup context (which has full
+        // chrome.storage.local access) rather than proxying to the background
+        // via chrome.runtime.sendMessage. The proxied round-trip is
+        // long-running for large exports; if the popup loses focus while it
+        // is in flight (e.g. when the file picker dismisses), the browser
+        // closes the popup and the message port dies — leaving the user with
+        // no visible result. The direct handler avoids that entirely.
+        const importHandler = typeof store.importJsonDirect === "function"
+          ? store.importJsonDirect
+          : store.importJson.bind(store);
+        const result = await importHandler(text);
         await refreshSettingsState();
         renderAutoMode();
         renderSyncLanguages();
@@ -1630,7 +1640,8 @@
         await refreshCurrentPage();
         scheduleSyncCapacityRefresh();
         setSearchStatusFeedback(`Imported ${result.imported} word${result.imported === 1 ? "" : "s"}.`, "success");
-      } catch {
+      } catch (error) {
+        console.error("[LODVault] JSON import failed:", error);
         setSearchStatusFeedback("Could not import that JSON file.", "error");
       } finally {
         event.target.value = "";
