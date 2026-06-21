@@ -3,6 +3,9 @@ Thumbs.db
 node_modules/
 dist/
 *.zip
+.playwright/
+test-results/
+playwright-report/
 scripts/__pycache__/
 scripts/test_*.js
 scripts/*demo*.js

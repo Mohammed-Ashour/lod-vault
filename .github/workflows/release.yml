@@ -1,0 +1,50 @@
+name: Release
+
+# Build Chrome + Firefox packages and attach both zips to a GitHub Release
+# whenever a version tag (v*) is pushed. Tests run separately via test.yml on
+# every push to main and every PR; a release tag only publishes artifacts.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # required to create the Release and upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Build packages (also regenerates scripts/background-bundle.js and
+      # runs npm ci implicitly via the cache, but install first).
+      - run: npm ci
+
+      - name: Test
+        run: npm test
+
+      # Build both packages AND run Mozilla's web-ext lint on the Firefox
+      # package as a release gate. Fails on AMO errors (blocks the release);
+      # warnings are surfaced but non-fatal. `npm run lint` runs `npm run build`
+      # internally, so dist/*.zip are ready for the release step below.
+      - name: Build + web-ext lint (Firefox/AMO gate)
+        run: npm run lint
+
+      # softprops/action-gh-release creates the Release for the tag if it does
+      # not exist and attaches every file in `files`.
+      # Pinned to v2.6.2 (commit 3bb12739c298aeb8a4eeaf626c5b8d85266b0e65).
+      - name: Publish release with zips
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/lodvault-v*-chrome.zip
+            dist/lodvault-v*-firefox.zip

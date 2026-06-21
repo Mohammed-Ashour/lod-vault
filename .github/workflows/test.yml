@@ -21,3 +21,9 @@ jobs:
       - run: npm ci
 
       - run: npm test
+
+      # Build the Firefox package and run Mozilla's web-ext lint (AMO
+      # validation). Fails on errors; surfaces warnings non-fatally so the
+      # pre-existing escaped-innerHTML / data-collection notices don't block.
+      - name: Build + web-ext lint (Firefox/AMO)
+        run: npm run lint

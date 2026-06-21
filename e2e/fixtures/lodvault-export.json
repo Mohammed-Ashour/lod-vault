@@ -1,0 +1,56 @@
+{
+  "app": "lodvault",
+  "version": 2,
+  "exportedAt": "2026-06-20T00:00:00.000Z",
+  "settings": {
+    "autoMode": false,
+    "syncLanguages": ["en"]
+  },
+  "entries": [
+    {
+      "id": "HAUS1",
+      "word": "Haus",
+      "url": "https://lod.lu/artikel/HAUS1?lemma=Haus",
+      "pos": "Substantiv, Neutrum",
+      "inflection": "",
+      "example": "",
+      "note": "",
+      "translations": { "en": "house" },
+      "favorite": true,
+      "study": true,
+      "history": false,
+      "createdAt": "2026-06-19T00:00:00.000Z",
+      "updatedAt": "2026-06-19T00:00:00.000Z"
+    },
+    {
+      "id": "BUCH1",
+      "word": "Buch",
+      "url": "https://lod.lu/artikel/BUCH1?lemma=Buch",
+      "pos": "Substantiv, Neutrum",
+      "inflection": "",
+      "example": "",
+      "note": "",
+      "translations": { "en": "book" },
+      "favorite": false,
+      "study": true,
+      "history": false,
+      "createdAt": "2026-06-19T00:00:00.000Z",
+      "updatedAt": "2026-06-19T00:00:00.000Z"
+    },
+    {
+      "id": "HOND1",
+      "word": "Hond",
+      "url": "https://lod.lu/artikel/HOND1?lemma=Hond",
+      "pos": "Substantiv, Maskulinum",
+      "inflection": "",
+      "example": "",
+      "note": "",
+      "translations": { "en": "dog" },
+      "favorite": false,
+      "study": true,
+      "history": false,
+      "createdAt": "2026-06-19T00:00:00.000Z",
+      "updatedAt": "2026-06-19T00:00:00.000Z"
+    }
+  ]
+}

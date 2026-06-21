@@ -1,0 +1,45 @@
+name: E2E
+
+# Playwright end-to-end tests against the Chrome build.
+#
+# Firefox has no reliable headless extension-automation path in Playwright; it
+# is gated instead by web-ext lint in test.yml (manifest/package validity) and
+# shares the browser-agnostic logic (import.js, content script) covered here.
+# The Chrome suite guards the flows that broke twice: the popup/Restore-JSON
+# path and the lod.lu content-script banner.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Playwright's chromium channel is required for headless extension
+      # loading (--load-extension); install just that browser binary.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build extension + run e2e
+        run: npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

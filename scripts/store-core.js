@@ -1962,6 +1962,7 @@
     markPortableBackupExported,
     buildJsonExport,
     importJson,
+    importJsonDirect,
     importBrowserHistory,
     resumeHistoryImportHydration,
     applyRemoteVaultStateDirect,

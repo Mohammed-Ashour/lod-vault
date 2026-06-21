@@ -1616,28 +1616,6 @@
       }
     }
 
-    async function importJsonFile(event) {
-      const file = event.target.files?.[0];
-      if (!file) return;
-
-      try {
-        const text = await file.text();
-        const result = await store.importJson(text);
-        await refreshSettingsState();
-        renderAutoMode();
-        renderSyncLanguages();
-        await renderSavedList();
-        await refreshCurrentPage();
-        scheduleSyncCapacityRefresh();
-        setSearchStatusFeedback(`Imported ${result.imported} word${result.imported === 1 ? "" : "s"}.`, "success");
-      } catch {
-        setSearchStatusFeedback("Could not import that JSON file.", "error");
-      } finally {
-        event.target.value = "";
-        clearSearchStatusToneAfter();
-      }
-    }
-
     async function init() {
       if (initialized) return;
       initialized = true;
@@ -1678,7 +1656,6 @@
       elements.importHistoryReport = document.getElementById("import-history-report");
       elements.importHistoryReportSummary = document.getElementById("import-history-report-summary");
       elements.importHistoryReportList = document.getElementById("import-history-report-list");
-      elements.importJsonFile = document.getElementById("import-json-file");
       elements.portableBackupCard = document.getElementById("portable-backup-card");
       elements.portableBackupChip = document.getElementById("portable-backup-chip");
       elements.portableBackupNowButton = document.getElementById("portable-backup-now");
@@ -1712,10 +1689,16 @@
       elements.exportAnki.addEventListener("click", exportAnki);
       elements.exportJson.addEventListener("click", exportJson);
       elements.portableBackupNowButton?.addEventListener("click", exportJson);
-      elements.importJson.addEventListener("click", () => elements.importJsonFile.click());
+      elements.importJson.addEventListener("click", () => {
+        // Open the import UI in a persistent tab. Firefox unloads the
+        // browser-action popup when a native file picker takes focus, so a
+        // file input inside the popup never fires its change event there.
+        // A tab stays open across the picker, so the import works in both
+        // Firefox and Chrome.
+        chromeApi.tabs.create({ url: chromeApi.runtime.getURL("pages/import.html") });
+      });
       elements.importBrowserHistory?.addEventListener("click", importFromBrowserHistory);
       elements.importHistoryRange?.addEventListener("change", onHistoryImportRangeChange);
-      elements.importJsonFile.addEventListener("change", importJsonFile);
       elements.searchInput.addEventListener("input", onSearchInput);
       elements.currentNoteInput.addEventListener("input", onCurrentNoteInput);
       elements.currentNoteInput.addEventListener("change", onCurrentNoteCommit);
