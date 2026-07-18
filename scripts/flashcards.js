@@ -197,6 +197,26 @@ function toggleDirection() {
 }
 
 function onKeyDown(event) {
+  const target = event.target;
+  if (
+    target?.tagName === "SELECT"
+    || target?.tagName === "INPUT"
+    || target?.tagName === "TEXTAREA"
+    || target?.isContentEditable
+  ) {
+    return;
+  }
+
+  if (
+    event.key === "Escape"
+    && elements.summaryOverlay
+    && !elements.summaryOverlay.classList.contains("is-hidden")
+  ) {
+    event.preventDefault();
+    closeSummary();
+    return;
+  }
+
   if (!state.deck.length) return;
 
   if (event.key === "ArrowRight") {
