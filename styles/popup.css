@@ -267,7 +267,24 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 .sync-language-capacity { color: var(--accent-lt); font-size: 11px; text-align: right; }
 .sync-actions-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .sync-now-btn, .sync-pull-btn { flex-shrink: 0; }
-.sync-now-status, .sync-health-status { margin-top: 4px; font-size: 11px; }
+.sync-now-status, .sync-health-status, .sync-verified-status { margin-top: 4px; font-size: 11px; }
+.sync-retry { margin-top: 4px; }
+.sync-verified-status { color: var(--accent-lt); }
+
+.action-feedback {
+  margin: 8px 12px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border-a);
+  border-radius: var(--r-sm);
+  background: var(--accent-dim);
+  color: var(--accent-lt);
+  font-size: 12px;
+}
+.action-feedback.is-error {
+  border-color: var(--border-d);
+  background: rgba(230,96,106,0.08);
+  color: #f29ba2;
+}
 
 /* ── Capacity bar ─────────────────────────────── */
 .sync-capacity-bar {

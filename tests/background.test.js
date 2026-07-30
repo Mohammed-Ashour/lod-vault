@@ -279,6 +279,36 @@ test("background uses pushSettings for an autoMode-only settings mutation", asyn
   assert.equal(pushAllCalls, 0);
 });
 
+test("background keeps the local verification timestamp out of sync writes", async () => {
+  const background = loadBackgroundScript();
+  let pushCalls = 0;
+
+  background.context.LodVaultSync.SyncAdapter.init = async () => ({ ok: true, mode: "noop" });
+  background.runtimeOnStartup.dispatch();
+  await wait(0);
+  await wait(0);
+
+  background.context.LodVaultSync.SyncAdapter.pushAll = async () => {
+    pushCalls += 1;
+    return { ok: true };
+  };
+  background.context.LodVaultSync.SyncAdapter.pushSettings = async () => {
+    pushCalls += 1;
+    return { ok: true };
+  };
+
+  await background.chrome.storage.local.set({
+    "lodVault.settings": {
+      autoMode: false,
+      syncLanguages: ["en", "fr", "de"],
+      lastVerifiedSyncAt: "2026-07-30T12:34:56.000Z"
+    }
+  });
+
+  await wait(50);
+  assert.equal(pushCalls, 0);
+});
+
 test("background registers the lens context menu during boot", () => {
   const background = loadBackgroundScript();
   const menu = background.createdContextMenus[background.createdContextMenus.length - 1];

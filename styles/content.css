@@ -258,6 +258,16 @@
 
 /* ── Meta ─────────────────────────────────────────── */
 
+#lodvault-banner .lodw-action-feedback {
+  margin: 0 !important;
+  padding: 0 12px 6px !important;
+  color: #7dd4a8 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+#lodvault-banner .lodw-action-feedback.is-error { color: #f29ba2 !important; }
+#lodvault-banner .lodw-action-feedback.is-hidden { display: none !important; }
+
 #lodvault-banner .lodw-meta {
   display: block !important;
   padding: 0 12px 8px !important;

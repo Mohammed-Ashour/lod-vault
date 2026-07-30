@@ -220,9 +220,11 @@
         const savedEntry = await store.toggleList(entry, listName);
         if (!updateWordSession(session, entry, savedEntry)) return;
 
-        setStatus(savedEntry
-          ? `Saved "${entry.word}".`
-          : `Removed "${entry.word}" from your vault.`);
+        setStatus(typeof store.describeListAction === "function"
+          ? store.describeListAction(entry, listName, savedEntry)
+          : savedEntry
+            ? `Saved "${entry.word}".`
+            : `Removed "${entry.word}" from your vault.`);
       } catch {
         if (!session.isActive()) return;
         setStatus("Could not update your vault right now.");

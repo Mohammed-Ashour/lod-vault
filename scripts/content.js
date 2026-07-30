@@ -96,7 +96,8 @@ bannerController = LodVaultPageBanner.createController({
 
 const {
   ensureBanner,
-  applyState
+  applyState,
+  setActionFeedback
 } = bannerController;
 
 function isLikelyArticlePage(url = location.href) {
@@ -178,6 +179,9 @@ async function handleListToggle(listName) {
     const savedEntry = await LodVaultStore.toggleList(entry, listName);
     bannerController.clearRenderKey();
     applyState(savedEntry, entry);
+    setActionFeedback(typeof LodVaultStore.describeListAction === "function"
+      ? LodVaultStore.describeListAction(entry, listName, savedEntry)
+      : `Updated ${entry.word}.`);
     notifyPopup(entry, savedEntry);
   } catch (error) {
     if (isExtensionContextInvalidated(error)) {
@@ -190,6 +194,7 @@ async function handleListToggle(listName) {
       banner.querySelector(".lodw-word").textContent = "Could not save";
       const infoEl = banner.querySelector(".lodw-info");
       if (infoEl) infoEl.title = "";
+      setActionFeedback("Could not update your vault.", "error");
     }
   } finally {
     if (!contextInvalidated) {

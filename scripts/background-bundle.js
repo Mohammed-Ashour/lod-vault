@@ -25,7 +25,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   const HISTORY_IMPORT_STATE_KEY = "lodVault.historyImport";
   const DEFAULT_SETTINGS = {
     autoMode: false,
-    syncLanguages: ["en", "fr", "de"]
+    syncLanguages: ["en", "fr", "de"],
+    lastVerifiedSyncAt: ""
   };
   const EXPORT_VERSION = 2;
   const MAX_SYNC_LANGUAGES = 3;
@@ -208,11 +209,17 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return deduped.length ? deduped : [...DEFAULT_SETTINGS.syncLanguages];
   }
 
+  function normalizeSyncVerificationTimestamp(value) {
+    const timestamp = Date.parse(cleanText(value));
+    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : "";
+  }
+
   function normalizeSettings(settings = {}) {
     return {
       ...DEFAULT_SETTINGS,
       autoMode: Boolean(settings?.autoMode),
-      syncLanguages: normalizeSyncLanguages(settings?.syncLanguages)
+      syncLanguages: normalizeSyncLanguages(settings?.syncLanguages),
+      lastVerifiedSyncAt: normalizeSyncVerificationTimestamp(settings?.lastVerifiedSyncAt)
     };
   }
 
@@ -901,6 +908,33 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return runStoreMutation("setSyncLanguages", [languages], setSyncLanguagesDirect);
   }
 
+  async function markSyncVerifiedDirect(timestamp = nowIso()) {
+    return runVaultIo(async () => {
+      const nextSettings = normalizeSettings({
+        ...(await getSettings()),
+        lastVerifiedSyncAt: timestamp
+      });
+
+      await persistVaultState({ settings: nextSettings });
+      return nextSettings.lastVerifiedSyncAt;
+    });
+  }
+
+  async function markSyncVerified(timestamp) {
+    return runStoreMutation("markSyncVerified", [timestamp], markSyncVerifiedDirect);
+  }
+
+  function describeListAction(entry, listName, savedEntry) {
+    const word = cleanWordLabel(entry?.word) || "Word";
+    const listLabel = listName === "study" ? "Study" : "Favorites";
+
+    if (!entry?.[listName]) {
+      return `Added ${word} to ${listLabel}.`;
+    }
+
+    return savedEntry ? `Removed ${word} from ${listLabel}.` : `Removed ${word} from your vault.`;
+  }
+
   async function getEntries() {
     const entryMap = await getEntryMap();
     return Object.values(entryMap)
@@ -1205,7 +1239,11 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   }
 
   function buildJsonExport(entries, options = {}) {
-    const settings = normalizeSettings(options.settings || DEFAULT_SETTINGS);
+    const normalizedSettings = normalizeSettings(options.settings || DEFAULT_SETTINGS);
+    const settings = {
+      autoMode: normalizedSettings.autoMode,
+      syncLanguages: normalizedSettings.syncLanguages
+    };
     const flashcardMeta = normalizeFlashcardMetaMap(options.flashcardMeta);
     return JSON.stringify(
       {
@@ -2010,6 +2048,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     cleanText,
     normalizeVisitCount,
     normalizeSyncLanguages,
+    normalizeSyncVerificationTimestamp,
     normalizeSettings,
     normalizePortableBackupMeta,
     normalizeDeletedMap,
@@ -2027,6 +2066,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     getSyncLanguages,
     setAutoMode,
     setSyncLanguages,
+    markSyncVerified,
+    describeListAction,
     getEntries,
     getEntry,
     toggleList,
@@ -5131,7 +5172,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
       if (syncLanguagesChanged) return "all";
       if (autoModeChanged) return "settings";
-      return null;
+      return "none";
     }
 
     function describeLocalPushPlan(changes) {
@@ -5139,6 +5180,10 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       const settingsChange = changes?.[store.SETTINGS_KEY || "lodVault.settings"];
       const deletedChange = changes?.[store.DELETED_KEY || "lodVault.deleted"];
       const settingsKind = getSettingsChangeKind(settingsChange);
+
+      if (!entryChange && !deletedChange && settingsKind === "none") {
+        return null;
+      }
 
       if (deletedChange) {
         return { type: "all", immediate: true };
@@ -5247,6 +5292,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     }
 
     function scheduleLocalPush(plan = { type: "all" }) {
+      if (!plan) return;
+
       // Merge this plan with any pending plan so rapid successive
       // changes are coalesced into a single push after the debounce.
       pendingLocalPushPlan = mergeLocalPushPlans(pendingLocalPushPlan, plan);
@@ -5378,6 +5425,7 @@ const STORE_MUTATION_MESSAGE_TYPE = LodVaultStore.STORE_MUTATION_MESSAGE_TYPE;
 const STORE_MUTATION_METHODS = new Set([
   "setAutoMode",
   "setSyncLanguages",
+  "markSyncVerified",
   "toggleList",
   "recordAutoVisit",
   "removeFromHistory",

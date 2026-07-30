@@ -122,7 +122,7 @@
 
       if (syncLanguagesChanged) return "all";
       if (autoModeChanged) return "settings";
-      return null;
+      return "none";
     }
 
     function describeLocalPushPlan(changes) {
@@ -130,6 +130,10 @@
       const settingsChange = changes?.[store.SETTINGS_KEY || "lodVault.settings"];
       const deletedChange = changes?.[store.DELETED_KEY || "lodVault.deleted"];
       const settingsKind = getSettingsChangeKind(settingsChange);
+
+      if (!entryChange && !deletedChange && settingsKind === "none") {
+        return null;
+      }
 
       if (deletedChange) {
         return { type: "all", immediate: true };
@@ -238,6 +242,8 @@
     }
 
     function scheduleLocalPush(plan = { type: "all" }) {
+      if (!plan) return;
+
       // Merge this plan with any pending plan so rapid successive
       // changes are coalesced into a single push after the debounce.
       pendingLocalPushPlan = mergeLocalPushPlans(pendingLocalPushPlan, plan);

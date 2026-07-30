@@ -132,6 +132,17 @@ test("setSyncLanguages updates cached settings immediately even when storage cha
   assert.deepEqual(Array.from((await store.getSettings()).syncLanguages), ["pt", "nl"]);
 });
 
+test("markSyncVerified persists an ISO timestamp without changing sync settings", async () => {
+  const { store, storageData } = loadSharedStore();
+
+  const timestamp = await store.markSyncVerified("2026-07-30T12:34:56.000Z");
+
+  assert.equal(timestamp, "2026-07-30T12:34:56.000Z");
+  assert.equal((await store.getSettings()).lastVerifiedSyncAt, timestamp);
+  assert.equal(storageData[store.SETTINGS_KEY].lastVerifiedSyncAt, timestamp);
+  assert.deepEqual(Array.from((await store.getSettings()).syncLanguages), ["en", "fr", "de"]);
+});
+
 test("importJson updates cached settings immediately even when storage change events are delayed", async () => {
   const { store, flushStorageEvents } = loadSharedStore({}, { asyncStorageEvents: true });
 
