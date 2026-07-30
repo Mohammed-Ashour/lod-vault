@@ -1148,15 +1148,49 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return runStoreMutation("markPortableBackupExported", [summary], markPortableBackupExportedDirect);
   }
 
+  function normalizeFlashcardMetaMap(rawMap) {
+    const result = {};
+    if (!rawMap || typeof rawMap !== "object" || Array.isArray(rawMap)) {
+      return result;
+    }
+    for (const [id, value] of Object.entries(rawMap)) {
+      const cleanId = cleanText(id);
+      if (!cleanId || !value || typeof value !== "object" || Array.isArray(value)) continue;
+      result[cleanId] = normalizeFlashcardMeta(value);
+    }
+    return result;
+  }
+
+  function mergeFlashcardMetaRecord(existing, incoming) {
+    if (!existing) return incoming;
+    if (!incoming) return existing;
+    if (incoming.totalReviews !== existing.totalReviews) {
+      return incoming.totalReviews > existing.totalReviews ? incoming : existing;
+    }
+    const existingTime = Date.parse(existing.lastReviewedAt) || 0;
+    const incomingTime = Date.parse(incoming.lastReviewedAt) || 0;
+    return incomingTime > existingTime ? incoming : existing;
+  }
+
+  function mergeFlashcardMetaMaps(currentMap, incomingMap) {
+    const merged = { ...currentMap };
+    for (const [id, incoming] of Object.entries(incomingMap)) {
+      merged[id] = mergeFlashcardMetaRecord(merged[id], incoming);
+    }
+    return merged;
+  }
+
   function buildJsonExport(entries, options = {}) {
     const settings = normalizeSettings(options.settings || DEFAULT_SETTINGS);
+    const flashcardMeta = normalizeFlashcardMetaMap(options.flashcardMeta);
     return JSON.stringify(
       {
         app: "lodvault",
         version: EXPORT_VERSION,
         exportedAt: nowIso(),
         settings,
-        entries: entries.map(normalizeEntry)
+        entries: entries.map(normalizeEntry),
+        flashcardMeta
       },
       null,
       2
@@ -1241,12 +1275,20 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         imported += 1;
       }
 
+      const incomingFlashcardMeta = normalizeFlashcardMetaMap(
+        !Array.isArray(parsed) && parsed && typeof parsed === "object" ? parsed.flashcardMeta : null
+      );
+
       try {
         await persistVaultState({
           entryMap,
           settings: importedSettings ? effectiveSettings : null,
           deletedMap
         });
+        if (Object.keys(incomingFlashcardMeta).length) {
+          const currentFlashcardMeta = await getFlashcardMeta();
+          await saveFlashcardMeta(mergeFlashcardMetaMaps(currentFlashcardMeta, incomingFlashcardMeta));
+        }
       } catch (error) {
         invalidateStoreCache({ entryMap: false, settings: true });
         if (isExtensionContextInvalidated(error)) {

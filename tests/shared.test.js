@@ -684,6 +684,175 @@ test("buildJsonExport uses the lodvault app identifier and includes normalized s
   assert.equal(parsed.entries[0].id, "HAUS1");
 });
 
+test("buildJsonExport includes normalized flashcard metadata", () => {
+  const { store } = loadSharedStore();
+
+  const json = store.buildJsonExport(
+    [
+      {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        favorite: true
+      }
+    ],
+    {
+      flashcardMeta: {
+        HAUS1: {
+          reviews: [{ date: "2026-07-01T10:00:00.000Z", rating: 3, direction: "rev" }],
+          totalReviews: 5,
+          hardCount: 1,
+          goodCount: 2,
+          easyCount: 2,
+          lastReviewedAt: "2026-07-01T10:00:00.000Z",
+          dueAt: "2026-07-09T10:00:00.000Z",
+          interval: 8
+        },
+        "": { totalReviews: 99 },
+        BROKEN1: "not-an-object"
+      }
+    }
+  );
+
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.flashcardMeta.HAUS1.totalReviews, 5);
+  assert.equal(parsed.flashcardMeta.HAUS1.interval, 8);
+  assert.equal(parsed.flashcardMeta.HAUS1.reviews[0].direction, "rev");
+  assert.equal(parsed.flashcardMeta[""], undefined);
+  assert.equal(parsed.flashcardMeta.BROKEN1, undefined);
+});
+
+test("importJson merges flashcard metadata, keeping the stronger review record per word", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.flashcardMeta"]: {
+      HAUS1: {
+        reviews: [{ date: "2026-06-01T10:00:00.000Z", rating: 2, direction: "fwd" }],
+        totalReviews: 3,
+        hardCount: 0,
+        goodCount: 3,
+        easyCount: 0,
+        lastReviewedAt: "2026-06-01T10:00:00.000Z",
+        dueAt: "2026-06-03T10:00:00.000Z",
+        interval: 2
+      },
+      KEEP1: {
+        reviews: [],
+        totalReviews: 7,
+        hardCount: 1,
+        goodCount: 3,
+        easyCount: 3,
+        lastReviewedAt: "2026-06-20T10:00:00.000Z",
+        dueAt: "2026-07-20T10:00:00.000Z",
+        interval: 30
+      },
+      TIE1: {
+        reviews: [],
+        totalReviews: 4,
+        hardCount: 0,
+        goodCount: 4,
+        easyCount: 0,
+        lastReviewedAt: "2026-06-15T10:00:00.000Z",
+        dueAt: "2026-06-19T10:00:00.000Z",
+        interval: 4
+      }
+    }
+  });
+
+  await store.importJson(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    entries: [],
+    flashcardMeta: {
+      HAUS1: {
+        reviews: [],
+        totalReviews: 9,
+        hardCount: 2,
+        goodCount: 4,
+        easyCount: 3,
+        lastReviewedAt: "2026-07-01T10:00:00.000Z",
+        dueAt: "2026-07-15T10:00:00.000Z",
+        interval: 14
+      },
+      KEEP1: {
+        reviews: [],
+        totalReviews: 2,
+        hardCount: 0,
+        goodCount: 2,
+        easyCount: 0,
+        lastReviewedAt: "2026-07-02T10:00:00.000Z",
+        dueAt: "2026-07-04T10:00:00.000Z",
+        interval: 2
+      },
+      TIE1: {
+        reviews: [],
+        totalReviews: 4,
+        hardCount: 4,
+        goodCount: 0,
+        easyCount: 0,
+        lastReviewedAt: "2026-06-10T10:00:00.000Z",
+        dueAt: "2026-06-11T10:00:00.000Z",
+        interval: 1
+      },
+      NEW1: {
+        reviews: [{ date: "2026-07-03T10:00:00.000Z", rating: 3, direction: "fwd" }],
+        totalReviews: 1,
+        hardCount: 0,
+        goodCount: 0,
+        easyCount: 1,
+        lastReviewedAt: "2026-07-03T10:00:00.000Z",
+        dueAt: "2026-07-05T10:00:00.000Z",
+        interval: 2
+      }
+    }
+  }));
+
+  const meta = storageData["lodVault.flashcardMeta"];
+  // Incoming record has more reviews, so it wins.
+  assert.equal(meta.HAUS1.totalReviews, 9);
+  assert.equal(meta.HAUS1.interval, 14);
+  // Existing record has more reviews, so it is kept even though the import is newer.
+  assert.equal(meta.KEEP1.totalReviews, 7);
+  assert.equal(meta.KEEP1.lastReviewedAt, "2026-06-20T10:00:00.000Z");
+  // Equal review counts fall back to the later lastReviewedAt (the existing record here).
+  assert.equal(meta.TIE1.lastReviewedAt, "2026-06-15T10:00:00.000Z");
+  assert.equal(meta.TIE1.interval, 4);
+  // Metadata for words that are not stored yet is imported as well.
+  assert.equal(meta.NEW1.totalReviews, 1);
+});
+
+test("importJson without flashcard metadata keeps existing review progress untouched", async () => {
+  const existingMeta = {
+    HAUS1: {
+      reviews: [],
+      totalReviews: 5,
+      hardCount: 1,
+      goodCount: 2,
+      easyCount: 2,
+      lastReviewedAt: "2026-06-01T10:00:00.000Z",
+      dueAt: "2026-06-05T10:00:00.000Z",
+      interval: 4
+    }
+  };
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.flashcardMeta"]: existingMeta
+  });
+
+  await store.importJson(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    entries: [
+      {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        favorite: true
+      }
+    ]
+  }));
+
+  assert.deepEqual(storageData["lodVault.flashcardMeta"], existingMeta);
+});
+
 test("importJson rejects exports from other apps", async () => {
   const { store } = loadSharedStore();
 
