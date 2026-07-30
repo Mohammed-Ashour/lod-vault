@@ -551,7 +551,7 @@
     return normalized;
   }
 
-  function filterEntryMapTranslationsWithMeta(entryMap = {}, languages = DEFAULT_SETTINGS.syncLanguages) {
+  function sanitizeEntryMapWithMeta(entryMap = {}, languages = null) {
     const source = entryMap && typeof entryMap === "object" ? entryMap : {};
     const result = {};
     let changed = false;
@@ -564,7 +564,9 @@
       const recovered = recoveredFromLegacy
         ? recoverLegacyMembership(rawEntry, normalized)
         : normalized;
-      const filtered = applyTranslationLanguageFilter(recovered, languages);
+      const filtered = Array.isArray(languages)
+        ? applyTranslationLanguageFilter(recovered, languages)
+        : recovered;
 
       if (recoveredFromLegacy) {
         needsLegacyRecovery = true;
@@ -595,6 +597,10 @@
       changed,
       needsLegacyRecovery
     };
+  }
+
+  function filterEntryMapTranslationsWithMeta(entryMap = {}, languages = DEFAULT_SETTINGS.syncLanguages) {
+    return sanitizeEntryMapWithMeta(entryMap, languages);
   }
 
   function filterEntryMapTranslations(entryMap = {}, languages = DEFAULT_SETTINGS.syncLanguages) {
@@ -653,7 +659,7 @@
         entryMap: filtered,
         changed,
         needsLegacyRecovery
-      } = filterEntryMapTranslationsWithMeta(combined, settings.syncLanguages);
+      } = sanitizeEntryMapWithMeta(combined);
       const filteredWithDeletes = applyDeletedMap(filtered, deletedMap);
       const deletedChanged = stableEntryMapString(filtered) !== stableEntryMapString(filteredWithDeletes);
 
@@ -858,16 +864,9 @@
         ...(await getSettings()),
         syncLanguages: languages
       });
-      const entryMap = await getEntryMap();
-      const deletedMap = await getDeletedMap();
-      const filteredEntryMap = filterEntryMapTranslations(entryMap, nextSettings.syncLanguages);
 
       try {
-        await persistVaultState({
-          entryMap: filteredEntryMap,
-          settings: nextSettings,
-          deletedMap
-        });
+        await persistVaultState({ settings: nextSettings });
       } catch (error) {
         invalidateStoreCache({ entryMap: false, settings: true });
         if (isExtensionContextInvalidated(error)) {
@@ -914,13 +913,12 @@
         throw new Error("Cannot save an empty entry.");
       }
 
-      const [settings, entryMap, deletedMap] = await Promise.all([
-        getSettings(),
+      const [entryMap, deletedMap] = await Promise.all([
         getEntryMap(),
         getDeletedMap()
       ]);
       const existing = entryMap[normalized.id];
-      const merged = applyTranslationLanguageFilter(mergeEntry(existing, normalized), settings.syncLanguages);
+      const merged = mergeEntry(existing, normalized);
 
       merged.favorite = Boolean(existing?.favorite);
       merged.study = Boolean(existing?.study);
@@ -957,13 +955,12 @@
         throw new Error("Cannot save an empty entry.");
       }
 
-      const [settings, entryMap, deletedMap] = await Promise.all([
-        getSettings(),
+      const [entryMap, deletedMap] = await Promise.all([
         getEntryMap(),
         getDeletedMap()
       ]);
       const existing = entryMap[normalized.id];
-      const merged = applyTranslationLanguageFilter(mergeEntry(existing, normalized), settings.syncLanguages);
+      const merged = mergeEntry(existing, normalized);
       const visitedAt = nowIso();
 
       merged.favorite = Boolean(existing?.favorite);
@@ -1028,15 +1025,14 @@
       const normalized = normalizeEntry(entry);
       if (!normalized.id || !normalized.word) return null;
 
-      const [settings, entryMap, deletedMap] = await Promise.all([
-        getSettings(),
+      const [entryMap, deletedMap] = await Promise.all([
         getEntryMap(),
         getDeletedMap()
       ]);
       const existing = entryMap[normalized.id];
       if (!existing) return null;
 
-      const merged = applyTranslationLanguageFilter(mergeEntry(existing, normalized), settings.syncLanguages);
+      const merged = mergeEntry(existing, normalized);
       merged.favorite = Boolean(existing.favorite);
       merged.study = Boolean(existing.study);
       merged.history = Boolean(existing.history);
@@ -1205,7 +1201,7 @@
         if (!shouldKeepEntry(incoming)) continue;
 
         const existing = entryMap[incoming.id];
-        const merged = applyTranslationLanguageFilter(mergeEntry(existing, incoming), effectiveSettings.syncLanguages);
+        const merged = mergeEntry(existing, incoming);
         merged.favorite = Boolean(existing?.favorite) || Boolean(incoming.favorite);
         merged.study = Boolean(existing?.study) || Boolean(incoming.study);
         merged.history = Boolean(existing?.history) || Boolean(incoming.history);
@@ -1227,11 +1223,9 @@
         imported += 1;
       }
 
-      const filteredEntryMap = filterEntryMapTranslations(entryMap, effectiveSettings.syncLanguages);
-
       try {
         await persistVaultState({
-          entryMap: filteredEntryMap,
+          entryMap,
           settings: importedSettings ? effectiveSettings : null,
           deletedMap
         });
@@ -1243,7 +1237,7 @@
         throw error;
       }
 
-      return { imported, total: countStoredEntries(filteredEntryMap) };
+      return { imported, total: countStoredEntries(entryMap) };
     });
   }
 
@@ -1324,8 +1318,8 @@
       || Object.keys(normalized.translations || {}).length === 0;
   }
 
-  function mergeHydratedHistoryEntry(existing, hydrated, settings) {
-    const merged = applyTranslationLanguageFilter(mergeEntry(existing, hydrated), settings.syncLanguages);
+  function mergeHydratedHistoryEntry(existing, hydrated) {
+    const merged = mergeEntry(existing, hydrated);
     merged.favorite = Boolean(existing?.favorite);
     merged.study = Boolean(existing?.study);
     merged.history = Boolean(existing?.history);
@@ -1409,8 +1403,7 @@
           if (existingEntry && !deletedMap[nextId] && shouldHydrateHistoryEntry(existingEntry)) {
             const hydratedEntry = await hydrateHistoryEntry(existingEntry, settings);
             hydrated = await runVaultIo(async () => {
-              const [latestSettings, entryMap, latestDeletedMap] = await Promise.all([
-                getSettings(),
+              const [entryMap, latestDeletedMap] = await Promise.all([
                 getEntryMap(),
                 getDeletedMap()
               ]);
@@ -1419,7 +1412,7 @@
                 return false;
               }
 
-              entryMap[nextId] = mergeHydratedHistoryEntry(latestEntry, hydratedEntry, latestSettings);
+              entryMap[nextId] = mergeHydratedHistoryEntry(latestEntry, hydratedEntry);
               await persistVaultState({ entryMap, deletedMap: latestDeletedMap });
               return true;
             });
@@ -1483,9 +1476,8 @@
     const historyItems = await chrome.history.search(searchOptions);
 
     const result = await runVaultIo(async () => {
-      const [entryMap, settings, deletedMap, existingImportState] = await Promise.all([
+      const [entryMap, deletedMap, existingImportState] = await Promise.all([
         getEntryMap(),
-        getSettings(),
         getDeletedMap(),
         getHistoryImportState()
       ]);
@@ -1532,7 +1524,7 @@
           continue;
         }
 
-        const storedEntry = applyTranslationLanguageFilter(normalized, settings.syncLanguages);
+        const storedEntry = normalized;
         entryMap[id] = storedEntry;
         delete deletedMap[id];
         imported += 1;
@@ -1707,7 +1699,7 @@
       });
       const mergedDeletedMap = mergeDeletedMaps(localDeletedMap, remoteDeletedMap);
       const mergedEntries = applyDeletedMap(
-        filterEntryMapTranslations(mergeVaultVersions(localEntries, remoteEntries), mergedSettings.syncLanguages),
+        mergeVaultVersions(localEntries, remoteEntries),
         mergedDeletedMap
       );
       const nextDeletedMap = pruneDeletedMapAgainstEntries(mergedEntries, mergedDeletedMap);

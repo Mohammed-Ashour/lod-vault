@@ -206,7 +206,7 @@ test("SyncAdapter.pushAll writes manifest, settings, and compact shards into syn
   assert.equal(fixture.syncStorageData[`${fixture.sync.SYNC_ENTRY_PREFIX}0`][0].t.d, undefined);
 });
 
-test("SyncAdapter.pullAll filters saved local translations to the selected languages", async () => {
+test("SyncAdapter.pullAll keeps local translations outside the sync languages", async () => {
   const fixture = loadSyncScript({
     local: {
       "lodVault.entries": {
@@ -249,7 +249,7 @@ test("SyncAdapter.pullAll filters saved local translations to the selected langu
   assert.equal(result.changed, true);
   assert.deepEqual(
     fixture.storageData["lodVault.entries"].HAUS1.translations,
-    { en: "home", fr: "maison" }
+    { en: "home", de: "Haus", fr: "maison" }
   );
   assert.equal(fixture.storageData["lodVault.entries"].BEEM1.word, "Beem");
   assert.deepEqual(fixture.storageData["lodVault.settings"].syncLanguages, ["en", "fr"]);
@@ -315,7 +315,7 @@ test("SyncAdapter.pullAll prefers the larger vault and only adds from the smalle
   assert.equal(fixture.storageData["lodVault.entries"].WASSER1.word, "Waasser");
 });
 
-test("SyncAdapter.pullAll keeps only explicitly selected local languages when local settings already exist", async () => {
+test("SyncAdapter.pullAll preserves local translations beyond the selected sync languages", async () => {
   const fixture = loadSyncScript({
     local: {
       "lodVault.entries": {
@@ -351,7 +351,7 @@ test("SyncAdapter.pullAll keeps only explicitly selected local languages when lo
 
   assert.deepEqual(
     fixture.storageData["lodVault.entries"].HAUS1.translations,
-    { en: "home", de: "Haus" }
+    { en: "home", de: "Haus", fr: "maison" }
   );
   assert.deepEqual(fixture.storageData["lodVault.settings"].syncLanguages, ["en", "de"]);
 });
@@ -434,7 +434,7 @@ test("SyncAdapter.pullAll migrates legacy sync format forward to v4", async () =
   assert.equal(result.ok, true);
   assert.equal(result.needsMigration, true);
   assert.equal(fixture.storageData["lodVault.entries"].HAUS1.word, "Haus");
-  assert.deepEqual(fixture.storageData["lodVault.entries"].HAUS1.translations, { en: "house", fr: "maison" });
+  assert.deepEqual(fixture.storageData["lodVault.entries"].HAUS1.translations, { en: "house", fr: "maison", de: "Haus" });
   assert.equal(fixture.syncStorageData["lodVault.m"].v, 4);
   assert.deepEqual(fixture.syncStorageData["lodVault.m"].l, ["e", "f"]);
   assert.deepEqual(fixture.syncStorageData["lodVault.s"].l, ["en", "fr"]);

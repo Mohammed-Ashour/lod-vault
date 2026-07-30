@@ -772,6 +772,7 @@
 
     return {
       entries: filterEntryMapTranslations(rawEntries, settings.syncLanguages),
+      rawEntries: normalizeEntryMap(rawEntries),
       rawSettings,
       settings,
       deletedMap
@@ -1120,7 +1121,7 @@
 
   async function pullAll(options = {}) {
     const [localState, syncState] = await Promise.all([getLocalState(), getSyncState()]);
-    const remoteEntries = buildRemoteEntryMap(syncState.entries, localState.entries);
+    const remoteEntries = buildRemoteEntryMap(syncState.entries, localState.rawEntries);
 
     const applyResult = typeof store.applyRemoteVaultStateDirect === "function"
       ? await store.applyRemoteVaultStateDirect({
@@ -1132,19 +1133,16 @@
           const mergedSettings = buildPulledSettings(localState, syncState);
           const mergedDeletedMap = mergeDeletedMaps(localState.deletedMap, syncState.deletedMap);
           const mergedEntries = applyDeletedMap(
-            filterEntryMapTranslations(
-              Object.keys(remoteEntries).length
-                ? mergeVaultVersionsPreferLarger(localState.entries, remoteEntries)
-                : localState.entries,
-              mergedSettings.syncLanguages
-            ),
+            Object.keys(remoteEntries).length
+              ? mergeVaultVersionsPreferLarger(localState.rawEntries, remoteEntries)
+              : localState.rawEntries,
             mergedDeletedMap
           );
           const nextDeletedMap = pruneDeletedMapAgainstEntries(mergedEntries, mergedDeletedMap);
-          const changed = stableStringify(localState.entries) !== stableStringify(mergedEntries)
+          const changed = stableStringify(localState.rawEntries) !== stableStringify(mergedEntries)
             || stableStringify(localState.settings) !== stableStringify(mergedSettings)
             || stableStringify(normalizeDeletedMap(localState.deletedMap)) !== stableStringify(nextDeletedMap);
-          const appliedDeletionCount = Object.keys(localState.entries).filter((id) => !mergedEntries[id] && nextDeletedMap[id]).length;
+          const appliedDeletionCount = Object.keys(localState.rawEntries).filter((id) => !mergedEntries[id] && nextDeletedMap[id]).length;
 
           if (changed) {
             await persistFallbackLocalState(mergedEntries, mergedSettings, nextDeletedMap);
