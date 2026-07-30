@@ -60,6 +60,32 @@ body {
 .app { padding-bottom: 12px; }
 .is-hidden { display: none !important; }
 
+.undo-toast {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 24px);
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--border-a);
+  border-radius: var(--r-sm);
+  background: var(--d2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  color: var(--on-bg);
+  font-size: 12px;
+  z-index: 10;
+}
+.undo-toast button {
+  padding: 3px 7px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-lt);
+  text-decoration: underline;
+}
+.undo-toast button:hover { color: #fff; }
+
 /* ── Eyebrow / Section label ────────────────────── */
 .eyebrow, .section-label {
   font-size: 10px;

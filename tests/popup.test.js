@@ -57,6 +57,47 @@ test("popup search filters the saved list and shows the no-results state when ne
   assert.equal(noResults.classList.contains("is-hidden"), false);
 });
 
+test("popup deletion offers Undo and restores the complete entry", async () => {
+  const entries = makeEntries(1);
+  entries[0].note = "keep this";
+  entries[0].favorite = true;
+  const removed = [];
+  const restored = [];
+  const { dom } = await loadPopupScript({
+    entries,
+    storeOverrides: {
+      async removeEntry(id) {
+        const index = entries.findIndex((entry) => entry.id === id);
+        removed.push(entries[index]);
+        entries.splice(index, 1);
+      },
+      async restoreEntry(entry) {
+        restored.push(entry);
+        entries.push(entry);
+        return entry;
+      }
+    }
+  });
+
+  dom.window.document.querySelector('[data-action="remove"]').click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const undoToast = dom.window.document.getElementById("delete-undo");
+  assert.equal(entries.length, 0);
+  assert.equal(undoToast.classList.contains("is-hidden"), false);
+  assert.match(dom.window.document.getElementById("delete-undo-message").textContent, /Removed Word 1/);
+
+  dom.window.document.getElementById("delete-undo-button").click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(restored.length, 1);
+  assert.equal(restored[0].note, "keep this");
+  assert.equal(restored[0].favorite, true);
+  assert.equal(entries.length, 1);
+  assert.equal(undoToast.classList.contains("is-hidden"), true);
+  assert.equal(removed.length, 1);
+});
+
 test("popup highlights portable backup state, shows the Never chip, and removes local snapshot UI", async () => {
   const { dom } = await loadPopupScript({ entries: makeEntries(2) });
   const exportButton = dom.window.document.getElementById("export-json");

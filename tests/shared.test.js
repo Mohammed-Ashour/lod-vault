@@ -519,6 +519,40 @@ test("saveNote updates the note and removeEntry deletes the item", async () => {
   assert.deepEqual(storageData[store.STORAGE_KEY], {});
 });
 
+test("restoreEntry restores a deleted entry and clears its sync tombstone", async () => {
+  const entry = {
+    id: "HAUS1",
+    word: "Haus",
+    url: "https://lod.lu/artikel/HAUS1",
+    favorite: true,
+    study: true,
+    note: "keep this note",
+    translations: { en: "house" },
+    createdAt: "2025-01-01T00:00:00.000Z",
+    updatedAt: "2025-01-02T00:00:00.000Z"
+  };
+  const flashcardMeta = {
+    HAUS1: { totalReviews: 3, reviews: [{ date: "2025-01-02T00:00:00.000Z", rating: 2, direction: "fwd" }] }
+  };
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.entries"]: { HAUS1: entry },
+    ["lodVault.flashcardMeta"]: flashcardMeta
+  });
+
+  await store.removeEntry("HAUS1");
+  assert.ok(storageData[store.DELETED_KEY].HAUS1);
+
+  const restored = await store.restoreEntry(entry);
+
+  assert.equal(restored.note, "keep this note");
+  assert.equal(restored.favorite, true);
+  assert.equal(restored.study, true);
+  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, { en: "house" });
+  assert.equal(storageData["lodVault.flashcardMeta"].HAUS1.totalReviews, 3);
+  assert.equal(storageData[store.DELETED_KEY], undefined);
+  assert.ok(Date.parse(restored.updatedAt) >= Date.parse(entry.updatedAt));
+});
+
 test("removeFromHistory clears history and deletes orphaned history-only entries", async () => {
   const { store, storageData } = loadSharedStore({
     ["lodVault.entries"]: {

@@ -10,6 +10,8 @@ let currentLang = "";
 let currentSort = "recent";
 let applyPreviewFilters = () => {};
 let currentEntriesById = new Map();
+let pendingDeletedEntry = null;
+let deleteUndoTimer = null;
 
 const langNames = LodVaultStore.TRANSLATION_LANGUAGE_LABELS;
 const langOrder = LodVaultStore.TRANSLATION_LANGUAGE_ORDER;
@@ -77,7 +79,10 @@ document.getElementById("sort-order").addEventListener("change", (e) => {
   renderPreview();
 });
 
-document.addEventListener("DOMContentLoaded", renderPreview);
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("delete-undo-button").addEventListener("click", undoDelete);
+  renderPreview();
+});
 
 /* ── language filter ─────────────────────────────── */
 
@@ -470,6 +475,39 @@ function attachPreviewNoteEditors(doc) {
   }
 }
 
+function hideDeleteUndo() {
+  if (deleteUndoTimer) {
+    clearTimeout(deleteUndoTimer);
+    deleteUndoTimer = null;
+  }
+  pendingDeletedEntry = null;
+  document.getElementById("delete-undo")?.classList.add("is-hidden");
+}
+
+function showDeleteUndo(entry) {
+  if (!entry?.id) return;
+  if (deleteUndoTimer) clearTimeout(deleteUndoTimer);
+  pendingDeletedEntry = JSON.parse(JSON.stringify(entry));
+  document.getElementById("delete-undo-message").textContent = `Removed ${entry.word}.`;
+  document.getElementById("delete-undo")?.classList.remove("is-hidden");
+  deleteUndoTimer = setTimeout(hideDeleteUndo, 8000);
+}
+
+async function undoDelete() {
+  if (!pendingDeletedEntry) return;
+  const entry = pendingDeletedEntry;
+  const button = document.getElementById("delete-undo-button");
+  button.disabled = true;
+
+  try {
+    await LodVaultStore.restoreEntry(entry);
+    hideDeleteUndo();
+    await renderPreview();
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function attachRemoveButtons(doc) {
   for (const entryElement of doc.querySelectorAll(".entry[data-id][data-lists]")) {
     if (entryElement.querySelector(".preview-entry-actions")) continue;
@@ -525,7 +563,10 @@ function attachRemoveButtons(doc) {
     delBtn.addEventListener("click", async () => {
       delBtn.disabled = true;
       try {
+        const entry = currentEntriesById.get(id);
+        if (!entry) return;
         await LodVaultStore.removeEntry(id);
+        showDeleteUndo(entry);
         await renderPreview();
       } finally {
         delBtn.disabled = false;
@@ -603,6 +644,7 @@ async function downloadAnki() {
 }
 
 window.addEventListener("beforeunload", () => {
+  hideDeleteUndo();
   previewNoteAutosave.destroy();
   if (currentPreviewUrl) {
     URL.revokeObjectURL(currentPreviewUrl);

@@ -30,6 +30,7 @@ const STORE_MUTATION_METHODS = new Set([
   "refreshEntryData",
   "saveNote",
   "removeEntry",
+  "restoreEntry",
   "markPortableBackupExported",
   "importJson",
   "importBrowserHistory",
