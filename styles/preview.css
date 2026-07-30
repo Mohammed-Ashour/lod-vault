@@ -48,6 +48,37 @@ body {
   min-height: 100vh;
 }
 
+.is-hidden { display: none !important; }
+
+.undo-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 32px);
+  padding: 9px 10px 9px 12px;
+  border: 1px solid var(--border-a);
+  border-radius: var(--r-sm);
+  background: var(--d2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  color: var(--on-bg);
+  font-size: 12px;
+  z-index: 20;
+}
+.undo-toast button {
+  padding: 3px 7px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-lt);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+}
+.undo-toast button:hover { color: #fff; }
+
 /* ── Toolbar — flat, matches popup & flashcards ── */
 .toolbar {
   display: flex;

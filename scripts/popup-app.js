@@ -39,6 +39,8 @@
 
     const elements = {};
     let initialized = false;
+    let deleteUndoTimer = null;
+    let pendingDeletedEntry = null;
     const pendingSyncCapacityRefreshTimers = new Set();
 
     function normalizePortableBackupMeta(meta = {}) {
@@ -989,16 +991,56 @@
       }
     }
 
+    function hideDeleteUndo() {
+      if (deleteUndoTimer) {
+        clearTimeout(deleteUndoTimer);
+        deleteUndoTimer = null;
+      }
+      pendingDeletedEntry = null;
+      elements.deleteUndo?.classList.add("is-hidden");
+    }
+
+    function showDeleteUndo(entry) {
+      if (!entry?.id) return;
+      if (deleteUndoTimer) clearTimeout(deleteUndoTimer);
+      pendingDeletedEntry = JSON.parse(JSON.stringify(entry));
+      elements.deleteUndoMessage.textContent = `Removed ${entry.word}.`;
+      elements.deleteUndo.classList.remove("is-hidden");
+      deleteUndoTimer = setTimeout(hideDeleteUndo, 8000);
+    }
+
+    async function deleteEntryWithUndo(entry) {
+      if (!entry?.id) return;
+      await store.removeEntry(entry.id);
+      showDeleteUndo(entry);
+    }
+
+    async function undoDelete() {
+      if (!pendingDeletedEntry) return;
+      const entry = pendingDeletedEntry;
+      elements.deleteUndoButton.disabled = true;
+
+      try {
+        await store.restoreEntry(entry);
+        hideDeleteUndo();
+        await renderSavedList();
+        const savedEntry = state.currentEntry ? await store.getEntry(state.currentEntry.id) : null;
+        renderCurrentPageCard(savedEntry);
+      } finally {
+        elements.deleteUndoButton.disabled = false;
+      }
+    }
+
     async function deleteCurrentPage() {
       if (!state.currentEntry) return;
 
       elements.currentDelete.disabled = true;
 
       try {
-        await store.removeEntry(state.currentEntry.id);
+        const savedEntry = await store.getEntry(state.currentEntry.id);
+        if (!savedEntry) return;
+        await deleteEntryWithUndo(savedEntry);
         await renderSavedList();
-        const savedEntry = state.currentEntry ? await store.getEntry(state.currentEntry.id) : null;
-        renderCurrentPageCard(savedEntry);
       } finally {
         elements.currentDelete.disabled = false;
       }
@@ -1309,7 +1351,7 @@
 
       try {
         if (button.dataset.action === "remove") {
-          await store.removeEntry(entry.id);
+          await deleteEntryWithUndo(entry);
         } else if (button.dataset.action === "toggle-favorite") {
           await store.toggleList(entry, "favorite");
         } else if (button.dataset.action === "toggle-study") {
@@ -1686,6 +1728,9 @@
       elements.portableBackupStatus = document.getElementById("portable-backup-status");
       elements.searchInput = document.getElementById("search-input");
       elements.searchStatus = document.getElementById("search-status");
+      elements.deleteUndo = document.getElementById("delete-undo");
+      elements.deleteUndoMessage = document.getElementById("delete-undo-message");
+      elements.deleteUndoButton = document.getElementById("delete-undo-button");
       elements.savedList = document.getElementById("saved-list");
       elements.emptyState = document.getElementById("empty-state");
       elements.noResults = document.getElementById("no-results");
@@ -1718,6 +1763,7 @@
       elements.importHistoryRange?.addEventListener("change", onHistoryImportRangeChange);
       elements.importJsonFile.addEventListener("change", importJsonFile);
       elements.searchInput.addEventListener("input", onSearchInput);
+      elements.deleteUndoButton.addEventListener("click", undoDelete);
       elements.currentNoteInput.addEventListener("input", onCurrentNoteInput);
       elements.currentNoteInput.addEventListener("change", onCurrentNoteCommit);
       elements.currentNoteInput.addEventListener("blur", onCurrentNoteCommit);
@@ -1749,6 +1795,7 @@
       chromeApi.runtime.onMessage.removeListener(handlePageStateMessage);
       chromeApi.storage?.onChanged?.removeListener?.(handleStorageChange);
       clearScheduledSyncCapacityRefresh();
+      hideDeleteUndo();
       noteAutosave.destroy();
       initialized = false;
     }

@@ -1127,6 +1127,30 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return runStoreMutation("removeEntry", [id], removeEntryDirect);
   }
 
+  async function restoreEntryDirect(entry) {
+    return runVaultIo(async () => {
+      const restored = normalizeEntry(entry);
+      if (!restored.id || !restored.word || !shouldKeepEntry(restored)) {
+        throw new Error("Cannot restore an empty entry.");
+      }
+
+      const [entryMap, deletedMap] = await Promise.all([
+        getEntryMap(),
+        getDeletedMap()
+      ]);
+      restored.updatedAt = nowIso();
+      restored.createdAt = restored.createdAt || restored.updatedAt;
+      entryMap[restored.id] = restored;
+      delete deletedMap[restored.id];
+      await persistVaultState({ entryMap, deletedMap });
+      return normalizeEntry(restored);
+    });
+  }
+
+  async function restoreEntry(entry) {
+    return runStoreMutation("restoreEntry", [entry], restoreEntryDirect);
+  }
+
   async function markPortableBackupExportedDirect(summary = {}) {
     const nextMeta = normalizePortableBackupMeta({
       lastExportedAt: nowIso(),
@@ -2011,6 +2035,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     refreshEntryData,
     saveNote,
     removeEntry,
+    restoreEntry,
     markPortableBackupExported,
     buildJsonExport,
     importJson,
@@ -5359,6 +5384,7 @@ const STORE_MUTATION_METHODS = new Set([
   "refreshEntryData",
   "saveNote",
   "removeEntry",
+  "restoreEntry",
   "markPortableBackupExported",
   "importJson",
   "importBrowserHistory",

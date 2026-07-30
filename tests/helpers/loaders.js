@@ -435,6 +435,9 @@ async function loadPopupScript({
       return { ...entry, [listName]: !entry?.[listName] };
     },
     async removeEntry() {},
+    async restoreEntry(entry) {
+      return structuredClone(entry);
+    },
     async saveNote(id, note) {
       return { id, note: shared.store.normalizeNoteValue(note) };
     },
