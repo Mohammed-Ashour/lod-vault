@@ -458,6 +458,9 @@ async function loadPopupScript({
     async getSettings() {
       return { autoMode, syncLanguages: [...syncLanguages] };
     },
+    async getFlashcardMeta() {
+      return {};
+    },
     buildJsonExport(entriesToExport, options) {
       return shared.store.buildJsonExport(entriesToExport, options);
     },

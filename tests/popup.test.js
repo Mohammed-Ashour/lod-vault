@@ -120,6 +120,42 @@ test("popup updates portable backup status after Backup JSON runs", async () => 
   assert.equal(backupNowButton.classList.contains("is-hidden"), true);
 });
 
+test("popup JSON backup includes flashcard review metadata", async () => {
+  const downloadCalls = [];
+  const flashcardMeta = {
+    WORD1: {
+      reviews: [{ date: "2026-07-01T10:00:00.000Z", rating: 3, direction: "fwd" }],
+      totalReviews: 4,
+      hardCount: 0,
+      goodCount: 1,
+      easyCount: 3,
+      lastReviewedAt: "2026-07-01T10:00:00.000Z",
+      dueAt: "2026-07-09T10:00:00.000Z",
+      interval: 8
+    }
+  };
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(2),
+    storeOverrides: {
+      downloadTextFile(filename, content) {
+        downloadCalls.push({ filename, content });
+      },
+      async getFlashcardMeta() {
+        return structuredClone(flashcardMeta);
+      }
+    }
+  });
+
+  dom.window.document.getElementById("export-json").click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(downloadCalls.length, 1);
+  const parsed = JSON.parse(downloadCalls[0].content);
+  assert.equal(parsed.flashcardMeta.WORD1.totalReviews, 4);
+  assert.equal(parsed.flashcardMeta.WORD1.interval, 8);
+  assert.equal(parsed.flashcardMeta.WORD1.dueAt, "2026-07-09T10:00:00.000Z");
+});
+
 test("popup shows the Needs backup chip and one-click Backup now action when the vault changed after the last backup", async () => {
   const downloadCalls = [];
   const { dom } = await loadPopupScript({

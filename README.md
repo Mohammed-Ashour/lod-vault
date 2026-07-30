@@ -71,7 +71,7 @@ The flashcards page lets you review your saved words in a focused study view, wi
 | 🃏 **Flashcards** | Review your saved words with a simple flashcard mode |
 | 👁 **Preview** | Browse your full word list in a clean page — no download needed |
 | 📤 **Export HTML / Anki** | Download standalone HTML or Anki-ready text export |
-| 📦 **Backup / Restore JSON** | Back up and restore your vocabulary and supported settings with a portable file |
+| 📦 **Backup / Restore JSON** | Back up and restore your vocabulary, flashcard review progress, and supported settings with a portable file |
 | 🕘 **Optional browser history import** | On demand, import missing `lod.lu/artikel/*` words from history (add-only), with selectable date range and import report |
 | ☁️ **Optional browser sync** | Sync a compact copy across Chrome profiles with configurable language selection, capacity indicator, and manual **Sync now** (helpful, but not an uninstall-safe backup) |
 | 🔒 **Local-first** | `chrome.storage.local` stays authoritative; sync is only a compact replica |
@@ -160,8 +160,8 @@ The **LODVault** icon will appear in your browser toolbar.
 - **Preview** — opens a live, searchable page of your saved words in a new tab
 - **HTML** — downloads a standalone HTML file you can keep or share
 - **Anki** — downloads a tab-separated text file ready for Anki import
-- **Backup JSON** — downloads a full portable backup of your saved words and extension settings; use this before uninstalling or switching versions
-- **Restore JSON** — restores or merges a previous backup, including supported settings
+- **Backup JSON** — downloads a full portable backup of your saved words, flashcard review progress, and extension settings; use this before uninstalling or switching versions
+- **Restore JSON** — restores or merges a previous backup, including supported settings and flashcard review progress
 - **Import history** — optionally requests browser History permission and adds missing `lod.lu/artikel/*` words into your vault (does not delete or overwrite existing words)
 
 ---
