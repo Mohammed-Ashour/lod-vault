@@ -24,6 +24,7 @@ const STORE_MUTATION_MESSAGE_TYPE = LodVaultStore.STORE_MUTATION_MESSAGE_TYPE;
 const STORE_MUTATION_METHODS = new Set([
   "setAutoMode",
   "setSyncLanguages",
+  "markSyncVerified",
   "toggleList",
   "recordAutoVisit",
   "removeFromHistory",

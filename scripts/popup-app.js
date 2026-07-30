@@ -24,6 +24,7 @@
       searchQuery: "",
       autoMode: false,
       syncLanguages: [...(store.DEFAULT_SETTINGS?.syncLanguages || ["en", "fr", "de"])],
+      lastVerifiedSyncAt: "",
       syncLanguagesSaving: false,
       portableBackupMeta: {
         lastExportedAt: "",
@@ -40,7 +41,9 @@
     const elements = {};
     let initialized = false;
     let deleteUndoTimer = null;
+    let actionFeedbackTimer = null;
     let pendingDeletedEntry = null;
+    let retrySyncAction = null;
     const pendingSyncCapacityRefreshTimers = new Set();
 
     function normalizePortableBackupMeta(meta = {}) {
@@ -170,6 +173,7 @@
         await refreshSettingsState();
         renderAutoMode();
         renderSyncLanguages();
+        renderVerifiedSyncStatus();
       }
 
       if (hasHistoryImportStateChange) {
@@ -317,6 +321,7 @@
       state.syncLanguages = Array.isArray(settings?.syncLanguages) && settings.syncLanguages.length
         ? [...settings.syncLanguages]
         : [...(store.DEFAULT_SETTINGS?.syncLanguages || ["en", "fr", "de"])];
+      state.lastVerifiedSyncAt = settings?.lastVerifiedSyncAt || "";
     }
 
     function getSyncCapacityHint(selectedCount) {
@@ -459,7 +464,7 @@
       };
     }
 
-    function setSyncNowStatus(message, tone = "") {
+    function setSyncNowStatus(message, tone = "", retryAction = null) {
       if (!elements.syncNowStatus) return;
       elements.syncNowStatus.textContent = message;
       elements.syncNowStatus.classList.remove("is-success", "is-error", "is-warning");
@@ -470,6 +475,39 @@
       } else if (tone === "warning") {
         elements.syncNowStatus.classList.add("is-warning");
       }
+
+      retrySyncAction = retryAction;
+      if (elements.syncRetryButton) {
+        elements.syncRetryButton.classList.toggle("is-hidden", !retryAction);
+      }
+    }
+
+    function renderVerifiedSyncStatus() {
+      if (!elements.syncVerifiedStatus) return;
+      elements.syncVerifiedStatus.textContent = state.lastVerifiedSyncAt
+        ? `Last verified sync: ${typeof store.formatWhen === "function" ? store.formatWhen(state.lastVerifiedSyncAt) : state.lastVerifiedSyncAt}.`
+        : "No verified sync yet.";
+    }
+
+    async function markSyncVerified() {
+      if (typeof store.markSyncVerified !== "function") return;
+      try {
+        state.lastVerifiedSyncAt = await store.markSyncVerified();
+        renderVerifiedSyncStatus();
+      } catch {
+        // The verified sync remains valid even if its local timestamp cannot be saved.
+      }
+    }
+
+    function showActionFeedback(message, tone = "success") {
+      if (!elements.actionFeedback) return;
+      if (actionFeedbackTimer) clearTimeout(actionFeedbackTimer);
+      elements.actionFeedback.textContent = message;
+      elements.actionFeedback.classList.toggle("is-error", tone === "error");
+      elements.actionFeedback.classList.remove("is-hidden");
+      actionFeedbackTimer = setTimeout(() => {
+        elements.actionFeedback?.classList.add("is-hidden");
+      }, 5000);
     }
 
     function setSyncHealthStatus(message, tone = "") {
@@ -577,6 +615,10 @@
         elements.syncPullButton.disabled = controlsBusy;
         elements.syncPullButton.textContent = state.syncPullInProgress ? "Pulling…" : "Pull synced data";
       }
+
+      if (elements.syncRetryButton) {
+        elements.syncRetryButton.disabled = controlsBusy;
+      }
     }
 
     function clearScheduledSyncCapacityRefresh() {
@@ -623,7 +665,7 @@
         if (remoteState?.hasSyncData && typeof sync?.SyncAdapter?.pullAll === "function") {
           const pullResult = await sync.SyncAdapter.pullAll({ repush: false });
           if (pullResult?.ok === false) {
-            setSyncNowStatus("Sync failed while reconciling remote data.", "error");
+            setSyncNowStatus("Sync failed while reconciling remote data.", "error", "push");
             return;
           }
           await refreshSettingsState();
@@ -638,10 +680,12 @@
         scheduleSyncCapacityRefresh();
 
         if (result?.ok === false) {
-          setSyncNowStatus(describeSyncFailure(result), "error");
-        } else if (expectedEntryCount === 0) {
-          setSyncNowStatus("Sync complete · vault is empty.", "success");
+          setSyncNowStatus(describeSyncFailure(result), "error", "push");
+        } else if (expectedEntryCount === 0 && remoteState?.ok !== false && remoteState?.hasSyncData) {
+          await markSyncVerified();
+          setSyncNowStatus("Sync complete · empty vault verified in sync.", "success");
         } else if (remoteState?.ok !== false && Number.isFinite(remoteState?.entryCount) && remoteState.entryCount === expectedEntryCount) {
+          await markSyncVerified();
           setSyncNowStatus(`Sync complete · ${expectedEntryCount} words verified in sync.`, "success");
         } else if (remoteState?.hasSyncData && !remoteState?.hasSyncWords) {
           setSyncNowStatus("Sync failed verification: sync storage has metadata, but no words were stored.", "error");
@@ -652,7 +696,7 @@
           setSyncNowStatus(`Sync completed, but remote count (${remoteCount}) did not match the local vault (${expectedEntryCount}).`, "warning");
         }
       } catch {
-        setSyncNowStatus("Sync failed. Try again.", "error");
+        setSyncNowStatus("Sync failed. Try again.", "error", "push");
       } finally {
         state.syncNowInProgress = false;
         renderSyncNowAction();
@@ -681,34 +725,45 @@
         const pulledCount = Math.max(0, afterCount - beforeCount);
 
         if (result?.ok === false) {
-          setSyncNowStatus("Pull failed. Could not load synced data.", "error");
+          setSyncNowStatus("Pull failed. Could not load synced data.", "error", "pull");
         } else if (result?.partialRead) {
           setSyncNowStatus(
             `Pull completed with warnings · ${afterCount} words loaded (sync data was partial).`,
             "warning"
           );
         } else if (pulledCount > 0) {
+          await markSyncVerified();
           setSyncNowStatus(
             `Pull complete · +${pulledCount} word${pulledCount === 1 ? "" : "s"} from sync (${afterCount} total).`,
             "success"
           );
         } else if (result?.changed === false) {
+          await markSyncVerified();
           setSyncNowStatus(
             `Pull complete · no changes (${afterCount} words in vault).`,
             "success"
           );
         } else {
+          await markSyncVerified();
           setSyncNowStatus(
             `Pull complete · synced updates applied (${afterCount} words in vault).`,
             "success"
           );
         }
       } catch {
-        setSyncNowStatus("Pull failed. Could not load synced data.", "error");
+        setSyncNowStatus("Pull failed. Could not load synced data.", "error", "pull");
       } finally {
         state.syncPullInProgress = false;
         renderSyncNowAction();
         await refreshSyncHealth();
+      }
+    }
+
+    async function retryManualSync() {
+      if (retrySyncAction === "pull") {
+        await pullSyncedData();
+      } else if (retrySyncAction === "push") {
+        await syncNow();
       }
     }
 
@@ -963,6 +1018,7 @@
 
         await refreshCurrentPage();
         await renderSavedList();
+        showActionFeedback(`Auto mode ${state.autoMode ? "enabled" : "disabled"}.`);
       } finally {
         elements.autoModeToggle.disabled = false;
       }
@@ -975,10 +1031,15 @@
       button.disabled = true;
 
       try {
+        const sourceEntry = state.currentEntry;
         const response = await chromeApi.tabs.sendMessage(state.currentTabId, {
           type: "lodvault:toggle-list",
           listName
         });
+
+        showActionFeedback(typeof store.describeListAction === "function"
+          ? store.describeListAction(sourceEntry, listName, response?.entry)
+          : `Updated ${sourceEntry.word}.`);
 
         if (response?.sourceEntry) {
           state.currentEntry = response.sourceEntry;
@@ -986,6 +1047,8 @@
 
         renderCurrentPageCard(response?.entry || null);
         await renderSavedList();
+      } catch {
+        showActionFeedback("Could not update your vault.", "error");
       } finally {
         button.disabled = false;
       }
@@ -1240,6 +1303,7 @@
       renderSummary(entries);
       renderAutoMode();
       renderSyncLanguages();
+      renderVerifiedSyncStatus();
       await refreshSyncHealth();
       renderList();
       renderPortableBackupStatus();
@@ -1353,12 +1417,20 @@
         if (button.dataset.action === "remove") {
           await deleteEntryWithUndo(entry);
         } else if (button.dataset.action === "toggle-favorite") {
-          await store.toggleList(entry, "favorite");
+          const savedEntry = await store.toggleList(entry, "favorite");
+          showActionFeedback(typeof store.describeListAction === "function"
+            ? store.describeListAction(entry, "favorite", savedEntry)
+            : `Updated ${entry.word}.`);
         } else if (button.dataset.action === "toggle-study") {
-          await store.toggleList(entry, "study");
+          const savedEntry = await store.toggleList(entry, "study");
+          showActionFeedback(typeof store.describeListAction === "function"
+            ? store.describeListAction(entry, "study", savedEntry)
+            : `Updated ${entry.word}.`);
         }
 
         await renderSavedList();
+      } catch {
+        showActionFeedback("Could not update your vault.", "error");
       } finally {
         button.disabled = false;
       }
@@ -1603,12 +1675,11 @@
 
         if (imported > 0) {
           const hydrationQueued = Number(result?.hydrationQueued) || 0;
-          setSearchStatusFeedback(
-            hydrationQueued > 0
-              ? `Imported ${imported} new word${imported === 1 ? "" : "s"} from browser history · enriching recent entries in the background.`
-              : `Imported ${imported} new word${imported === 1 ? "" : "s"} from browser history.`,
-            "success"
-          );
+          const message = hydrationQueued > 0
+            ? `Imported ${imported} new word${imported === 1 ? "" : "s"} from browser history · enriching recent entries in the background.`
+            : `Imported ${imported} new word${imported === 1 ? "" : "s"} from browser history.`;
+          setSearchStatusFeedback(message, "success");
+          showActionFeedback(message);
         } else {
           setSearchStatusFeedback(
             `No new words found (${scanned} scanned, ${skippedExisting} already saved).`
@@ -1628,6 +1699,7 @@
       const html = store.buildExportHtml(entries);
       const date = new Date().toISOString().slice(0, 10);
       store.downloadTextFile(`lodvault-export-${date}.html`, html, "text/html");
+      showActionFeedback("HTML export downloaded.");
     }
 
     async function exportAnki() {
@@ -1635,6 +1707,7 @@
       const text = store.buildAnkiExport(entries);
       const date = new Date().toISOString().slice(0, 10);
       store.downloadTextFile(`lodvault-anki-${date}.txt`, text, "text/tab-separated-values");
+      showActionFeedback("Anki export downloaded.");
     }
 
     async function exportJson() {
@@ -1653,6 +1726,7 @@
             await store.markPortableBackupExported({ entryCount: entries.length })
           );
           renderPortableBackupStatus();
+          showActionFeedback("JSON backup downloaded.");
         } catch {
           // Ignore backup-status persistence failures so the download still works.
         }
@@ -1672,7 +1746,9 @@
         await renderSavedList();
         await refreshCurrentPage();
         scheduleSyncCapacityRefresh();
-        setSearchStatusFeedback(`Imported ${result.imported} word${result.imported === 1 ? "" : "s"}.`, "success");
+        const message = `Imported ${result.imported} word${result.imported === 1 ? "" : "s"}.`;
+        setSearchStatusFeedback(message, "success");
+        showActionFeedback(message);
       } catch {
         setSearchStatusFeedback("Could not import that JSON file.", "error");
       } finally {
@@ -1708,6 +1784,8 @@
       elements.syncNowButton = document.getElementById("sync-now");
       elements.syncPullButton = document.getElementById("sync-pull");
       elements.syncNowStatus = document.getElementById("sync-now-status");
+      elements.syncRetryButton = document.getElementById("sync-retry");
+      elements.syncVerifiedStatus = document.getElementById("sync-verified-status");
       elements.syncHealthStatus = document.getElementById("sync-health-status");
       elements.openFlashcards = document.getElementById("open-flashcards");
       elements.openPreview = document.getElementById("open-preview");
@@ -1728,6 +1806,7 @@
       elements.portableBackupStatus = document.getElementById("portable-backup-status");
       elements.searchInput = document.getElementById("search-input");
       elements.searchStatus = document.getElementById("search-status");
+      elements.actionFeedback = document.getElementById("action-feedback");
       elements.deleteUndo = document.getElementById("delete-undo");
       elements.deleteUndoMessage = document.getElementById("delete-undo-message");
       elements.deleteUndoButton = document.getElementById("delete-undo-button");
@@ -1752,6 +1831,7 @@
       elements.syncLanguageChips.addEventListener("click", onSyncLanguageChipClick);
       elements.syncNowButton?.addEventListener("click", syncNow);
       elements.syncPullButton?.addEventListener("click", pullSyncedData);
+      elements.syncRetryButton?.addEventListener("click", retryManualSync);
       elements.openFlashcards.addEventListener("click", openFlashcards);
       elements.openPreview.addEventListener("click", openPreview);
       elements.exportHtml.addEventListener("click", exportHtml);
@@ -1781,6 +1861,7 @@
       await refreshPortableBackupMeta();
       renderAutoMode();
       renderSyncLanguages();
+      renderVerifiedSyncStatus();
       renderBrowserHistoryImportAction();
       await refreshHistoryImportState();
       renderHistoryImportReport();
@@ -1796,6 +1877,7 @@
       chromeApi.storage?.onChanged?.removeListener?.(handleStorageChange);
       clearScheduledSyncCapacityRefresh();
       hideDeleteUndo();
+      if (actionFeedbackTimer) clearTimeout(actionFeedbackTimer);
       noteAutosave.destroy();
       initialized = false;
     }

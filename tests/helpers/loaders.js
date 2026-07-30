@@ -388,6 +388,7 @@ async function loadPopupScript({
     lastExportedAt: "",
     entryCount: 0
   });
+  let lastVerifiedSyncAt = "";
 
   const LodVaultStore = {
     STORAGE_KEY: "lodVault.entries",
@@ -407,6 +408,7 @@ async function loadPopupScript({
     buildMeaningText: shared.store.buildMeaningText,
     buildMeaningChipsMarkup: shared.store.buildMeaningChipsMarkup,
     buildMeaningCollapsibleMarkup: shared.store.buildMeaningCollapsibleMarkup,
+    describeListAction: shared.store.describeListAction,
     async getAutoMode() {
       return autoMode;
     },
@@ -459,7 +461,11 @@ async function loadPopupScript({
       return structuredClone(currentPortableBackupMeta);
     },
     async getSettings() {
-      return { autoMode, syncLanguages: [...syncLanguages] };
+      return { autoMode, syncLanguages: [...syncLanguages], lastVerifiedSyncAt };
+    },
+    async markSyncVerified() {
+      lastVerifiedSyncAt = new Date().toISOString();
+      return lastVerifiedSyncAt;
     },
     async getFlashcardMeta() {
       return {};

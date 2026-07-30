@@ -140,9 +140,11 @@
 
         const listLabel = listName === "study" ? "Study" : "favorites";
         const isActive = Boolean(savedEntry?.[listName]);
-        setStatus(isActive
-          ? `Added "${targetWord.entry.word}" to ${listLabel}.`
-          : `Removed "${targetWord.entry.word}" from ${listLabel}.`);
+        setStatus(typeof store.describeListAction === "function"
+          ? store.describeListAction(targetWord.entry, listName, savedEntry)
+          : isActive
+            ? `Added "${targetWord.entry.word}" to ${listLabel}.`
+            : `Removed "${targetWord.entry.word}" from ${listLabel}.`);
       } catch {
         if (!session.isActive()) return;
         setStatus("Could not update your vault right now.");

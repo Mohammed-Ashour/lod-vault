@@ -165,6 +165,7 @@
             </div>
           </div>
           <div class="lodw-meta">Save to enable notes.</div>
+          <p class="lodw-action-feedback is-hidden" role="status" aria-live="polite"></p>
         `;
 
         // Force truncation styles via inline setProperty so no external CSS can override.
@@ -229,6 +230,15 @@
       }
 
       return banner;
+    }
+
+    function setActionFeedback(message, tone = "success") {
+      const feedback = ensureBanner()?.querySelector(".lodw-action-feedback");
+      if (!feedback) return;
+      feedback.textContent = message;
+      feedback.classList.toggle("is-error", tone === "error");
+      feedback.classList.remove("is-hidden");
+      setTimeout(() => feedback.classList.add("is-hidden"), 5000);
     }
 
     function setButtonsBusy(isBusy) {
@@ -329,6 +339,7 @@
 
     return {
       ensureBanner,
+      setActionFeedback,
       setButtonsBusy,
       handleInvalidatedContext,
       applyState,

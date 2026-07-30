@@ -12,12 +12,23 @@ let applyPreviewFilters = () => {};
 let currentEntriesById = new Map();
 let pendingDeletedEntry = null;
 let deleteUndoTimer = null;
+let actionFeedbackTimer = null;
 
 const langNames = LodVaultStore.TRANSLATION_LANGUAGE_LABELS;
 const langOrder = LodVaultStore.TRANSLATION_LANGUAGE_ORDER;
 
 function getPreviewActiveElement() {
   return frame.contentDocument?.activeElement || document.activeElement;
+}
+
+function showActionFeedback(message, tone = "success") {
+  const feedback = document.getElementById("action-feedback");
+  if (!feedback) return;
+  if (actionFeedbackTimer) clearTimeout(actionFeedbackTimer);
+  feedback.textContent = message;
+  feedback.classList.toggle("is-error", tone === "error");
+  feedback.classList.remove("is-hidden");
+  actionFeedbackTimer = setTimeout(() => feedback.classList.add("is-hidden"), 5000);
 }
 
 function setPreviewNoteStatus(textarea, message, tone = "") {
@@ -382,7 +393,10 @@ function attachPreviewSearch() {
 async function handlePreviewToggle(id, listName) {
   const savedEntry = await LodVaultStore.getEntry(id);
   if (!savedEntry) return;
-  await LodVaultStore.toggleList(savedEntry, listName);
+  const updatedEntry = await LodVaultStore.toggleList(savedEntry, listName);
+  showActionFeedback(typeof LodVaultStore.describeListAction === "function"
+    ? LodVaultStore.describeListAction(savedEntry, listName, updatedEntry)
+    : `Updated ${savedEntry.word}.`);
 }
 
 function attachAudioButtons(doc) {
@@ -645,6 +659,7 @@ async function downloadAnki() {
 
 window.addEventListener("beforeunload", () => {
   hideDeleteUndo();
+  if (actionFeedbackTimer) clearTimeout(actionFeedbackTimer);
   previewNoteAutosave.destroy();
   if (currentPreviewUrl) {
     URL.revokeObjectURL(currentPreviewUrl);

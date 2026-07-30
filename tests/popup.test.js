@@ -57,6 +57,27 @@ test("popup search filters the saved list and shows the no-results state when ne
   assert.equal(noResults.classList.contains("is-hidden"), false);
 });
 
+test("popup announces Favorite and Study membership changes", async () => {
+  const entries = makeEntries(1);
+  entries[0].favorite = false;
+  entries[0].study = false;
+  const { dom } = await loadPopupScript({
+    entries,
+    storeOverrides: {
+      async toggleList(entry, listName) {
+        return { ...entry, [listName]: !entry[listName] };
+      }
+    }
+  });
+
+  dom.window.document.querySelector('[data-action="toggle-favorite"]').click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const feedback = dom.window.document.getElementById("action-feedback");
+  assert.equal(feedback.classList.contains("is-hidden"), false);
+  assert.match(feedback.textContent, /Added Word 1 to Favorites/);
+});
+
 test("popup deletion offers Undo and restores the complete entry", async () => {
   const entries = makeEntries(1);
   entries[0].note = "keep this";
@@ -381,6 +402,80 @@ test("popup sync-now verifies the remote copy after pushing without calling sync
   assert.equal(initCalls, 0);
   assert.equal(pushAllCalls, 1);
   assert.match(dom.window.document.getElementById("sync-now-status").textContent, /2 words verified in sync/);
+});
+
+test("popup records and shows the last verified manual sync", async () => {
+  let remoteState = {
+    ok: true,
+    hasSyncData: false,
+    hasSyncWords: false,
+    bytesUsed: 0,
+    bytesTotal: 102400,
+    bytesRemaining: 102400,
+    percentUsed: 0,
+    entryCount: 0,
+    shardCount: 0,
+    estimatedRemaining: 700
+  };
+  const verificationCalls = [];
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    storeOverrides: {
+      async markSyncVerified() {
+        const timestamp = "2026-07-30T12:34:56.000Z";
+        verificationCalls.push(timestamp);
+        return timestamp;
+      }
+    },
+    syncOverrides: {
+      SYNC_TOTAL_HARD_LIMIT: 102400,
+      async inspectSyncStorage() {
+        return { ...remoteState };
+      },
+      SyncAdapter: {
+        async pushAll() {
+          remoteState = { ...remoteState, hasSyncData: true, hasSyncWords: true, entryCount: 1 };
+          return { ok: true };
+        }
+      }
+    }
+  });
+
+  dom.window.document.getElementById("sync-now").click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(verificationCalls, ["2026-07-30T12:34:56.000Z"]);
+  assert.match(dom.window.document.getElementById("sync-verified-status").textContent, /Last verified sync: 2026-07-30T12:34:56.000Z/);
+});
+
+test("popup sync-now surfaces a retry action after failure", async () => {
+  let pushAllCalls = 0;
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    syncOverrides: {
+      async inspectSyncStorage() {
+        return { ok: false, hasSyncData: false, hasSyncWords: false, bytesTotal: 102400 };
+      },
+      SyncAdapter: {
+        async pushAll() {
+          pushAllCalls += 1;
+          return { ok: false, reason: "sync-unavailable" };
+        }
+      }
+    }
+  });
+
+  dom.window.document.getElementById("sync-now").click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const retry = dom.window.document.getElementById("sync-retry");
+  assert.equal(retry.classList.contains("is-hidden"), false);
+  retry.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(pushAllCalls, 2);
 });
 
 test("popup sync-now surfaces verification failure when sync stores only metadata", async () => {

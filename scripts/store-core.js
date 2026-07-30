@@ -7,7 +7,8 @@
   const HISTORY_IMPORT_STATE_KEY = "lodVault.historyImport";
   const DEFAULT_SETTINGS = {
     autoMode: false,
-    syncLanguages: ["en", "fr", "de"]
+    syncLanguages: ["en", "fr", "de"],
+    lastVerifiedSyncAt: ""
   };
   const EXPORT_VERSION = 2;
   const MAX_SYNC_LANGUAGES = 3;
@@ -190,11 +191,17 @@
     return deduped.length ? deduped : [...DEFAULT_SETTINGS.syncLanguages];
   }
 
+  function normalizeSyncVerificationTimestamp(value) {
+    const timestamp = Date.parse(cleanText(value));
+    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : "";
+  }
+
   function normalizeSettings(settings = {}) {
     return {
       ...DEFAULT_SETTINGS,
       autoMode: Boolean(settings?.autoMode),
-      syncLanguages: normalizeSyncLanguages(settings?.syncLanguages)
+      syncLanguages: normalizeSyncLanguages(settings?.syncLanguages),
+      lastVerifiedSyncAt: normalizeSyncVerificationTimestamp(settings?.lastVerifiedSyncAt)
     };
   }
 
@@ -883,6 +890,33 @@
     return runStoreMutation("setSyncLanguages", [languages], setSyncLanguagesDirect);
   }
 
+  async function markSyncVerifiedDirect(timestamp = nowIso()) {
+    return runVaultIo(async () => {
+      const nextSettings = normalizeSettings({
+        ...(await getSettings()),
+        lastVerifiedSyncAt: timestamp
+      });
+
+      await persistVaultState({ settings: nextSettings });
+      return nextSettings.lastVerifiedSyncAt;
+    });
+  }
+
+  async function markSyncVerified(timestamp) {
+    return runStoreMutation("markSyncVerified", [timestamp], markSyncVerifiedDirect);
+  }
+
+  function describeListAction(entry, listName, savedEntry) {
+    const word = cleanWordLabel(entry?.word) || "Word";
+    const listLabel = listName === "study" ? "Study" : "Favorites";
+
+    if (!entry?.[listName]) {
+      return `Added ${word} to ${listLabel}.`;
+    }
+
+    return savedEntry ? `Removed ${word} from ${listLabel}.` : `Removed ${word} from your vault.`;
+  }
+
   async function getEntries() {
     const entryMap = await getEntryMap();
     return Object.values(entryMap)
@@ -1187,7 +1221,11 @@
   }
 
   function buildJsonExport(entries, options = {}) {
-    const settings = normalizeSettings(options.settings || DEFAULT_SETTINGS);
+    const normalizedSettings = normalizeSettings(options.settings || DEFAULT_SETTINGS);
+    const settings = {
+      autoMode: normalizedSettings.autoMode,
+      syncLanguages: normalizedSettings.syncLanguages
+    };
     const flashcardMeta = normalizeFlashcardMetaMap(options.flashcardMeta);
     return JSON.stringify(
       {
@@ -1992,6 +2030,7 @@
     cleanText,
     normalizeVisitCount,
     normalizeSyncLanguages,
+    normalizeSyncVerificationTimestamp,
     normalizeSettings,
     normalizePortableBackupMeta,
     normalizeDeletedMap,
@@ -2009,6 +2048,8 @@
     getSyncLanguages,
     setAutoMode,
     setSyncLanguages,
+    markSyncVerified,
+    describeListAction,
     getEntries,
     getEntry,
     toggleList,
