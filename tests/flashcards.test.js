@@ -108,6 +108,52 @@ test("keyboard shortcuts trigger rating and direction toggle", async () => {
   assert.equal(doc.getElementById("rating-bar").classList.contains("is-hidden"), false);
 });
 
+test("keyboard shortcuts ignore editable controls", async () => {
+  let reviewCount = 0;
+  const { dom } = await loadFlashcardsScript({
+    entries: [makeEntry()],
+    storeOverrides: {
+      async recordFlashcardReview() {
+        reviewCount += 1;
+        return {};
+      }
+    }
+  });
+  const doc = dom.window.document;
+  const targets = [
+    doc.getElementById("deck-filter"),
+    doc.createElement("input"),
+    doc.createElement("textarea"),
+    doc.createElement("div")
+  ];
+  Object.defineProperty(targets[3], "isContentEditable", { value: true });
+
+  for (const target of targets) {
+    doc.body.append(target);
+    target.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "R", bubbles: true }));
+  }
+  assert.equal(doc.getElementById("direction-toggle").classList.contains("is-active"), false);
+
+  targets[0].dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: " ", bubbles: true }));
+  assert.equal(doc.getElementById("flashcard").classList.contains("is-revealed"), false);
+
+  doc.getElementById("flip-card").click();
+  targets[0].dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "1", bubbles: true }));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+  assert.equal(reviewCount, 0);
+});
+
+test("Escape closes the session summary", async () => {
+  const { dom } = await loadFlashcardsScript({ entries: [makeEntry()] });
+  const summary = dom.window.document.getElementById("summary-overlay");
+  summary.classList.remove("is-hidden");
+
+  dom.window.document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape" }));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  assert.equal(summary.classList.contains("is-hidden"), true);
+});
+
 test("stats bar renders computed values", async () => {
   const { dom } = await loadFlashcardsScript({
     entries: [makeEntry(), makeEntry({ id: "DACH1", word: "Dach" })]
