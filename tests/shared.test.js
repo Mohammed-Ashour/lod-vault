@@ -53,7 +53,7 @@ test("settings default to auto mode off with default sync languages and can be u
   assert.deepEqual(storageData[store.SETTINGS_KEY].syncLanguages, ["pt", "nl", "en"]);
 });
 
-test("setSyncLanguages rewrites existing saved translations to the selected languages", async () => {
+test("setSyncLanguages keeps every locally saved translation", async () => {
   const { store, storageData } = loadSharedStore({
     ["lodVault.entries"]: {
       HAUS1: {
@@ -72,7 +72,42 @@ test("setSyncLanguages rewrites existing saved translations to the selected lang
   });
 
   assert.deepEqual(Array.from(await store.setSyncLanguages(["en", "de"])), ["en", "de"]);
-  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, { en: "house", de: "Haus" });
+  assert.deepEqual(storageData[store.SETTINGS_KEY].syncLanguages, ["en", "de"]);
+  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, {
+    en: "house",
+    fr: "maison",
+    de: "Haus",
+    pt: "casa"
+  });
+});
+
+test("loading the vault does not strip translations outside the sync languages", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        study: true,
+        translations: {
+          en: "house",
+          fr: "maison",
+          pt: "casa"
+        }
+      }
+    },
+    ["lodVault.settings"]: {
+      syncLanguages: ["en"]
+    }
+  });
+
+  const entries = await store.getEntries();
+  assert.deepEqual({ ...entries[0].translations }, { en: "house", fr: "maison", pt: "casa" });
+  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, {
+    en: "house",
+    fr: "maison",
+    pt: "casa"
+  });
 });
 
 test("setAutoMode updates cached settings immediately even when storage change events are delayed", async () => {
@@ -158,7 +193,7 @@ test("toggleList saves a new entry and removes it when the last active list is t
   assert.equal(saved.favorite, true);
   assert.equal(saved.study, false);
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.word, "Haus");
-  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, { en: "house", de: "Haus" });
+  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, { en: "house", fr: "maison", pt: "casa", de: "Haus" });
 
   const removed = await store.toggleList(entry, "favorite");
   assert.equal(removed, null);
@@ -549,7 +584,7 @@ test("refreshEntryData enriches an existing saved entry without changing its lis
   assert.equal(refreshed.history, true);
   assert.equal(refreshed.visitCount, 2);
   assert.equal(refreshed.pos, "noun");
-  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, { en: "house" });
+  assert.deepEqual(storageData[store.STORAGE_KEY].HAUS1.translations, { en: "house", fr: "maison" });
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.example, "Dëst ass en Haus.");
 });
 
