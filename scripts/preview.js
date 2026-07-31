@@ -516,7 +516,7 @@ async function undoDelete() {
   try {
     await LodVaultStore.restoreEntry(entry);
     hideDeleteUndo();
-    await renderPreview();
+    await renderPreview({ preserveView: true });
   } finally {
     button.disabled = false;
   }
@@ -543,7 +543,7 @@ function attachRemoveButtons(doc) {
       favBtn.disabled = true;
       try {
         await handlePreviewToggle(id, "favorite");
-        await renderPreview();
+        await renderPreview({ preserveView: true });
       } finally {
         favBtn.disabled = false;
       }
@@ -561,7 +561,7 @@ function attachRemoveButtons(doc) {
       studyBtn.disabled = true;
       try {
         await handlePreviewToggle(id, "study");
-        await renderPreview();
+        await renderPreview({ preserveView: true });
       } finally {
         studyBtn.disabled = false;
       }
@@ -581,7 +581,7 @@ function attachRemoveButtons(doc) {
         if (!entry) return;
         await LodVaultStore.removeEntry(id);
         showDeleteUndo(entry);
-        await renderPreview();
+        await renderPreview({ preserveView: true });
       } finally {
         delBtn.disabled = false;
       }
@@ -617,7 +617,39 @@ function sortEntries(entries, sortMode) {
   return sorted;
 }
 
-async function renderPreview() {
+function capturePreviewView() {
+  const doc = frame.contentDocument;
+  if (!doc) return null;
+
+  return {
+    scrollX: frame.contentWindow?.scrollX || 0,
+    scrollY: frame.contentWindow?.scrollY || 0,
+    openMeanings: Array.from(doc.querySelectorAll('.meaning-toggle[aria-expanded="true"]'))
+      .map((toggle) => toggle.closest(".entry")?.dataset.id)
+      .filter(Boolean)
+  };
+}
+
+function restorePreviewView(state) {
+  if (!state) return;
+  const doc = frame.contentDocument;
+  if (!doc) return;
+
+  const entriesById = new Map(Array.from(doc.querySelectorAll(".entry[data-id]"))
+    .map((entry) => [entry.dataset.id, entry]));
+  for (const id of state.openMeanings) {
+    const toggle = entriesById.get(id)?.querySelector(".meaning-toggle");
+    const panel = toggle?.nextElementSibling;
+    if (!toggle || !panel?.classList.contains("meaning-expand")) continue;
+    toggle.setAttribute("aria-expanded", "true");
+    panel.classList.add("is-open");
+  }
+
+  frame.contentWindow?.scrollTo(state.scrollX, state.scrollY);
+}
+
+async function renderPreview({ preserveView = false } = {}) {
+  const previewView = preserveView ? capturePreviewView() : null;
   let entries = await LodVaultStore.getEntries();
   entries = sortEntries(entries, currentSort);
   currentEntriesById = new Map(entries.map((entry) => [entry.id, entry]));
@@ -637,6 +669,7 @@ async function renderPreview() {
   frame.onload = () => {
     applyPreviewFilters = () => {};
     attachPreviewSearch();
+    restorePreviewView(previewView);
   };
   frame.src = url;
 }
