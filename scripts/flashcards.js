@@ -12,7 +12,7 @@ const state = {
   sessionIndex: 0,
   sessionResults: [],
   flashcardMeta: {},
-  stats: { streak: 0, todayCount: 0, newCount: 0, learningCount: 0, masteredCount: 0 }
+  stats: { streak: 0, todayCount: 0, dueCount: 0, newCount: 0, learningCount: 0, masteredCount: 0 }
 };
 
 const elements = {};
@@ -45,6 +45,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.closeSummary = document.getElementById("close-summary");
   elements.statStreak = document.getElementById("stat-streak");
   elements.statToday = document.getElementById("stat-today");
+  elements.statDue = document.getElementById("stat-due");
   elements.statNew = document.getElementById("stat-new");
   elements.statLearning = document.getElementById("stat-learning");
   elements.statMastered = document.getElementById("stat-mastered");
@@ -105,6 +106,7 @@ function computeStats() {
   const meta = state.flashcardMeta;
   const todayIso = new Date().toISOString().slice(0, 10);
   let todayCount = 0;
+  let dueCount = 0;
   let newCount = 0;
   let learningCount = 0;
   let masteredCount = 0;
@@ -129,22 +131,27 @@ function computeStats() {
     }
   }
 
+  const now = Date.now();
   for (const entry of state.entries) {
     const m = meta[entry.id];
     if (!m || !m.totalReviews) {
       newCount += 1;
+    }
+    if (isDue(entry, now)) {
+      dueCount += 1;
     }
   }
 
   const sortedDates = Array.from(reviewDates).sort().reverse();
   const streak = computeStreak(sortedDates);
 
-  state.stats = { streak, todayCount, newCount, learningCount, masteredCount };
+  state.stats = { streak, todayCount, dueCount, newCount, learningCount, masteredCount };
 }
 
 function renderStats() {
   if (elements.statStreak) elements.statStreak.textContent = state.stats.streak;
   if (elements.statToday) elements.statToday.textContent = state.stats.todayCount;
+  if (elements.statDue) elements.statDue.textContent = state.stats.dueCount;
   if (elements.statNew) elements.statNew.textContent = state.stats.newCount;
   if (elements.statLearning) elements.statLearning.textContent = state.stats.learningCount;
   if (elements.statMastered) elements.statMastered.textContent = state.stats.masteredCount;
@@ -237,9 +244,17 @@ function onKeyDown(event) {
   }
 }
 
+function isDue(entry, now = Date.now()) {
+  const dueAt = state.flashcardMeta[entry?.id]?.dueAt;
+  const dueTime = Date.parse(dueAt || "");
+  return Number.isFinite(dueTime) && dueTime <= now;
+}
+
 function makeDeck(entries) {
   let base = [];
-  if (state.filter === "study") {
+  if (state.filter === "due") {
+    base = entries.filter((entry) => isDue(entry));
+  } else if (state.filter === "study") {
     base = entries.filter((entry) => entry.study);
   } else if (state.filter === "favorites") {
     base = entries.filter((entry) => entry.favorite);

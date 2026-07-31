@@ -37,6 +37,33 @@ test("flashcards reload their deck when extension storage changes", async () => 
   assert.equal(dom.window.document.getElementById("card-word").textContent, "Haus");
 });
 
+test("Due today deck contains only due cards and shows their count", async () => {
+  const { dom } = await loadFlashcardsScript({
+    entries: [
+      makeEntry({ id: "DUE1", word: "Due word" }),
+      makeEntry({ id: "LATER1", word: "Later word" })
+    ],
+    storeOverrides: {
+      async getFlashcardMeta() {
+        return {
+          DUE1: { totalReviews: 1, reviews: [], dueAt: new Date(Date.now() - 60000).toISOString() },
+          LATER1: { totalReviews: 1, reviews: [], dueAt: new Date(Date.now() + 86400000).toISOString() },
+          REMOVED1: { totalReviews: 1, reviews: [], dueAt: new Date(Date.now() - 60000).toISOString() }
+        };
+      }
+    }
+  });
+
+  const deckFilter = dom.window.document.getElementById("deck-filter");
+  deckFilter.value = "due";
+  deckFilter.dispatchEvent(new dom.window.Event("change"));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  assert.match(dom.window.document.getElementById("deck-status").textContent, /1 card in this deck/);
+  assert.equal(dom.window.document.getElementById("card-word").textContent, "Due word");
+  assert.equal(dom.window.document.getElementById("stat-due").textContent, "1");
+});
+
 test("reverse direction shows translation on the front", async () => {
   const { dom } = await loadFlashcardsScript({
     entries: [makeEntry({ translations: { en: "house" } })]

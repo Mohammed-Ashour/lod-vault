@@ -19,6 +19,7 @@
         <label class="control-group">
           <span>Deck</span>
           <select id="deck-filter">
+            <option value="due">Due today</option>
             <option value="study">Study list</option>
             <option value="favorites">Favorites</option>
             <option value="all">All saved</option>
@@ -54,6 +55,11 @@
         <span class="stat-icon">📚</span>
         <span class="stat-value" id="stat-today">0</span>
         <span class="stat-label">today</span>
+      </div>
+      <div class="stat">
+        <span class="stat-icon">⏰</span>
+        <span class="stat-value" id="stat-due">0</span>
+        <span class="stat-label">due</span>
       </div>
       <div class="stat">
         <span class="stat-value" id="stat-new">0</span>
