@@ -571,7 +571,7 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
   };
 }
 
-async function loadFlashcardsScript({ entries = [], storeOverrides = {} } = {}) {
+async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localStorage = {} } = {}) {
   const shared = loadSharedStore();
   const html = fs.readFileSync(path.join(repoRoot, "pages/flashcards.html"), "utf8");
   const dom = new JSDOM(html, {
@@ -580,7 +580,22 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {} } = {}) 
   });
 
   let currentEntries = entries.map((entry) => structuredClone(entry));
+  const storageData = structuredClone(localStorage);
   const storageOnChanged = createChromeEvent();
+  const local = {
+    async get(keys) {
+      return (Array.isArray(keys) ? keys : [keys]).reduce((data, key) => {
+        if (key in storageData) data[key] = structuredClone(storageData[key]);
+        return data;
+      }, {});
+    },
+    async set(values) {
+      Object.assign(storageData, structuredClone(values));
+    },
+    async remove(key) {
+      delete storageData[key];
+    }
+  };
 
   const LodVaultStore = {
     STORAGE_KEY: "lodVault.entries",
@@ -607,6 +622,7 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {} } = {}) 
 
   const chrome = {
     storage: {
+      local,
       onChanged: storageOnChanged
     }
   };
@@ -644,6 +660,7 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {} } = {}) 
     api: context.__flashcardsTest,
     chrome,
     storageOnChanged,
+    storageData,
     setEntries(nextEntries) {
       currentEntries = nextEntries.map((entry) => structuredClone(entry));
     },

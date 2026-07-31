@@ -11,10 +11,17 @@ const state = {
   sessionCards: [],
   sessionIndex: 0,
   sessionResults: [],
+  resumableSession: null,
+  dailyTarget: 10,
   flashcardMeta: {},
   stats: { streak: 0, todayCount: 0, dueCount: 0, newCount: 0, learningCount: 0, masteredCount: 0 }
 };
 
+const FLASHCARD_SETTINGS_KEY = "lodVault.flashcardSettings";
+const FLASHCARD_SESSION_KEY = "lodVault.flashcardSession";
+const DAILY_TARGETS = new Set([5, 10, 20]);
+const DECK_FILTERS = new Set(["due", "study", "favorites", "all"]);
+const ORDER_MODES = new Set(["smart", "shuffle", "sequential"]);
 const elements = {};
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -22,11 +29,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.deckFilter = document.getElementById("deck-filter");
   elements.orderMode = document.getElementById("order-mode");
   elements.sessionSize = document.getElementById("session-size");
+  elements.dailyTarget = document.getElementById("daily-target");
   elements.directionToggle = document.getElementById("direction-toggle");
   elements.emptyState = document.getElementById("empty-state");
   elements.cardShell = document.getElementById("card-shell");
   elements.progress = document.getElementById("progress");
   elements.sessionProgress = document.getElementById("session-progress");
+  elements.dailyProgress = document.getElementById("daily-progress");
+  elements.resumeSession = document.getElementById("resume-session");
+  elements.resumeSessionLabel = document.getElementById("resume-session-label");
+  elements.resumeSessionButton = document.getElementById("resume-session-button");
+  elements.dismissSessionButton = document.getElementById("dismiss-session-button");
   elements.flashcard = document.getElementById("flashcard");
   elements.cardWord = document.getElementById("card-word");
   elements.cardAudio = document.getElementById("card-audio");
@@ -53,7 +66,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.deckFilter?.addEventListener("change", onDeckFilterChange);
   elements.orderMode?.addEventListener("change", onOrderModeChange);
   elements.sessionSize?.addEventListener("change", onSessionSizeChange);
+  elements.dailyTarget?.addEventListener("change", onDailyTargetChange);
   elements.directionToggle?.addEventListener("click", toggleDirection);
+  elements.resumeSessionButton?.addEventListener("click", resumeSession);
+  elements.dismissSessionButton?.addEventListener("click", dismissResumableSession);
   elements.flashcard?.addEventListener("click", onFlashcardClick);
   elements.flipCard?.addEventListener("click", toggleReveal);
   elements.cardAudio?.addEventListener("click", onAudioClick);
@@ -67,10 +83,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   chrome.storage?.onChanged?.addListener?.(handleStorageChange);
 
-  await loadEntries();
-  await loadFlashcardMeta();
+  await Promise.all([loadEntries(), loadFlashcardMeta(), loadFlashcardState()]);
   computeStats();
   renderStats();
+  renderResumeSession();
   rebuildDeck();
 });
 
@@ -99,6 +115,95 @@ async function loadFlashcardMeta() {
   state.flashcardMeta = await LodVaultStore.getFlashcardMeta();
 }
 
+async function loadFlashcardState() {
+  const local = chrome.storage?.local;
+  if (!local) return;
+
+  const saved = await local.get([FLASHCARD_SETTINGS_KEY, FLASHCARD_SESSION_KEY]);
+  const target = saved[FLASHCARD_SETTINGS_KEY]?.dailyTarget;
+  state.dailyTarget = DAILY_TARGETS.has(Number(target)) ? Number(target) : target === null ? 0 : 10;
+  state.resumableSession = saved[FLASHCARD_SESSION_KEY] || null;
+  if (elements.dailyTarget) elements.dailyTarget.value = state.dailyTarget ? String(state.dailyTarget) : "off";
+}
+
+async function saveDailyTarget() {
+  const local = chrome.storage?.local;
+  if (local) await local.set({ [FLASHCARD_SETTINGS_KEY]: { dailyTarget: state.dailyTarget || null } });
+}
+
+async function saveSession() {
+  const local = chrome.storage?.local;
+  if (!local || !state.sessionActive) return;
+  await local.set({
+    [FLASHCARD_SESSION_KEY]: {
+      filter: state.filter,
+      orderMode: state.orderMode,
+      direction: state.direction,
+      sessionSize: state.sessionSize,
+      cardIds: state.sessionCards.map((entry) => entry.id),
+      index: state.sessionIndex,
+      results: state.sessionResults
+    }
+  });
+}
+
+async function clearSavedSession() {
+  const local = chrome.storage?.local;
+  if (local) await local.remove(FLASHCARD_SESSION_KEY);
+}
+
+function renderResumeSession() {
+  const saved = state.resumableSession;
+  const remaining = saved?.cardIds?.length - Number(saved?.index || 0);
+  const canResume = Array.isArray(saved?.cardIds) && remaining > 0;
+  elements.resumeSession?.classList.toggle("is-hidden", !canResume);
+  if (canResume && elements.resumeSessionLabel) {
+    elements.resumeSessionLabel.textContent = `Resume: ${remaining} card${remaining === 1 ? "" : "s"} remaining`;
+  }
+}
+
+async function resumeSession() {
+  const saved = state.resumableSession;
+  if (!Array.isArray(saved?.cardIds)) return;
+
+  const cards = saved.cardIds.map((id) => state.entries.find((entry) => entry.id === id)).filter(Boolean);
+  const index = Math.max(0, Math.min(Number(saved.index) || 0, cards.length - 1));
+  if (!cards.length || index >= cards.length) {
+    await dismissResumableSession();
+    return;
+  }
+
+  state.filter = DECK_FILTERS.has(saved.filter) ? saved.filter : state.filter;
+  state.orderMode = ORDER_MODES.has(saved.orderMode) ? saved.orderMode : state.orderMode;
+  state.direction = saved.direction === "rev" ? "rev" : "fwd";
+  state.sessionSize = String(saved.sessionSize || cards.length);
+  state.sessionCards = cards;
+  state.sessionIndex = index;
+  state.sessionResults = Array.isArray(saved.results) ? saved.results : [];
+  state.sessionActive = true;
+  state.deck = cards;
+  state.index = index;
+  state.revealed = false;
+  state.resumableSession = null;
+
+  if (elements.deckFilter) elements.deckFilter.value = state.filter;
+  if (elements.orderMode) elements.orderMode.value = state.orderMode;
+  if (elements.sessionSize) elements.sessionSize.value = state.sessionSize;
+  if (elements.directionToggle) {
+    elements.directionToggle.textContent = state.direction === "fwd" ? "Lux → EN" : "EN → Lux";
+    elements.directionToggle.classList.toggle("is-active", state.direction === "rev");
+  }
+  renderResumeSession();
+  renderDeck();
+  await saveSession();
+}
+
+async function dismissResumableSession() {
+  state.resumableSession = null;
+  renderResumeSession();
+  await clearSavedSession();
+}
+
 const normalizeFlashcardMeta = LodVaultStore.normalizeFlashcardMeta;
 const computeStreak = LodVaultStore.computeFlashcardStreak;
 
@@ -120,9 +225,7 @@ function computeStats() {
     for (const d of dateSet) reviewDates.add(d);
 
     const last = m.reviews[m.reviews.length - 1];
-    if (last && last.date.slice(0, 10) === todayIso) {
-      todayCount += 1;
-    }
+    todayCount += m.reviews.filter((review) => review.date.slice(0, 10) === todayIso).length;
 
     if (m.easyCount >= 3 && last && last.rating === 3) {
       masteredCount += 1;
@@ -151,33 +254,52 @@ function computeStats() {
 function renderStats() {
   if (elements.statStreak) elements.statStreak.textContent = state.stats.streak;
   if (elements.statToday) elements.statToday.textContent = state.stats.todayCount;
+  if (elements.dailyProgress) {
+    const complete = state.dailyTarget && state.stats.todayCount >= state.dailyTarget;
+    elements.dailyProgress.textContent = state.dailyTarget
+      ? complete
+        ? `Daily target complete · ${state.dailyTarget} / ${state.dailyTarget} today`
+        : `${state.stats.todayCount} / ${state.dailyTarget} today`
+      : "Daily target off";
+    elements.dailyProgress.classList.toggle("is-complete", Boolean(complete));
+  }
   if (elements.statDue) elements.statDue.textContent = state.stats.dueCount;
   if (elements.statNew) elements.statNew.textContent = state.stats.newCount;
   if (elements.statLearning) elements.statLearning.textContent = state.stats.learningCount;
   if (elements.statMastered) elements.statMastered.textContent = state.stats.masteredCount;
 }
 
-function onDeckFilterChange(event) {
+async function onDeckFilterChange(event) {
   state.filter = event.target.value;
   state.index = 0;
   state.revealed = false;
   endSession();
+  await dismissResumableSession();
   rebuildDeck();
 }
 
-function onOrderModeChange(event) {
+async function onOrderModeChange(event) {
   state.orderMode = event.target.value;
   state.index = 0;
   state.revealed = false;
+  endSession();
+  await dismissResumableSession();
   rebuildDeck();
 }
 
-function onSessionSizeChange(event) {
+async function onSessionSizeChange(event) {
   state.sessionSize = event.target.value;
   state.index = 0;
   state.revealed = false;
   endSession();
+  await dismissResumableSession();
   rebuildDeck();
+}
+
+async function onDailyTargetChange(event) {
+  state.dailyTarget = DAILY_TARGETS.has(Number(event.target.value)) ? Number(event.target.value) : 0;
+  await saveDailyTarget();
+  renderStats();
 }
 
 async function handleStorageChange(changes, areaName) {
@@ -190,7 +312,11 @@ async function handleStorageChange(changes, areaName) {
   await loadFlashcardMeta();
   computeStats();
   renderStats();
-  rebuildDeck();
+  if (state.sessionActive) {
+    renderDeck();
+  } else {
+    rebuildDeck();
+  }
 }
 
 function toggleDirection() {
@@ -201,6 +327,7 @@ function toggleDirection() {
   }
   state.revealed = false;
   renderDeck();
+  if (state.sessionActive) void saveSession();
 }
 
 function onKeyDown(event) {
@@ -320,6 +447,7 @@ function rebuildDeck() {
   state.sessionIndex = 0;
   state.sessionResults = [];
   state.deck = state.sessionActive ? state.sessionCards : baseDeck;
+  if (state.sessionActive) void saveSession();
   state.index = Math.min(state.index, Math.max(state.deck.length - 1, 0));
   state.revealed = false;
   renderDeck();
@@ -423,8 +551,8 @@ function renderDeck() {
     elements.flipCard.textContent = state.revealed ? "Hide" : "Reveal";
   }
 
-  if (elements.prevCard) elements.prevCard.disabled = count <= 1;
-  if (elements.nextCard) elements.nextCard.disabled = count <= 1;
+  if (elements.prevCard) elements.prevCard.disabled = state.sessionActive || count <= 1;
+  if (elements.nextCard) elements.nextCard.disabled = state.sessionActive || count <= 1;
 
   if (state.revealed && count > 0) {
     elements.ratingBar?.classList.remove("is-hidden");
@@ -513,11 +641,13 @@ async function rateCard(rating) {
   if (state.sessionActive) {
     state.sessionIndex += 1;
     if (state.sessionIndex >= state.sessionCards.length) {
+      await clearSavedSession();
       showSummary();
       return;
     }
     state.index = state.sessionIndex;
     state.revealed = false;
+    await saveSession();
     renderDeck();
   } else {
     showNext();
@@ -549,4 +679,5 @@ function endSession() {
   state.sessionCards = [];
   state.sessionIndex = 0;
   state.sessionResults = [];
+  void clearSavedSession();
 }

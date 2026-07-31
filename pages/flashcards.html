@@ -41,6 +41,15 @@
             <option value="20">20 cards</option>
           </select>
         </label>
+        <label class="control-group">
+          <span>Daily target</span>
+          <select id="daily-target">
+            <option value="5">5 cards</option>
+            <option value="10">10 cards</option>
+            <option value="20">20 cards</option>
+            <option value="off">Off</option>
+          </select>
+        </label>
         <button id="direction-toggle" class="secondary-button" title="Toggle reverse cards (R)">Lux → EN</button>
       </div>
     </header>
@@ -56,6 +65,7 @@
         <span class="stat-value" id="stat-today">0</span>
         <span class="stat-label">today</span>
       </div>
+      <div id="daily-progress" class="daily-progress" aria-live="polite"></div>
       <div class="stat">
         <span class="stat-icon">⏰</span>
         <span class="stat-value" id="stat-due">0</span>
@@ -74,6 +84,12 @@
         <span class="stat-label">mastered</span>
       </div>
     </div>
+
+    <section id="resume-session" class="resume-session is-hidden" aria-live="polite">
+      <span id="resume-session-label">Resume session</span>
+      <button id="resume-session-button" class="secondary-button">Resume</button>
+      <button id="dismiss-session-button" class="text-button">Start new</button>
+    </section>
 
     <section id="empty-state" class="empty-state is-hidden">
       No words available for this flashcard deck yet.

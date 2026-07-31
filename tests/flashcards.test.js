@@ -116,6 +116,55 @@ test("session mode shows bounded deck and summary after ratings", async () => {
   assert.equal(dom.window.document.getElementById("summary-good").textContent, "10");
 });
 
+test("flashcard sessions resume at the first unrated card", async () => {
+  const entries = Array.from({ length: 12 }, (_, i) => makeEntry({ id: `WORD${i}`, word: `Word${i}` }));
+  const first = await loadFlashcardsScript({ entries });
+  const size = first.dom.window.document.getElementById("session-size");
+  size.value = "10";
+  size.dispatchEvent(new first.dom.window.Event("change"));
+  await new Promise((resolve) => first.dom.window.setTimeout(resolve, 0));
+
+  const good = first.dom.window.document.querySelector('[data-rating="2"]');
+  for (let index = 0; index < 2; index += 1) {
+    first.dom.window.document.getElementById("flip-card").click();
+    good.click();
+    await new Promise((resolve) => first.dom.window.setTimeout(resolve, 0));
+  }
+
+  assert.equal(first.storageData["lodVault.flashcardSession"].index, 2);
+
+  const resumed = await loadFlashcardsScript({ entries, localStorage: first.storageData });
+  const resume = resumed.dom.window.document.getElementById("resume-session");
+  assert.equal(resume.classList.contains("is-hidden"), false);
+  assert.match(resume.textContent, /8 cards remaining/);
+
+  resumed.dom.window.document.getElementById("resume-session-button").click();
+  await new Promise((resolve) => resumed.dom.window.setTimeout(resolve, 0));
+  assert.equal(resumed.dom.window.document.getElementById("card-word").textContent, "Word2");
+});
+
+test("daily target reports completion and can be turned off", async () => {
+  const today = new Date().toISOString();
+  const reviews = Array.from({ length: 10 }, () => ({ date: today, rating: 2, direction: "fwd" }));
+  const { dom, storageData } = await loadFlashcardsScript({
+    entries: [makeEntry()],
+    storeOverrides: {
+      async getFlashcardMeta() {
+        return { HAUS1: { totalReviews: 10, reviews, goodCount: 10 } };
+      }
+    }
+  });
+
+  assert.match(dom.window.document.getElementById("daily-progress").textContent, /Daily target complete · 10 \/ 10 today/);
+  const target = dom.window.document.getElementById("daily-target");
+  target.value = "off";
+  target.dispatchEvent(new dom.window.Event("change"));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  assert.equal(dom.window.document.getElementById("daily-progress").textContent, "Daily target off");
+  assert.deepEqual(storageData["lodVault.flashcardSettings"], { dailyTarget: null });
+});
+
 test("keyboard shortcuts trigger rating and direction toggle", async () => {
   const { dom } = await loadFlashcardsScript({
     entries: [makeEntry()]

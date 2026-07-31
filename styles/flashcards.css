@@ -147,8 +147,39 @@ select:focus { outline: none; border-color: var(--accent); }
 .stat-icon { font-size: 14px; }
 .stat-value { font-weight: 700; color: var(--accent); }
 .stat-label { color: var(--muted); font-size: 11px; }
+.daily-progress {
+  align-self: center;
+  color: var(--accent-lt);
+  font-size: 12px;
+  font-weight: 700;
+}
+.daily-progress.is-complete { color: var(--success); }
 
 /* ── Deck states ─────────────────────────────────── */
+.resume-session {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border-a);
+  border-radius: var(--r-md);
+  background: var(--accent-dim);
+  color: var(--accent-lt);
+  font-size: 12px;
+  font-weight: 700;
+}
+.text-button {
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.text-button:hover { color: #fff; text-decoration: underline; }
 .empty-state {
   margin-top: 20px;
   background: var(--d1);
@@ -334,4 +365,5 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   .rating-bar { grid-template-columns: 1fr; }
   .summary-stats { grid-template-columns: repeat(2, 1fr); }
   .stats-bar { gap: 8px; padding: 8px 10px; }
+  .resume-session { align-items: flex-start; flex-wrap: wrap; justify-content: flex-start; }
 }
