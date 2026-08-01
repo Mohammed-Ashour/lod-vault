@@ -23,6 +23,7 @@ const LENS_SCRIPT_FILES = [
 const SELECTION_TRIGGER_SCRIPT_ID = "lodvault-selection-trigger";
 const SELECTION_TRIGGER_SCRIPT_FILES = ["scripts/selection-trigger.js"];
 const SELECTION_TRIGGER_STYLE_FILES = ["styles/selection-trigger.css"];
+const SELECTION_TRIGGER_CONTRACT = "1";
 const STORE_MUTATION_MESSAGE_TYPE = LodVaultStore.STORE_MUTATION_MESSAGE_TYPE;
 const STORE_MUTATION_METHODS = new Set([
   "setAutoMode",
@@ -315,7 +316,11 @@ async function isSelectionTriggerInjected(tabId) {
   try {
     const [{ result } = {}] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => Boolean(globalThis.LodVaultSelectionTrigger?.loaded)
+      func: (contract) => {
+        const trigger = globalThis.LodVaultSelectionTrigger;
+        return Boolean(trigger?.loaded && trigger.contract === contract);
+      },
+      args: [SELECTION_TRIGGER_CONTRACT]
     });
     return Boolean(result);
   } catch {
@@ -427,7 +432,9 @@ chrome.contextMenus?.onClicked?.addListener((info, tab) => {
   openLensOverlay(tab.id, info.selectionText || "", {
     tabUrl: tab.url || "",
     requestSitePermission: true
-  }).catch(() => {});
+  }).catch((error) => {
+    console.error("LOD Lens: could not open from context menu:", error?.message || error);
+  });
 });
 
 chrome.commands?.onCommand?.addListener(async (command) => {
@@ -437,9 +444,15 @@ chrome.commands?.onCommand?.addListener(async (command) => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
     const selectionText = await getActiveSelectionText(tab.id);
+    // No optional host permission is requested here: the keyboard shortcut
+    // grants activeTab for the active tab, which is enough to inject the lens
+    // runtime and open the overlay. Requesting persistent site access from the
+    // command path would require the permission prompt to fire inside the
+    // shortcut's gesture window, before the tabs.query/selection round-trips
+    // above; the context-menu path remains the opt-in flow for persistent
+    // access and the floating trigger.
     await openLensOverlay(tab.id, selectionText, {
-      tabUrl: tab.url || "",
-      requestSitePermission: true
+      tabUrl: tab.url || ""
     });
   } catch (_error) {
     // Ignore lens overlay failures.
@@ -477,10 +490,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       requestSitePermission: true
     })
       .then(() => sendResponse({ ok: true }))
-      .catch((error) => sendResponse({
-        ok: false,
-        error: error?.message || String(error)
-      }));
+      .catch((error) => {
+        console.error("LOD Lens: could not open for the selection trigger:", error?.message || error);
+        sendResponse({
+          ok: false,
+          error: error?.message || String(error)
+        });
+      });
 
     return true;
   }

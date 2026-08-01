@@ -3,6 +3,12 @@ const assert = require("node:assert/strict");
 
 const { loadBackgroundScript } = require("./helpers/loaders");
 
+function getOpenCalls(executedScripts) {
+  return executedScripts.filter((call) => (
+    Array.isArray(call.args) && String(call.func || "").includes("openFromSelection")
+  ));
+}
+
 async function wait(ms = 0) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -368,7 +374,7 @@ test("background opens the lens overlay for content-script requests from the sen
   ]);
   assert.equal(typeof background.executedScripts[0].func, "function");
   assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[0].target)), { tabId: 77 });
-  const openCall = background.executedScripts.find((call) => Array.isArray(call.args));
+  const openCall = getOpenCalls(background.executedScripts)[0];
   assert.deepEqual(JSON.parse(JSON.stringify(openCall.args)), ["Moien alleguer"]);
 });
 
@@ -388,7 +394,7 @@ test("background preserves long sentence selections when opening the lens overla
   );
 
   assert.deepEqual(JSON.parse(JSON.stringify(response)), { ok: true });
-  const openCall = background.executedScripts.find((call) => Array.isArray(call.args));
+  const openCall = getOpenCalls(background.executedScripts)[0];
   assert.deepEqual(JSON.parse(JSON.stringify(openCall.args)), [
     "Dëst ass eng zimlech laang Auswiel mat villen Wierder déi net soll gekierzt ginn wann de Benotzer de Lens iwwer de Kontextmenü opmécht fir e komplette Saz nozeschloen."
   ]);
@@ -464,7 +470,7 @@ test("background context menu grants site access before opening the lens overlay
     css: ["styles/selection-trigger.css"],
     runAt: "document_idle"
   }]);
-  const openCall = background.executedScripts.find((call) => Array.isArray(call.args));
+  const openCall = getOpenCalls(background.executedScripts)[0];
   assert.deepEqual(JSON.parse(JSON.stringify(openCall.args)), ["Haus"]);
 });
 
@@ -511,7 +517,7 @@ test("background reuses previously injected lens scripts in the same tab", async
 
   const lensFileCalls = executeScriptCalls.filter((call) => Array.isArray(call.files) && !call.files.includes("scripts/selection-trigger.js"));
   assert.equal(lensFileCalls.length, 1);
-  const openCalls = executeScriptCalls.filter((call) => Array.isArray(call.args));
+  const openCalls = getOpenCalls(executeScriptCalls);
   assert.deepEqual(JSON.parse(JSON.stringify(openCalls.at(-1).args)), ["Moien"]);
 });
 
@@ -550,8 +556,31 @@ test("background command reads the current selection before opening the lens ove
     "scripts/lens-overlay-controller.js",
     "scripts/lens-runtime.js"
   ]);
-  const openCalls = executeScriptCalls.filter((call) => Array.isArray(call.args));
+  const openCalls = getOpenCalls(executeScriptCalls);
   assert.deepEqual(JSON.parse(JSON.stringify(openCalls[0].args)), ["déidlechen!"]);
+});
+
+test("background command relies on activeTab instead of requesting optional site access", async () => {
+  const background = loadBackgroundScript();
+
+  background.chrome.tabs.query = async () => [{ id: 55, url: "https://example.com/" }];
+  background.chrome.scripting.executeScript = async (details) => {
+    background.executedScripts.push(details);
+    if (typeof details?.func === "function" && !Array.isArray(details.args)) {
+      return [{ result: false }];
+    }
+    return [];
+  };
+
+  background.commandsOnCommand.dispatch("open-lod-lens");
+  await wait(0);
+  await wait(0);
+  await wait(0);
+
+  assert.deepEqual(background.permissionRequests, [], "command path must not request optional host access");
+  assert.deepEqual(background.permissionContainsCalls, []);
+  const openCalls = getOpenCalls(background.executedScripts);
+  assert.equal(openCalls.length, 1, "expected the lens overlay to open on the active tab");
 });
 
 test("background command preserves long selections for sentence lookup", async () => {
@@ -576,7 +605,7 @@ test("background command preserves long selections for sentence lookup", async (
   await wait(0);
   await wait(0);
 
-  const openCalls = executeScriptCalls.filter((call) => Array.isArray(call.args));
+  const openCalls = getOpenCalls(executeScriptCalls);
   assert.deepEqual(JSON.parse(JSON.stringify(openCalls[0].args)), [
     "Dëst ass eng aner laang Auswiel déi iwwer d'Tastaturkommando opgemaach gëtt an dowéinst och komplett beim Overlay ukomme muss ouni an der Mëtt ofgeschnidden ze ginn."
   ]);

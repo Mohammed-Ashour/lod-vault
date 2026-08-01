@@ -88,10 +88,10 @@ test("selection trigger caches the page language heuristic until it is invalidat
   assert.equal(api.pageLooksLuxembourgish(), false);
 });
 
-test("selection trigger exposes a loaded marker for the background injector", () => {
+test("selection trigger exposes a versioned loaded marker for the background injector", () => {
   const { triggerMarker } = loadSelectionTrigger();
 
-  assert.deepEqual(JSON.parse(JSON.stringify(triggerMarker)), { loaded: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(triggerMarker)), { loaded: true, contract: "1" });
 });
 
 test("selection trigger always asks the background to open the lens runtime", async () => {

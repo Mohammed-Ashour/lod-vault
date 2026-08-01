@@ -292,6 +292,7 @@
   };
 
   globalThis.LodVaultSelectionTrigger = {
-    loaded: true
+    loaded: true,
+    contract: "1"
   };
 })();
