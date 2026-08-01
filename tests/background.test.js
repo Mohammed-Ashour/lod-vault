@@ -519,7 +519,7 @@ test("background command reads the current selection before opening the lens ove
   const background = loadBackgroundScript();
   const executeScriptCalls = [];
 
-  background.chrome.tabs.query = async () => [{ id: 55 }];
+  background.chrome.tabs.query = async () => [{ id: 55, url: "https://example.com/" }];
   background.chrome.scripting.executeScript = async (details) => {
     executeScriptCalls.push(details);
     if (typeof details?.func === "function" && !Array.isArray(details.args)) {
@@ -559,7 +559,7 @@ test("background command preserves long selections for sentence lookup", async (
   const executeScriptCalls = [];
   const longSelection = "  Dëst ass eng aner laang Auswiel déi iwwer d'Tastaturkommando opgemaach gëtt an dowéinst och komplett beim Overlay ukomme muss ouni an der Mëtt ofgeschnidden ze ginn.  ";
 
-  background.chrome.tabs.query = async () => [{ id: 55 }];
+  background.chrome.tabs.query = async () => [{ id: 55, url: "https://example.com/" }];
   background.chrome.scripting.executeScript = async (details) => {
     executeScriptCalls.push(details);
     if (typeof details?.func === "function" && !Array.isArray(details.args)) {
@@ -580,6 +580,44 @@ test("background command preserves long selections for sentence lookup", async (
   assert.deepEqual(JSON.parse(JSON.stringify(openCalls[0].args)), [
     "Dëst ass eng aner laang Auswiel déi iwwer d'Tastaturkommando opgemaach gëtt an dowéinst och komplett beim Overlay ukomme muss ouni an der Mëtt ofgeschnidden ze ginn."
   ]);
+});
+
+test("background requests optional site access as the first async call in the gesture path", async () => {
+  const background = loadBackgroundScript();
+  const order = [];
+
+  background.chrome.permissions.request = async (details = {}) => {
+    order.push(`request:${(details.origins || [])[0]}`);
+    return true;
+  };
+  background.chrome.permissions.getAll = async () => ({ origins: ["https://www.rtl.lu/*"] });
+  background.chrome.scripting.insertCSS = async (details) => {
+    order.push(`css:${details.files[0]}`);
+  };
+  background.chrome.scripting.executeScript = async (details) => {
+    if (Array.isArray(details.files)) {
+      order.push(`inject:${details.files[0]}`);
+    }
+    return [];
+  };
+
+  await background.dispatchRuntimeMessage({
+    type: "lodvault:open-lens-overlay",
+    selectionText: "Moien"
+  }, {
+    tab: { id: 77 },
+    url: "https://www.rtl.lu/news"
+  });
+
+  assert.equal(order[0], "request:https://www.rtl.lu/*", "permission request must be the first async call");
+  assert.deepEqual(background.permissionContainsCalls, [], "no contains() pre-check before the request");
+  assert.deepEqual(JSON.parse(JSON.stringify(background.registeredContentScripts.at(-1))), [{
+    id: "lodvault-selection-trigger",
+    matches: ["https://www.rtl.lu/*"],
+    js: ["scripts/selection-trigger.js"],
+    css: ["styles/selection-trigger.css"],
+    runAt: "document_idle"
+  }]);
 });
 
 test("background re-registers the selection trigger when site permissions are added", async () => {

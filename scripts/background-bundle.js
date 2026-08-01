@@ -5376,35 +5376,6 @@ function getTabOriginPattern(tabUrl) {
   return `${parsed.origin}/*`;
 }
 
-async function getTabUrl(tabId, fallbackUrl = "") {
-  if (fallbackUrl) {
-    return String(fallbackUrl);
-  }
-
-  if (!tabId || typeof chrome.tabs?.get !== "function") {
-    return "";
-  }
-
-  try {
-    return String((await chrome.tabs.get(tabId))?.url || "");
-  } catch {
-    return "";
-  }
-}
-
-async function hasLensSitePermission(tabUrl) {
-  const originPattern = getTabOriginPattern(tabUrl);
-  if (!originPattern || typeof chrome.permissions?.contains !== "function") {
-    return false;
-  }
-
-  try {
-    return Boolean(await chrome.permissions.contains({ origins: [originPattern] }));
-  } catch {
-    return false;
-  }
-}
-
 async function requestLensSitePermission(tabUrl) {
   const originPattern = getTabOriginPattern(tabUrl);
   if (!originPattern || typeof chrome.permissions?.request !== "function") {
@@ -5566,36 +5537,31 @@ async function ensureSelectionTriggerInjected(tabId) {
   });
 }
 
-async function enableSiteSelectionTrigger(tabId, tabUrl) {
-  const originPattern = getTabOriginPattern(tabUrl);
-  if (!originPattern) {
-    return false;
-  }
-
-  if (await hasLensSitePermission(tabUrl)) {
-    await ensureSelectionTriggerInjected(tabId);
-    return true;
-  }
-
-  const granted = await requestLensSitePermission(tabUrl);
-  if (!granted) {
-    return false;
-  }
-
-  await syncSelectionTriggerRegistration();
-  await ensureSelectionTriggerInjected(tabId);
-  return true;
-}
-
 async function openLensOverlay(tabId, selectionText = "", { tabUrl = "", requestSitePermission = false } = {}) {
   if (!tabId || !chrome.scripting?.executeScript) {
     throw new Error("Cannot open lens overlay without a tab id.");
   }
 
-  const resolvedTabUrl = String(tabUrl || "") || await getTabUrl(tabId, "");
+  const resolvedTabUrl = String(tabUrl || "");
 
-  if (requestSitePermission && !(await enableSiteSelectionTrigger(tabId, resolvedTabUrl))) {
-    throw new Error("LODVault needs site access to open Lens on this page.");
+  if (requestSitePermission) {
+    if (!getTabOriginPattern(resolvedTabUrl)) {
+      throw new Error("LODVault needs site access to open Lens on this page.");
+    }
+
+    // Must be the first async call: the caller's user gesture (context menu
+    // click, trigger click, or command) is what allows the permission prompt
+    // to appear. Awaiting anything before it loses the gesture and makes
+    // chrome.permissions.request throw "must be called during a user gesture".
+    // Already-granted origins resolve true without a prompt, so no contains()
+    // pre-check is needed.
+    const granted = await requestLensSitePermission(resolvedTabUrl);
+    if (!granted) {
+      throw new Error("LODVault needs site access to open Lens on this page.");
+    }
+
+    await syncSelectionTriggerRegistration();
+    await ensureSelectionTriggerInjected(tabId);
   }
 
   await ensureLensOverlayInjected(tabId);
