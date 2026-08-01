@@ -513,10 +513,17 @@
         elements.restorePreviewChip.classList.add("is-success");
       }
 
+      const newCount = Number(result?.newCount);
+      const mergeCount = Number(result?.mergeCount);
+      const restoreCount = Number(result?.restoreCount);
+      const hasResultCounts = [newCount, mergeCount, restoreCount].every(Number.isFinite);
+      const newTotal = hasResultCounts ? newCount : preview.newIds.length;
+      const mergeTotal = hasResultCounts ? mergeCount : preview.mergeIds.length;
+      const restoreTotal = hasResultCounts ? restoreCount : preview.restoreIds.length;
       const breakdown = [
-        ...(preview.newIds.length ? [`${preview.newIds.length} new`] : []),
-        ...(preview.mergeIds.length ? [`${preview.mergeIds.length} merged`] : []),
-        ...(preview.restoreIds.length ? [`${preview.restoreIds.length} restored`] : [])
+        ...(newTotal > 0 ? [`${newTotal} new`] : []),
+        ...(mergeTotal > 0 ? [`${mergeTotal} merged`] : []),
+        ...(restoreTotal > 0 ? [`${restoreTotal} restored`] : [])
       ].join(", ");
       const importedCount = Number(result?.imported) || 0;
 
@@ -599,7 +606,16 @@
 
       try {
         const result = await store.importJson(pendingRestoreText);
-        await refreshAfterRestore();
+        // The commit succeeded from here on; only refresh is still pending.
+        pendingRestoreText = "";
+        pendingRestorePreview = null;
+
+        try {
+          await refreshAfterRestore();
+        } catch {
+          // Post-commit refresh is best-effort: the vault is already merged and
+          // storage listeners will re-render the affected sections.
+        }
 
         renderRestoreCompleted(preview, result);
 
@@ -611,11 +627,9 @@
         setSearchStatusFeedback(message, "success");
         ctx.showActionFeedback(message);
       } catch {
+        // The commit itself failed; keep the review panel so the user can retry.
         if (elements.restoreConfirm) elements.restoreConfirm.disabled = false;
         setSearchStatusFeedback("Could not import that JSON file.", "error");
-      } finally {
-        pendingRestoreText = "";
-        pendingRestorePreview = null;
       }
     }
 

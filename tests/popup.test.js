@@ -249,7 +249,7 @@ test("popup previews a JSON restore and only merges on confirm", async () => {
       },
       async importJson(text) {
         importCalls.push(text);
-        return { imported: 1, total: 2 };
+        return { imported: 1, total: 2, newCount: 1, mergeCount: 0, restoreCount: 0 };
       }
     }
   });
@@ -285,6 +285,96 @@ test("popup previews a JSON restore and only merges on confirm", async () => {
   assert.equal(dom.window.document.getElementById("restore-confirm").classList.contains("is-hidden"), true);
   assert.equal(dom.window.document.getElementById("restore-cancel").textContent, "Close");
   assert.match(dom.window.document.getElementById("search-status").textContent, /Imported 1 word\. Settings restored\. Review progress merged/);
+});
+
+test("popup completed summary uses the actual merge counts when they differ from the preview", async () => {
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    storeOverrides: {
+      async previewJsonImport() {
+        return {
+          exportedAt: "",
+          entryCount: 1,
+          skippedCount: 0,
+          newIds: ["WORD2"],
+          mergeIds: [],
+          restoreIds: [],
+          settings: null,
+          hasFlashcardMeta: false,
+          flashcardCount: 0
+        };
+      },
+      async importJson() {
+        // The vault changed between preview and merge: the word already exists.
+        return { imported: 1, total: 2, newCount: 0, mergeCount: 1, restoreCount: 0 };
+      }
+    }
+  });
+
+  const summary = dom.window.document.getElementById("restore-preview-summary");
+  selectRestoreFile(dom, "{}");
+  await flush();
+
+  dom.window.document.getElementById("restore-confirm").click();
+  await flush();
+
+  assert.match(summary.textContent, /Imported 1 word \(1 merged\)/);
+  const lines = Array.from(dom.window.document.getElementById("restore-preview-details").querySelectorAll("li")).map((li) => li.textContent);
+  assert.ok(lines.some((line) => /nothing in your vault was removed/i.test(line)));
+});
+
+test("popup reports a successful merge even when the post-commit refresh fails", async () => {
+  let failRefreshes = false;
+  const importCalls = [];
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    storeOverrides: {
+      async previewJsonImport() {
+        return {
+          exportedAt: "",
+          entryCount: 1,
+          skippedCount: 0,
+          newIds: ["WORD2"],
+          mergeIds: [],
+          restoreIds: [],
+          settings: null,
+          hasFlashcardMeta: false,
+          flashcardCount: 0
+        };
+      },
+      async importJson(text) {
+        importCalls.push(text);
+        return { imported: 1, total: 2, newCount: 1, mergeCount: 0, restoreCount: 0 };
+      },
+      async getEntries() {
+        if (failRefreshes) {
+          throw new Error("storage unavailable");
+        }
+        return makeEntries(1);
+      }
+    }
+  });
+
+  const preview = dom.window.document.getElementById("restore-preview");
+  const summary = dom.window.document.getElementById("restore-preview-summary");
+  const chip = dom.window.document.getElementById("restore-preview-chip");
+  const searchStatus = dom.window.document.getElementById("search-status");
+
+  selectRestoreFile(dom, "{}");
+  await flush();
+  assert.equal(preview.classList.contains("is-hidden"), false);
+
+  // The vault merge succeeds, but the follow-up list refresh fails.
+  failRefreshes = true;
+  dom.window.document.getElementById("restore-confirm").click();
+  await flush();
+
+  assert.equal(importCalls.length, 1);
+  assert.equal(chip.textContent.trim(), "Merged");
+  assert.match(summary.textContent, /Imported 1 word \(1 new\)/);
+  assert.match(searchStatus.textContent, /Imported 1 word\./);
+  assert.doesNotMatch(searchStatus.textContent, /Could not import/);
+  assert.equal(dom.window.document.getElementById("restore-confirm").classList.contains("is-hidden"), true);
 });
 
 test("popup restore preview can be cancelled without merging", async () => {

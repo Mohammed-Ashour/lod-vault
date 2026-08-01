@@ -717,7 +717,7 @@ test("importJson merges flags, keeps valid entries only, prefers the imported no
     ]
   }));
 
-  assert.deepEqual({ ...result }, { imported: 3, total: 3 });
+  assert.deepEqual({ ...result }, { imported: 3, total: 3, newCount: 2, mergeCount: 1, restoreCount: 0 });
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.favorite, true);
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.study, true);
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.note, "new note");
@@ -1011,8 +1011,102 @@ test("previewJsonImport rejects foreign or invalid files without touching the va
     () => store.previewJsonImport(JSON.stringify({ app: "lodvault", version: 99, entries: [] })),
     /Unsupported LODVault export version/
   );
+  await assert.rejects(
+    () => store.previewJsonImport(JSON.stringify({})),
+    /Invalid JSON import format/
+  );
+  await assert.rejects(
+    () => store.previewJsonImport(JSON.stringify({ app: "lodvault", version: 2 })),
+    /Invalid JSON import format/
+  );
+  await assert.rejects(
+    () => store.importJson(JSON.stringify({})),
+    /Invalid JSON import format/
+  );
 
   assert.equal(JSON.stringify(storageData), before);
+});
+
+test("previewJsonImport simulates import order for duplicate ids", async () => {
+  const { store } = loadSharedStore();
+
+  const preview = JSON.parse(JSON.stringify(await store.previewJsonImport(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    entries: [
+      { id: "BEEM1", word: "Beem", url: "https://lod.lu/artikel/BEEM1", study: true },
+      { id: "BEEM1", word: "Beem", url: "https://lod.lu/artikel/BEEM1", study: true }
+    ]
+  }))));
+
+  assert.deepEqual(preview.newIds, ["BEEM1"]);
+  assert.deepEqual(preview.mergeIds, ["BEEM1"]);
+  assert.equal(preview.entryCount, 2);
+  assert.equal(preview.skippedCount, 0);
+});
+
+test("previewJsonImport does not migrate legacy storage", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodWrapper.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        favorite: true
+      }
+    }
+  });
+
+  const before = JSON.stringify(storageData);
+  const preview = JSON.parse(JSON.stringify(await store.previewJsonImport(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    entries: [
+      { id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1", favorite: true },
+      { id: "BEEM1", word: "Beem", url: "https://lod.lu/artikel/BEEM1", study: true }
+    ]
+  }))));
+
+  // Legacy entries are visible to the preview (so HAUS1 merges)…
+  assert.deepEqual(preview.mergeIds, ["HAUS1"]);
+  assert.deepEqual(preview.newIds, ["BEEM1"]);
+  // …but nothing is written or migrated: the legacy key stays untouched.
+  assert.equal(JSON.stringify(storageData), before);
+  assert.ok(storageData["lodWrapper.entries"], "legacy key must be preserved");
+  assert.equal(storageData["lodVault.entries"], undefined, "no migrated copy may be written");
+});
+
+test("importJson reports per-category counts from the actual merge", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        favorite: true
+      }
+    },
+    ["lodVault.deleted"]: {
+      GONE1: "2026-01-01T00:00:00.000Z"
+    }
+  });
+
+  const result = await store.importJson(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    entries: [
+      { id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1", study: true },
+      { id: "BEEM1", word: "Beem", url: "https://lod.lu/artikel/BEEM1", study: true },
+      { id: "GONE1", word: "Gone", url: "https://lod.lu/artikel/GONE1", favorite: true },
+      { id: "", word: "No id", favorite: true }
+    ]
+  }));
+
+  assert.deepEqual({ ...result }, { imported: 3, total: 3, newCount: 1, mergeCount: 1, restoreCount: 1 });
+  assert.equal(storageData[store.STORAGE_KEY].HAUS1.study, true);
+  assert.equal(storageData[store.STORAGE_KEY].BEEM1.study, true);
+  assert.equal(storageData[store.STORAGE_KEY].GONE1.favorite, true);
+  assert.equal(storageData[store.DELETED_KEY]?.GONE1, undefined, "restored word must lose its tombstone");
 });
 
 test("createNoteAutosaveController trims, saves, and updates textarea dataset state", async () => {

@@ -1268,6 +1268,9 @@
     if (parsed.version && ![1, EXPORT_VERSION].includes(Number(parsed.version))) {
       throw new Error("Unsupported LODVault export version.");
     }
+    if (!Array.isArray(parsed.entries)) {
+      throw new Error("Invalid JSON import format.");
+    }
   }
 
   function getImportedSettings(parsed) {
@@ -1306,6 +1309,9 @@
       const entryMap = await getEntryMap();
       const deletedMap = await getDeletedMap();
       let imported = 0;
+      let newCount = 0;
+      let mergeCount = 0;
+      let restoreCount = 0;
 
       for (const rawEntry of incomingEntries) {
         const incoming = normalizeEntry(rawEntry);
@@ -1313,6 +1319,13 @@
         if (!shouldKeepEntry(incoming)) continue;
 
         const existing = entryMap[incoming.id];
+        if (existing) {
+          mergeCount += 1;
+        } else if (deletedMap[incoming.id]) {
+          restoreCount += 1;
+        } else {
+          newCount += 1;
+        }
         const merged = mergeEntry(existing, incoming);
         merged.favorite = Boolean(existing?.favorite) || Boolean(incoming.favorite);
         merged.study = Boolean(existing?.study) || Boolean(incoming.study);
@@ -1357,12 +1370,30 @@
         throw error;
       }
 
-      return { imported, total: countStoredEntries(entryMap) };
+      return { imported, total: countStoredEntries(entryMap), newCount, mergeCount, restoreCount };
     });
   }
 
   async function importJson(text) {
     return runStoreMutation("importJson", [text], importJsonDirect);
+  }
+
+  // Non-mutating snapshot of the entry map and deleted map exactly as
+  // importJson would see them, without running the migration/normalization
+  // persistence that getEntryMap() performs. Used by the restore preview so
+  // that selecting a file never writes to storage.
+  async function readPreviewVaultSnapshot() {
+    const data = await chrome.storage.local.get([STORAGE_KEY, LEGACY_STORAGE_KEY, DELETED_KEY]);
+    const current = data[STORAGE_KEY] && typeof data[STORAGE_KEY] === "object" ? data[STORAGE_KEY] : {};
+    const legacy = data[LEGACY_STORAGE_KEY] && typeof data[LEGACY_STORAGE_KEY] === "object" ? data[LEGACY_STORAGE_KEY] : null;
+    const combined = legacy ? { ...legacy, ...current } : current;
+    const { entryMap: sanitized } = sanitizeEntryMapWithMeta(combined);
+    const deletedMap = normalizeDeletedMap(data[DELETED_KEY] || {});
+
+    return {
+      entryMap: applyDeletedMap(sanitized, deletedMap),
+      deletedMap
+    };
   }
 
   // Read-only preview of what importJson would change. Parses and validates
@@ -1388,10 +1419,7 @@
       ? parsed.exportedAt
       : "";
 
-    const [entryMap, deletedMap] = await Promise.all([
-      getEntryMap(),
-      getDeletedMap()
-    ]);
+    const { entryMap, deletedMap } = await readPreviewVaultSnapshot();
 
     const newIds = [];
     const mergeIds = [];
@@ -1412,6 +1440,11 @@
       } else {
         newIds.push(incoming.id);
       }
+
+      // Mirror the import write in memory so duplicate ids in the same file
+      // categorize the same way the real merge will.
+      entryMap[incoming.id] = incoming;
+      delete deletedMap[incoming.id];
     }
 
     return {
