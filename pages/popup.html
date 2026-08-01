@@ -122,6 +122,21 @@
         <button id="import-json" class="btn-tool">Restore JSON</button>
         <button id="import-browser-history" class="btn-tool">Import history</button>
       </div>
+      <section id="restore-preview" class="restore-preview is-hidden" aria-labelledby="restore-preview-title">
+        <div class="restore-preview-header">
+          <div class="restore-preview-heading">
+            <p class="section-label">Restore backup</p>
+            <h3 id="restore-preview-title">Backup file</h3>
+          </div>
+          <span id="restore-preview-chip" class="status-chip is-neutral">Review</span>
+        </div>
+        <p id="restore-preview-summary" class="restore-preview-copy"></p>
+        <ul id="restore-preview-details" class="restore-preview-details"></ul>
+        <div class="restore-preview-actions">
+          <button id="restore-confirm" class="btn-tool" type="button">Merge backup</button>
+          <button id="restore-cancel" class="btn-link" type="button">Cancel</button>
+        </div>
+      </section>
       <section id="portable-backup-card" class="portable-backup-card is-neutral" aria-labelledby="portable-backup-title">
         <div class="portable-backup-header">
           <div class="portable-backup-heading">

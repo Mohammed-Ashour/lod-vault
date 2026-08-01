@@ -294,6 +294,13 @@
       elements.importHistoryReportSummary = document.getElementById("import-history-report-summary");
       elements.importHistoryReportList = document.getElementById("import-history-report-list");
       elements.importJsonFile = document.getElementById("import-json-file");
+      elements.restorePreview = document.getElementById("restore-preview");
+      elements.restorePreviewTitle = document.getElementById("restore-preview-title");
+      elements.restorePreviewChip = document.getElementById("restore-preview-chip");
+      elements.restorePreviewSummary = document.getElementById("restore-preview-summary");
+      elements.restorePreviewDetails = document.getElementById("restore-preview-details");
+      elements.restoreConfirm = document.getElementById("restore-confirm");
+      elements.restoreCancel = document.getElementById("restore-cancel");
       elements.portableBackupCard = document.getElementById("portable-backup-card");
       elements.portableBackupChip = document.getElementById("portable-backup-chip");
       elements.portableBackupNowButton = document.getElementById("portable-backup-now");
@@ -336,6 +343,8 @@
       elements.importBrowserHistory?.addEventListener("click", ctx.backup.importFromBrowserHistory);
       elements.importHistoryRange?.addEventListener("change", ctx.backup.onHistoryImportRangeChange);
       elements.importJsonFile.addEventListener("change", ctx.backup.importJsonFile);
+      elements.restoreConfirm?.addEventListener("click", ctx.backup.confirmRestoreJson);
+      elements.restoreCancel?.addEventListener("click", ctx.backup.cancelRestoreJson);
       elements.searchInput.addEventListener("input", ctx.list.onSearchInput);
       elements.deleteUndoButton.addEventListener("click", () => deleteUndo.onUndoClick());
       elements.currentNoteInput.addEventListener("input", ctx.current.onCurrentNoteInput);

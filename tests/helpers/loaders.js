@@ -444,6 +444,9 @@ async function loadPopupScript({
       return { id, note: shared.store.normalizeNoteValue(note) };
     },
     async importJson() {},
+    async previewJsonImport() {
+      return null;
+    },
     async importBrowserHistory() {
       return { imported: 0, scanned: 0, skippedExisting: 0, ignored: 0, total: entries.length };
     },

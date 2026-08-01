@@ -931,6 +931,90 @@ test("importJson rejects exports from other apps", async () => {
   );
 });
 
+test("previewJsonImport reports what a restore would change without writing", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        favorite: true
+      }
+    },
+    ["lodVault.deleted"]: {
+      GONE1: "2026-01-01T00:00:00.000Z"
+    }
+  });
+
+  const before = JSON.stringify(storageData);
+
+  const preview = JSON.parse(JSON.stringify(await store.previewJsonImport(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    exportedAt: "2026-07-01T10:00:00.000Z",
+    settings: { autoMode: true, syncLanguages: ["en", "fr"] },
+    entries: [
+      { id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1", note: "merge me", study: true },
+      { id: "BEEM1", word: "Beem", url: "https://lod.lu/artikel/BEEM1", study: true },
+      { id: "GONE1", word: "Gone", url: "https://lod.lu/artikel/GONE1", favorite: true },
+      { id: "", word: "No id", favorite: true },
+      { id: "NEUT1", word: "Neut", url: "https://lod.lu/artikel/NEUT1", favorite: false, study: false }
+    ],
+    flashcardMeta: {
+      HAUS1: { totalReviews: 3, reviews: [], lastReviewedAt: "2026-07-01T10:00:00.000Z" }
+    }
+  }))));
+
+  assert.equal(preview.exportedAt, "2026-07-01T10:00:00.000Z");
+  assert.deepEqual(preview.newIds, ["BEEM1"]);
+  assert.deepEqual(preview.mergeIds, ["HAUS1"]);
+  assert.deepEqual(preview.restoreIds, ["GONE1"]);
+  assert.equal(preview.entryCount, 3);
+  assert.equal(preview.skippedCount, 2);
+  assert.deepEqual(preview.settings, { autoMode: true, syncLanguages: ["en", "fr"] });
+  assert.equal(preview.hasFlashcardMeta, true);
+  assert.equal(preview.flashcardCount, 1);
+  assert.equal(JSON.stringify(storageData), before, "preview must not write to storage");
+});
+
+test("previewJsonImport reports absent settings and flashcard progress", async () => {
+  const { store } = loadSharedStore();
+
+  const preview = JSON.parse(JSON.stringify(await store.previewJsonImport(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    entries: [
+      { id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1", study: true }
+    ]
+  }))));
+
+  assert.equal(preview.exportedAt, "");
+  assert.equal(preview.settings, null);
+  assert.equal(preview.hasFlashcardMeta, false);
+  assert.equal(preview.flashcardCount, 0);
+  assert.deepEqual(preview.newIds, ["HAUS1"]);
+  assert.equal(preview.mergeIds.length, 0);
+  assert.equal(preview.restoreIds.length, 0);
+  assert.equal(preview.skippedCount, 0);
+});
+
+test("previewJsonImport rejects foreign or invalid files without touching the vault", async () => {
+  const { store, storageData } = loadSharedStore();
+  const before = JSON.stringify(storageData);
+
+  await assert.rejects(() => store.previewJsonImport("not json"));
+  await assert.rejects(
+    () => store.previewJsonImport(JSON.stringify({ app: "someone-else", version: 2, entries: [] })),
+    /not a LODVault export/
+  );
+  await assert.rejects(
+    () => store.previewJsonImport(JSON.stringify({ app: "lodvault", version: 99, entries: [] })),
+    /Unsupported LODVault export version/
+  );
+
+  assert.equal(JSON.stringify(storageData), before);
+});
+
 test("createNoteAutosaveController trims, saves, and updates textarea dataset state", async () => {
   const { store } = loadSharedStore();
   const statusUpdates = [];

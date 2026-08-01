@@ -1383,6 +1383,72 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return runStoreMutation("importJson", [text], importJsonDirect);
   }
 
+  // Read-only preview of what importJson would change. Parses and validates
+  // the file, then categorizes the entries against the local vault without
+  // writing anything to storage. Used by the popup restore flow to show the
+  // user what a merge would do before they confirm it.
+  async function previewJsonImportDirect(text) {
+    const parsed = JSON.parse(text);
+    validateImportPayload(parsed);
+
+    const isObjectExport = !Array.isArray(parsed) && parsed && typeof parsed === "object";
+    const incomingEntries = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.entries)
+        ? parsed.entries
+        : [];
+    const importedSettings = getImportedSettings(parsed);
+    const incomingFlashcardMeta = normalizeFlashcardMetaMap(
+      isObjectExport ? parsed.flashcardMeta : null
+    );
+    const exportedAt = isObjectExport && typeof parsed.exportedAt === "string"
+      && Number.isFinite(Date.parse(parsed.exportedAt))
+      ? parsed.exportedAt
+      : "";
+
+    const [entryMap, deletedMap] = await Promise.all([
+      getEntryMap(),
+      getDeletedMap()
+    ]);
+
+    const newIds = [];
+    const mergeIds = [];
+    const restoreIds = [];
+    let skippedCount = 0;
+
+    for (const rawEntry of incomingEntries) {
+      const incoming = normalizeEntry(rawEntry);
+      if (!incoming.id || !incoming.word || !shouldKeepEntry(incoming)) {
+        skippedCount += 1;
+        continue;
+      }
+
+      if (entryMap[incoming.id]) {
+        mergeIds.push(incoming.id);
+      } else if (deletedMap[incoming.id]) {
+        restoreIds.push(incoming.id);
+      } else {
+        newIds.push(incoming.id);
+      }
+    }
+
+    return {
+      exportedAt,
+      entryCount: newIds.length + mergeIds.length + restoreIds.length,
+      skippedCount,
+      newIds,
+      mergeIds,
+      restoreIds,
+      settings: importedSettings,
+      hasFlashcardMeta: Object.keys(incomingFlashcardMeta).length > 0,
+      flashcardCount: Object.keys(incomingFlashcardMeta).length
+    };
+  }
+
+  async function previewJsonImport(text) {
+    return previewJsonImportDirect(text);
+  }
+
   function normalizeHistoryImportOptions(options = {}) {
     const rawStartTime = Number(options?.startTime);
     const startTime = Number.isFinite(rawStartTime) && rawStartTime >= 0
@@ -2103,6 +2169,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     markPortableBackupExported,
     buildJsonExport,
     importJson,
+    previewJsonImport,
     importBrowserHistory,
     resumeHistoryImportHydration,
     applyRemoteVaultStateDirect,
