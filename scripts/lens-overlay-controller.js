@@ -7,6 +7,22 @@
 
     let shell = null;
     let sentenceMode = null;
+    const audioController = typeof store.createAudioController === "function"
+      ? store.createAudioController(document, {
+          onError(button) {
+            if (button instanceof Element) {
+              button.setAttribute("aria-label", "Pronunciation unavailable");
+            }
+          }
+        })
+      : null;
+
+    function playCurrentWordAudio(button) {
+      const session = sessions.getActive();
+      const entry = session?.data.entry;
+      if (!entry || !audioController || typeof store.playLodAudio !== "function") return;
+      store.playLodAudio(entry, { controller: audioController, button });
+    }
 
     function ensureShell() {
       if (shell) {
@@ -15,6 +31,7 @@
 
       shell = shellNamespace.createShell({
         onClose: close,
+        onAudio: playCurrentWordAudio,
         onSuggestion: openSuggestion,
         onCandidate: resolveEntry,
         onSaveToggle: toggleList,
@@ -85,6 +102,7 @@
     }
 
     function close() {
+      audioController?.stopAll?.();
       sessions.close();
       ensureShell().close();
     }

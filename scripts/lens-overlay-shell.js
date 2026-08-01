@@ -36,6 +36,7 @@
               <div>
                 <div class="lodvault-lens-title-row">
                   <h2 class="lodvault-lens-word">—</h2>
+                  <button type="button" class="lodvault-lens-audio audio-btn" data-audio-id="" aria-label="Play pronunciation" title="Play pronunciation" hidden><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></button>
                   <span class="lodvault-lens-saved is-hidden">Saved</span>
                 </div>
                 <p class="lodvault-lens-meta"></p>
@@ -67,6 +68,12 @@
         const closeButton = event.target.closest(".lodvault-lens-close, .lodvault-lens-backdrop");
         if (closeButton) {
           handlers.onClose?.();
+          return;
+        }
+
+        const audioButton = event.target.closest(".lodvault-lens-audio");
+        if (audioButton) {
+          handlers.onAudio?.(audioButton);
           return;
         }
 
@@ -278,6 +285,12 @@
       }
 
       root.querySelector(".lodvault-lens-word").textContent = entry.word || "";
+      const audioButton = root.querySelector(".lodvault-lens-audio");
+      if (audioButton) {
+        audioButton.dataset.audioId = entry.id || "";
+        audioButton.hidden = !entry.id;
+        audioButton.classList.remove("is-playing", "is-error");
+      }
       root.querySelector(".lodvault-lens-meta").textContent = [entry.pos, entry.inflection].filter(Boolean).join(" · ");
       root.querySelector(".lodvault-lens-meanings").innerHTML = store.buildMeaningCollapsibleMarkup(entry) || "";
       root.querySelector(".lodvault-lens-open").href = entry.url || "https://lod.lu";
