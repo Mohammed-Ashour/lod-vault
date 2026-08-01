@@ -1,20 +1,20 @@
 (() => {
   function createSyncCoordinator(options = {}) {
-    const store = options.store || globalThis.LodVaultStore || {};
-    const syncNamespace = options.syncNamespace || globalThis.LodVaultSync || {};
-    const syncAdapter = options.syncAdapter || syncNamespace.SyncAdapter || {};
+    const store = options.store || globalThis.LodVaultStore;
+    const syncNamespace = options.syncNamespace || globalThis.LodVaultSync;
+    const syncAdapter = options.syncAdapter || syncNamespace.SyncAdapter;
     const logger = options.logger || console;
     const pushDebounceMs = Math.max(0, Number(options.pushDebounceMs ?? globalThis.__LOD_SYNC_PUSH_DEBOUNCE_MS__ ?? 2000) || 0);
     const suppressWindowMs = Math.max(pushDebounceMs * 2, 50);
     const localSyncKeys = new Set([
-      store.STORAGE_KEY || "lodVault.entries",
-      store.SETTINGS_KEY || "lodVault.settings",
-      store.DELETED_KEY || "lodVault.deleted"
+      store.STORAGE_KEY,
+      store.SETTINGS_KEY,
+      store.DELETED_KEY
     ]);
-    const syncManifestKey = syncNamespace.SYNC_MANIFEST_KEY || "lodVault.m";
-    const syncSettingsKey = syncNamespace.SYNC_SETTINGS_KEY || "lodVault.s";
-    const syncDeletedKey = syncNamespace.SYNC_DELETED_KEY || "lodVault.d";
-    const syncEntryPrefix = syncNamespace.SYNC_ENTRY_PREFIX || "lodVault.e.";
+    const syncManifestKey = syncNamespace.SYNC_MANIFEST_KEY;
+    const syncSettingsKey = syncNamespace.SYNC_SETTINGS_KEY;
+    const syncDeletedKey = syncNamespace.SYNC_DELETED_KEY;
+    const syncEntryPrefix = syncNamespace.SYNC_ENTRY_PREFIX;
 
     let syncTaskQueue = Promise.resolve();
     let syncInitPromise = null;
@@ -63,29 +63,9 @@
       ));
     }
 
-    function stableStringify(value) {
-      if (typeof syncNamespace.stableStringify === "function") {
-        try { return syncNamespace.stableStringify(value); } catch (_error) { /* fall through */ }
-      }
-      if (Array.isArray(value)) {
-        return `[${value.map((item) => stableStringify(item)).join(",")}]`;
-      }
-      if (value && typeof value === "object") {
-        return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
-      }
-      return JSON.stringify(value);
-    }
+    const stableStringify = (value) => syncNamespace.stableStringify(value);
 
-    function normalizeSettingsForComparison(settings = {}) {
-      if (typeof store.normalizeSettings === "function") {
-        return store.normalizeSettings(settings);
-      }
-
-      return {
-        autoMode: Boolean(settings?.autoMode),
-        syncLanguages: Array.isArray(settings?.syncLanguages) ? [...settings.syncLanguages] : []
-      };
-    }
+    const normalizeSettingsForComparison = (settings = {}) => store.normalizeSettings(settings);
 
     function describeEntryChange(change) {
       const oldMap = change?.oldValue && typeof change.oldValue === "object" ? change.oldValue : {};
@@ -126,9 +106,9 @@
     }
 
     function describeLocalPushPlan(changes) {
-      const entryChange = changes?.[store.STORAGE_KEY || "lodVault.entries"];
-      const settingsChange = changes?.[store.SETTINGS_KEY || "lodVault.settings"];
-      const deletedChange = changes?.[store.DELETED_KEY || "lodVault.deleted"];
+      const entryChange = changes?.[store.STORAGE_KEY];
+      const settingsChange = changes?.[store.SETTINGS_KEY];
+      const deletedChange = changes?.[store.DELETED_KEY];
       const settingsKind = getSettingsChangeKind(settingsChange);
 
       if (!entryChange && !deletedChange && settingsKind === "none") {

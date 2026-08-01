@@ -1,22 +1,13 @@
 (() => {
-  const STORAGE_KEY = globalThis.LodVaultStore?.STORAGE_KEY || "lodVault.entries";
-  const LOCAL_SETTINGS_KEY = globalThis.LodVaultStore?.SETTINGS_KEY || "lodVault.settings";
-  const LOCAL_DELETED_KEY = globalThis.LodVaultStore?.DELETED_KEY || "lodVault.deleted";
-  const DEFAULT_SETTINGS = globalThis.LodVaultStore?.DEFAULT_SETTINGS || {
-    autoMode: false,
-    syncLanguages: ["en", "fr", "de"]
-  };
-  const MAX_SYNC_LANGUAGES = globalThis.LodVaultStore?.MAX_SYNC_LANGUAGES || 3;
-  const SYNC_LANGUAGE_TO_KEY = globalThis.LodVaultStore?.SYNC_LANGUAGE_TO_KEY || {
-    en: "e",
-    fr: "f",
-    de: "d",
-    pt: "p",
-    nl: "l"
-  };
-  const SYNC_KEY_TO_LANGUAGE = globalThis.LodVaultStore?.SYNC_KEY_TO_LANGUAGE || Object.freeze(
-    Object.fromEntries(Object.entries(SYNC_LANGUAGE_TO_KEY).map(([language, key]) => [key, language]))
-  );
+  const {
+    STORAGE_KEY,
+    SETTINGS_KEY: LOCAL_SETTINGS_KEY,
+    DELETED_KEY: LOCAL_DELETED_KEY,
+    DEFAULT_SETTINGS,
+    MAX_SYNC_LANGUAGES,
+    SYNC_LANGUAGE_TO_KEY,
+    SYNC_KEY_TO_LANGUAGE
+  } = globalThis.LodVaultStore;
 
   const SYNC_FORMAT_VERSION = 4;
   const COMPRESSION = globalThis.LodVaultCompress || null;
@@ -32,45 +23,21 @@
 
   let initPromise = null;
 
-  const store = globalThis.LodVaultStore || {};
-  const cleanText = typeof store.cleanText === "function" ? store.cleanText : (value) => (typeof value === "string" ? value.trim() : "");
-  const normalizeVisitCount = typeof store.normalizeVisitCount === "function" ? store.normalizeVisitCount : (value) => { const number = Number(value); return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0; };
-  const shouldKeepEntry = typeof store.shouldKeepEntry === "function" ? store.shouldKeepEntry : (entry) => Boolean(entry?.favorite || entry?.study || entry?.history);
-  const normalizeEntry = typeof store.normalizeEntry === "function" ? store.normalizeEntry : (entry = {}) => {
-    const id = cleanText(entry.id);
-    const translations = Object.entries(entry.translations || {}).reduce((result, [language, translation]) => { const cleaned = cleanText(translation); if (cleaned) result[language] = cleaned; return result; }, {});
-    return { id, word: cleanText(entry.word), url: cleanText(entry.url), pos: cleanText(entry.pos), inflection: cleanText(entry.inflection), example: cleanText(entry.example), note: cleanText(entry.note), translations, favorite: Boolean(entry.favorite), study: Boolean(entry.study), history: Boolean(entry.history), visitCount: normalizeVisitCount(entry.visitCount), lastVisitedAt: cleanText(entry.lastVisitedAt), createdAt: cleanText(entry.createdAt), updatedAt: cleanText(entry.updatedAt) };
-  };
-  const normalizeSyncLanguages = typeof store.normalizeSyncLanguages === "function" ? store.normalizeSyncLanguages : (value) => {
-    const requested = Array.isArray(value) ? value : DEFAULT_SETTINGS.syncLanguages;
-    const deduped = [];
-    for (const language of requested) { const normalized = cleanText(language).toLowerCase(); if (!SYNC_LANGUAGE_TO_KEY[normalized]) continue; if (deduped.includes(normalized)) continue; deduped.push(normalized); if (deduped.length >= MAX_SYNC_LANGUAGES) break; }
-    return deduped.length ? deduped : [...DEFAULT_SETTINGS.syncLanguages];
-  };
-  const normalizeSettings = typeof store.normalizeSettings === "function" ? store.normalizeSettings : (settings = {}) => ({ ...DEFAULT_SETTINGS, autoMode: Boolean(settings?.autoMode), syncLanguages: normalizeSyncLanguages(settings?.syncLanguages) });
-  const normalizeDeletedMap = typeof store.normalizeDeletedMap === "function" ? store.normalizeDeletedMap : (value = {}) => {
-    const result = {};
-    for (const [rawId, rawDeletedAt] of Object.entries(value || {})) {
-      const id = cleanText(rawId);
-      const deletedAt = cleanText(rawDeletedAt);
-      const timestamp = Date.parse(deletedAt);
-      if (!id || !deletedAt || !Number.isFinite(timestamp)) continue;
-      result[id] = new Date(timestamp).toISOString();
-    }
-    return result;
-  };
-  const normalizeEntryMap = typeof store.normalizeEntryMap === "function" ? store.normalizeEntryMap : (entryMap = {}) => {
-    const result = {};
-    for (const [entryId, value] of Object.entries(entryMap || {})) { const normalized = normalizeEntry({ id: entryId, ...value }); if (!normalized.id || !normalized.word || !shouldKeepEntry(normalized)) continue; result[normalized.id] = normalized; }
-    return result;
-  };
-  const filterEntryMapTranslations = typeof store.filterEntryMapTranslations === "function" ? store.filterEntryMapTranslations : (entryMap = {}, languages = DEFAULT_SETTINGS.syncLanguages) => {
-    const allowed = new Set(normalizeSyncLanguages(languages)); const filtered = {};
-    for (const [entryId, value] of Object.entries(normalizeEntryMap(entryMap))) { const entry = normalizeEntry({ id: entryId, ...value }); const translations = {}; for (const [language, translation] of Object.entries(entry.translations || {})) { const normalizedLanguage = cleanText(language).toLowerCase(); const cleanedTranslation = cleanText(translation); if (!allowed.has(normalizedLanguage) || !cleanedTranslation) continue; translations[normalizedLanguage] = cleanedTranslation; }
-    if (Object.keys(translations).length) { entry.translations = translations; } else { delete entry.translations; }
-    if (entry.id && entry.word && shouldKeepEntry(entry)) { filtered[entry.id] = entry; } }
-    return filtered;
-  };
+  // store-core.js always loads before sync.js (background bundle, pages, and tests),
+  // so normalization/settings/merge helpers come from the single source of truth
+  // rather than being re-implemented (and drifting) here.
+  const store = globalThis.LodVaultStore;
+  const {
+    cleanText,
+    normalizeVisitCount,
+    shouldKeepEntry,
+    normalizeEntry,
+    normalizeSyncLanguages,
+    normalizeSettings,
+    normalizeDeletedMap,
+    normalizeEntryMap,
+    filterEntryMapTranslations
+  } = store;
 
   function nowUnix() {
     return Math.floor(Date.now() / 1000);
@@ -89,78 +56,10 @@
 
 
 
-  function getEntryTimestamp(entry = {}) {
-    const updated = Date.parse(cleanText(entry.updatedAt));
-    if (Number.isFinite(updated)) return updated;
-
-    const visited = Date.parse(cleanText(entry.lastVisitedAt));
-    if (Number.isFinite(visited)) return visited;
-
-    const created = Date.parse(cleanText(entry.createdAt));
-    if (Number.isFinite(created)) return created;
-
-    return 0;
-  }
-
-  function mergeDeletedMaps(primary = {}, secondary = {}) {
-    const left = normalizeDeletedMap(primary);
-    const right = normalizeDeletedMap(secondary);
-    const merged = { ...left };
-
-    for (const [id, deletedAt] of Object.entries(right)) {
-      const current = merged[id];
-      if (!current || Date.parse(deletedAt) > Date.parse(current)) {
-        merged[id] = deletedAt;
-      }
-    }
-
-    return merged;
-  }
-
-  function applyDeletedMap(entryMap = {}, deletedMap = {}) {
-    const normalizedEntries = normalizeEntryMap(entryMap);
-    const normalizedDeleted = normalizeDeletedMap(deletedMap);
-    const nextEntries = {};
-
-    for (const [id, entry] of Object.entries(normalizedEntries)) {
-      const deletedAt = normalizedDeleted[id];
-      if (!deletedAt) {
-        nextEntries[id] = entry;
-        continue;
-      }
-
-      if (getEntryTimestamp(entry) > Date.parse(deletedAt)) {
-        nextEntries[id] = entry;
-      }
-    }
-
-    return nextEntries;
-  }
-
-  function pruneDeletedMapAgainstEntries(entryMap = {}, deletedMap = {}) {
-    const normalizedEntries = normalizeEntryMap(entryMap);
-    const normalizedDeleted = normalizeDeletedMap(deletedMap);
-    const nextDeleted = {};
-
-    for (const [id, deletedAt] of Object.entries(normalizedDeleted)) {
-      const entry = normalizedEntries[id];
-      if (!entry) {
-        nextDeleted[id] = deletedAt;
-        continue;
-      }
-
-      if (getEntryTimestamp(entry) <= Date.parse(deletedAt)) {
-        nextDeleted[id] = deletedAt;
-      }
-    }
-
-    return nextDeleted;
-  }
-
   async function persistFallbackLocalState(entries, settings, deletedMap) {
     const normalizedEntries = normalizeEntryMap(entries);
     const normalizedSettings = normalizeSettings(settings);
-    const normalizedDeletedMap = pruneDeletedMapAgainstEntries(normalizedEntries, deletedMap);
+    const normalizedDeletedMap = store.pruneDeletedMapAgainstEntries(normalizedEntries, deletedMap);
     const payload = {
       [STORAGE_KEY]: normalizedEntries,
       [LOCAL_SETTINGS_KEY]: normalizedSettings
@@ -199,22 +98,6 @@
       expanded[normalizedId] = new Date(timestamp).toISOString();
     }
     return expanded;
-  }
-
-  function pickLatestIso(...values) {
-    const sorted = values
-      .map((value) => cleanText(value))
-      .filter(Boolean)
-      .sort((left, right) => Date.parse(right) - Date.parse(left));
-    return sorted[0] || "";
-  }
-
-  function pickEarliestIso(...values) {
-    const sorted = values
-      .map((value) => cleanText(value))
-      .filter(Boolean)
-      .sort((left, right) => Date.parse(left) - Date.parse(right));
-    return sorted[0] || "";
   }
 
   function compactUrl(url) {
@@ -403,81 +286,6 @@
     }
 
     return shards;
-  }
-
-  function mergeEntryMaps(primaryEntryMap = {}, secondaryEntryMap = {}) {
-    const primary = normalizeEntryMap(primaryEntryMap);
-    const secondary = normalizeEntryMap(secondaryEntryMap);
-    const merged = { ...primary };
-
-    for (const [entryId, secondaryEntry] of Object.entries(secondary)) {
-      const primaryEntry = merged[entryId];
-
-      if (!primaryEntry) {
-        merged[entryId] = secondaryEntry;
-        continue;
-      }
-
-      const newest = getEntryTimestamp(secondaryEntry) > getEntryTimestamp(primaryEntry)
-        ? secondaryEntry
-        : primaryEntry;
-      const hasHistory = Boolean(primaryEntry.history || secondaryEntry.history);
-      const nextEntry = {
-        id: primaryEntry.id || secondaryEntry.id,
-        word: primaryEntry.word || secondaryEntry.word,
-        url: primaryEntry.url || secondaryEntry.url,
-        pos: newest.pos || primaryEntry.pos || secondaryEntry.pos,
-        inflection: newest.inflection || primaryEntry.inflection || secondaryEntry.inflection,
-        example: newest.example || primaryEntry.example || secondaryEntry.example,
-        note: newest.note || primaryEntry.note || secondaryEntry.note,
-        translations: {
-          ...(secondaryEntry.translations || {}),
-          ...(primaryEntry.translations || {}),
-          ...(newest.translations || {})
-        },
-        favorite: Boolean(primaryEntry.favorite || secondaryEntry.favorite),
-        study: Boolean(primaryEntry.study || secondaryEntry.study),
-        history: hasHistory,
-        visitCount: hasHistory
-          ? Math.max(normalizeVisitCount(primaryEntry.visitCount), normalizeVisitCount(secondaryEntry.visitCount), 1)
-          : 0,
-        lastVisitedAt: pickLatestIso(primaryEntry.lastVisitedAt, secondaryEntry.lastVisitedAt),
-        createdAt: pickEarliestIso(primaryEntry.createdAt, secondaryEntry.createdAt),
-        updatedAt: pickLatestIso(primaryEntry.updatedAt, secondaryEntry.updatedAt)
-      };
-
-      if (!Object.keys(nextEntry.translations).length) {
-        delete nextEntry.translations;
-      }
-
-      if (!nextEntry.visitCount) {
-        delete nextEntry.visitCount;
-      }
-
-      if (!nextEntry.lastVisitedAt) {
-        delete nextEntry.lastVisitedAt;
-      }
-
-      if (shouldKeepEntry(nextEntry)) {
-        merged[entryId] = normalizeEntry(nextEntry);
-      }
-    }
-
-    return normalizeEntryMap(merged);
-  }
-
-  function mergeVaultVersionsPreferLarger(leftEntryMap = {}, rightEntryMap = {}) {
-    const left = normalizeEntryMap(leftEntryMap);
-    const right = normalizeEntryMap(rightEntryMap);
-    const leftCount = Object.keys(left).length;
-    const rightCount = Object.keys(right).length;
-
-    if (!leftCount) return right;
-    if (!rightCount) return left;
-
-    const primary = leftCount >= rightCount ? left : right;
-    const secondary = primary === left ? right : left;
-    return mergeEntryMaps(primary, secondary);
   }
 
   function buildSyncSettings(settings = DEFAULT_SETTINGS) {
@@ -1131,14 +939,14 @@
         })
       : await (async () => {
           const mergedSettings = buildPulledSettings(localState, syncState);
-          const mergedDeletedMap = mergeDeletedMaps(localState.deletedMap, syncState.deletedMap);
-          const mergedEntries = applyDeletedMap(
+          const mergedDeletedMap = store.mergeDeletedMaps(localState.deletedMap, syncState.deletedMap);
+          const mergedEntries = store.applyDeletedMap(
             Object.keys(remoteEntries).length
-              ? mergeVaultVersionsPreferLarger(localState.rawEntries, remoteEntries)
+              ? store.mergeVaultVersions(localState.rawEntries, remoteEntries)
               : localState.rawEntries,
             mergedDeletedMap
           );
-          const nextDeletedMap = pruneDeletedMapAgainstEntries(mergedEntries, mergedDeletedMap);
+          const nextDeletedMap = store.pruneDeletedMapAgainstEntries(mergedEntries, mergedDeletedMap);
           const changed = stableStringify(localState.rawEntries) !== stableStringify(mergedEntries)
             || stableStringify(localState.settings) !== stableStringify(mergedSettings)
             || stableStringify(normalizeDeletedMap(localState.deletedMap)) !== stableStringify(nextDeletedMap);
@@ -1424,7 +1232,7 @@
     expandEntry,
     expandTranslations,
     shardEntries,
-    mergeEntryMaps,
+    mergeEntryMaps: store.mergeVaultVersions,
     inspectSyncStorage,
     getSyncUsageStats,
     SyncAdapter: {

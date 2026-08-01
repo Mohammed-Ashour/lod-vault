@@ -171,6 +171,19 @@ test("mergeEntryMaps prefers the newer updatedAt value and preserves translation
   assert.equal(merged.REMOTE1.word, "Fern");
 });
 
+test("mergeEntryMaps is the store's canonical mergeVaultVersions (single source of truth)", () => {
+  const { sync, store } = loadSyncScript();
+  assert.equal(sync.mergeEntryMaps, store.mergeVaultVersions);
+  for (const helper of [
+    "getEntryTimestampMs",
+    "mergeDeletedMaps",
+    "applyDeletedMap",
+    "pruneDeletedMapAgainstEntries"
+  ]) {
+    assert.equal(typeof store[helper], "function", `${helper} should live on the store`);
+  }
+});
+
 test("SyncAdapter.pushAll writes manifest, settings, and compact shards into sync storage", async () => {
   const fixture = loadSyncScript({
     local: {
