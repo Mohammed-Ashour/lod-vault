@@ -20,6 +20,9 @@ const LENS_SCRIPT_FILES = [
   "scripts/lens-overlay-controller.js",
   "scripts/lens-runtime.js"
 ];
+const SELECTION_TRIGGER_SCRIPT_ID = "lodvault-selection-trigger";
+const SELECTION_TRIGGER_SCRIPT_FILES = ["scripts/selection-trigger.js"];
+const SELECTION_TRIGGER_STYLE_FILES = ["styles/selection-trigger.css"];
 const STORE_MUTATION_MESSAGE_TYPE = LodVaultStore.STORE_MUTATION_MESSAGE_TYPE;
 const STORE_MUTATION_METHODS = new Set([
   "setAutoMode",
@@ -217,6 +220,70 @@ async function requestLensSitePermission(tabUrl) {
   }
 }
 
+function normalizeGrantedOriginPattern(value) {
+  const candidate = String(value || "").trim();
+  if (!candidate.endsWith("/*")) {
+    return "";
+  }
+
+  let parsed = null;
+  try {
+    parsed = new URL(candidate.slice(0, -2));
+  } catch {
+    return "";
+  }
+
+  if (
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+    || !parsed.hostname
+    || parsed.hostname.includes("*")
+    || parsed.hostname === "lod.lu"
+    || parsed.hostname === "www.lod.lu"
+  ) {
+    return "";
+  }
+
+  return `${parsed.origin}/*`;
+}
+
+async function getGrantedOriginPatterns() {
+  if (typeof chrome.permissions?.getAll !== "function") {
+    return [];
+  }
+
+  try {
+    const granted = await chrome.permissions.getAll();
+    return [...new Set(
+      (Array.isArray(granted?.origins) ? granted.origins : [])
+        .map(normalizeGrantedOriginPattern)
+        .filter(Boolean)
+    )];
+  } catch {
+    return [];
+  }
+}
+
+async function syncSelectionTriggerRegistration() {
+  if (!chrome.scripting?.unregisterContentScripts || !chrome.scripting?.registerContentScripts) {
+    return;
+  }
+
+  const matches = await getGrantedOriginPatterns();
+  await chrome.scripting.unregisterContentScripts({ ids: [SELECTION_TRIGGER_SCRIPT_ID] }).catch(() => {});
+
+  if (!matches.length) {
+    return;
+  }
+
+  await chrome.scripting.registerContentScripts([{
+    id: SELECTION_TRIGGER_SCRIPT_ID,
+    matches,
+    js: SELECTION_TRIGGER_SCRIPT_FILES,
+    css: SELECTION_TRIGGER_STYLE_FILES,
+    runAt: "document_idle"
+  }]).catch(() => {});
+}
+
 async function getActiveSelectionText(tabId) {
   const resolvedTabId = typeof tabId === "number"
     ? tabId
@@ -269,20 +336,68 @@ async function ensureLensOverlayInjected(tabId) {
   });
 }
 
+async function isSelectionTriggerInjected(tabId) {
+  if (!tabId || !chrome.scripting?.executeScript) {
+    return false;
+  }
+
+  try {
+    const [{ result } = {}] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => Boolean(globalThis.LodVaultSelectionTrigger?.loaded)
+    });
+    return Boolean(result);
+  } catch {
+    return false;
+  }
+}
+
+async function ensureSelectionTriggerInjected(tabId) {
+  if (await isSelectionTriggerInjected(tabId)) {
+    return;
+  }
+
+  await chrome.scripting.insertCSS?.({
+    target: { tabId },
+    files: SELECTION_TRIGGER_STYLE_FILES
+  }).catch(() => {});
+
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: SELECTION_TRIGGER_SCRIPT_FILES
+  });
+}
+
+async function enableSiteSelectionTrigger(tabId, tabUrl) {
+  const originPattern = getTabOriginPattern(tabUrl);
+  if (!originPattern) {
+    return false;
+  }
+
+  if (await hasLensSitePermission(tabUrl)) {
+    await ensureSelectionTriggerInjected(tabId);
+    return true;
+  }
+
+  const granted = await requestLensSitePermission(tabUrl);
+  if (!granted) {
+    return false;
+  }
+
+  await syncSelectionTriggerRegistration();
+  await ensureSelectionTriggerInjected(tabId);
+  return true;
+}
+
 async function openLensOverlay(tabId, selectionText = "", { tabUrl = "", requestSitePermission = false } = {}) {
   if (!tabId || !chrome.scripting?.executeScript) {
     throw new Error("Cannot open lens overlay without a tab id.");
   }
 
-  const resolvedTabUrl = requestSitePermission
-    ? await getTabUrl(tabId, tabUrl)
-    : String(tabUrl || "");
+  const resolvedTabUrl = String(tabUrl || "") || await getTabUrl(tabId, "");
 
-  if (requestSitePermission && resolvedTabUrl && !(await hasLensSitePermission(resolvedTabUrl))) {
-    const granted = await requestLensSitePermission(resolvedTabUrl);
-    if (!granted) {
-      throw new Error("LODVault needs site access to open Lens on this page.");
-    }
+  if (requestSitePermission && !(await enableSiteSelectionTrigger(tabId, resolvedTabUrl))) {
+    throw new Error("LODVault needs site access to open Lens on this page.");
   }
 
   await ensureLensOverlayInjected(tabId);
@@ -327,6 +442,7 @@ chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === "update" || details.reason === "install") {
     registerContextMenus();
     reloadLodTabs();
+    void syncSelectionTriggerRegistration();
     syncCoordinator.handleInstalled("onInstalled");
     scheduleHistoryHydrationResume(50);
   }
@@ -334,6 +450,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onStartup?.addListener(() => {
   registerContextMenus();
+  void syncSelectionTriggerRegistration();
   syncCoordinator.handleStartup("onStartup");
   scheduleHistoryHydrationResume(50);
 });
@@ -342,7 +459,8 @@ chrome.contextMenus?.onClicked?.addListener((info, tab) => {
   if (info.menuItemId !== LENS_CONTEXT_MENU_ID) return;
   if (!tab?.id) return;
   openLensOverlay(tab.id, info.selectionText || "", {
-    tabUrl: tab.url || ""
+    tabUrl: tab.url || "",
+    requestSitePermission: true
   }).catch(() => {});
 });
 
@@ -354,7 +472,8 @@ chrome.commands?.onCommand?.addListener(async (command) => {
     if (!tab?.id) return;
     const selectionText = await getActiveSelectionText(tab.id);
     await openLensOverlay(tab.id, selectionText, {
-      tabUrl: tab.url || ""
+      tabUrl: tab.url || "",
+      requestSitePermission: true
     });
   } catch (_error) {
     // Ignore lens overlay failures.
@@ -370,6 +489,13 @@ chrome.storage.onChanged?.addListener((changes, areaName) => {
 
 scheduleHistoryHydrationResume(50);
 registerContextMenus();
+void syncSelectionTriggerRegistration();
+chrome.permissions?.onAdded?.addListener(() => {
+  void syncSelectionTriggerRegistration();
+});
+chrome.permissions?.onRemoved?.addListener(() => {
+  void syncSelectionTriggerRegistration();
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === OPEN_LENS_OVERLAY_MESSAGE_TYPE) {
@@ -381,7 +507,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     openLensOverlay(tabId, message.selectionText || "", {
-      tabUrl: sender?.tab?.url || "",
+      tabUrl: sender?.url || "",
       requestSitePermission: true
     })
       .then(() => sendResponse({ ok: true }))

@@ -49,6 +49,7 @@ function loadSelectionTrigger({ html = "<!doctype html><html><body></body></html
   return {
     dom,
     api: context.__LodVaultSelectionTriggerTest,
+    triggerMarker: context.LodVaultSelectionTrigger,
     sentMessages
   };
 }
@@ -85,6 +86,12 @@ test("selection trigger caches the page language heuristic until it is invalidat
 
   api.markLanguageHeuristicDirty();
   assert.equal(api.pageLooksLuxembourgish(), false);
+});
+
+test("selection trigger exposes a loaded marker for the background injector", () => {
+  const { triggerMarker } = loadSelectionTrigger();
+
+  assert.deepEqual(JSON.parse(JSON.stringify(triggerMarker)), { loaded: true });
 });
 
 test("selection trigger always asks the background to open the lens runtime", async () => {

@@ -290,4 +290,8 @@
       languageHeuristicDirty = true;
     }
   };
+
+  globalThis.LodVaultSelectionTrigger = {
+    loaded: true
+  };
 })();

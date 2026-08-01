@@ -330,34 +330,46 @@ test("background opens the lens overlay for content-script requests from the sen
       selectionText: "  Moien   alleguer  "
     },
     {
-      tab: { id: 77 }
+      tab: { id: 77 },
+      url: "https://www.rtl.lu/news"
     }
   );
 
   assert.deepEqual(JSON.parse(JSON.stringify(response)), { ok: true });
+  assert.deepEqual(background.permissionRequests, [["https://www.rtl.lu/*"]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(background.registeredContentScripts.at(-1))), [{
+    id: "lodvault-selection-trigger",
+    matches: ["https://www.rtl.lu/*"],
+    js: ["scripts/selection-trigger.js"],
+    css: ["styles/selection-trigger.css"],
+    runAt: "document_idle"
+  }]);
   assert.deepEqual(JSON.parse(JSON.stringify(background.insertedCss)), [{
+    target: { tabId: 77 },
+    files: ["styles/selection-trigger.css"]
+  }, {
     target: { tabId: 77 },
     files: ["styles/lens-overlay.css"]
   }]);
-  assert.equal(background.executedScripts.length, 3);
-  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[0].target)), { tabId: 77 });
+  const filesCalls = background.executedScripts.filter((call) => Array.isArray(call.files));
+  assert.equal(filesCalls.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(filesCalls[0].files)), ["scripts/selection-trigger.js"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(filesCalls[1].files)), [
+    "scripts/store-core.js",
+    "scripts/entry-presenter.js",
+    "scripts/shared.js",
+    "scripts/lens-lookup.js",
+    "scripts/lens-session.js",
+    "scripts/lens-render.js",
+    "scripts/lens-overlay-shell.js",
+    "scripts/lens-sentence-mode.js",
+    "scripts/lens-overlay-controller.js",
+    "scripts/lens-runtime.js"
+  ]);
   assert.equal(typeof background.executedScripts[0].func, "function");
-  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[1])), {
-    target: { tabId: 77 },
-    files: [
-      "scripts/store-core.js",
-      "scripts/entry-presenter.js",
-      "scripts/shared.js",
-      "scripts/lens-lookup.js",
-      "scripts/lens-session.js",
-      "scripts/lens-render.js",
-      "scripts/lens-overlay-shell.js",
-      "scripts/lens-sentence-mode.js",
-      "scripts/lens-overlay-controller.js",
-      "scripts/lens-runtime.js"
-    ]
-  });
-  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[2].args)), ["Moien alleguer"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[0].target)), { tabId: 77 });
+  const openCall = background.executedScripts.find((call) => Array.isArray(call.args));
+  assert.deepEqual(JSON.parse(JSON.stringify(openCall.args)), ["Moien alleguer"]);
 });
 
 test("background preserves long sentence selections when opening the lens overlay", async () => {
@@ -370,12 +382,14 @@ test("background preserves long sentence selections when opening the lens overla
       selectionText: longSelection
     },
     {
-      tab: { id: 77 }
+      tab: { id: 77 },
+      url: "https://www.rtl.lu/news"
     }
   );
 
   assert.deepEqual(JSON.parse(JSON.stringify(response)), { ok: true });
-  assert.deepEqual(JSON.parse(JSON.stringify(background.executedScripts[2].args)), [
+  const openCall = background.executedScripts.find((call) => Array.isArray(call.args));
+  assert.deepEqual(JSON.parse(JSON.stringify(openCall.args)), [
     "Dëst ass eng zimlech laang Auswiel mat villen Wierder déi net soll gekierzt ginn wann de Benotzer de Lens iwwer de Kontextmenü opmécht fir e komplette Saz nozeschloen."
   ]);
 });
@@ -412,23 +426,51 @@ test("background requests optional site access before injecting the lens runtime
     type: "lodvault:open-lens-overlay",
     selectionText: "Moien"
   }, {
-    tab: {
-      id: 77,
-      url: "https://www.rtl.lu/news"
-    }
+    tab: { id: 77 },
+    url: "https://www.rtl.lu/news"
   });
 
   assert.deepEqual(JSON.parse(JSON.stringify(response)), { ok: true });
   assert.deepEqual(background.permissionRequests, [["https://www.rtl.lu/*"]]);
-  assert.equal(executeScriptCalls.length, 3);
+  assert.equal(executeScriptCalls.filter((call) => Array.isArray(call.files)).length, 2);
   assert.deepEqual(JSON.parse(JSON.stringify(background.insertedCss)), [{
+    target: { tabId: 77 },
+    files: ["styles/selection-trigger.css"]
+  }, {
     target: { tabId: 77 },
     files: ["styles/lens-overlay.css"]
   }]);
 });
 
- test("background reuses previously injected lens scripts in the same tab", async () => {
+test("background context menu grants site access before opening the lens overlay", async () => {
   const background = loadBackgroundScript();
+
+  background.contextMenusOnClicked.dispatch({
+    menuItemId: "lodvault-open-lens",
+    selectionText: "  Haus  "
+  }, {
+    id: 42,
+    url: "https://www.rtl.lu/news"
+  });
+  await wait(0);
+  await wait(0);
+  await wait(0);
+
+  assert.deepEqual(background.permissionRequests, [["https://www.rtl.lu/*"]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(background.registeredContentScripts.at(-1))), [{
+    id: "lodvault-selection-trigger",
+    matches: ["https://www.rtl.lu/*"],
+    js: ["scripts/selection-trigger.js"],
+    css: ["styles/selection-trigger.css"],
+    runAt: "document_idle"
+  }]);
+  const openCall = background.executedScripts.find((call) => Array.isArray(call.args));
+  assert.deepEqual(JSON.parse(JSON.stringify(openCall.args)), ["Haus"]);
+});
+
+test("background reuses previously injected lens scripts in the same tab", async () => {
+  const background = loadBackgroundScript();
+  let triggerAvailable = false;
   let overlayAvailable = false;
   const executeScriptCalls = [];
 
@@ -436,11 +478,15 @@ test("background requests optional site access before injecting the lens runtime
     executeScriptCalls.push(details);
 
     if (typeof details?.func === "function" && !Array.isArray(details.args)) {
-      return [{ result: overlayAvailable }];
+      return [{ result: triggerAvailable && overlayAvailable }];
     }
 
     if (Array.isArray(details.files)) {
-      overlayAvailable = true;
+      if (details.files.includes("scripts/selection-trigger.js")) {
+        triggerAvailable = true;
+      } else {
+        overlayAvailable = true;
+      }
       return [];
     }
 
@@ -451,18 +497,22 @@ test("background requests optional site access before injecting the lens runtime
     type: "lodvault:open-lens-overlay",
     selectionText: "Haus"
   }, {
-    tab: { id: 77 }
+    tab: { id: 77 },
+    url: "https://example.com/"
   });
 
   await background.dispatchRuntimeMessage({
     type: "lodvault:open-lens-overlay",
     selectionText: "Moien"
   }, {
-    tab: { id: 77 }
+    tab: { id: 77 },
+    url: "https://example.com/"
   });
 
-  assert.equal(executeScriptCalls.filter((call) => Array.isArray(call.files)).length, 1);
-  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[4].args)), ["Moien"]);
+  const lensFileCalls = executeScriptCalls.filter((call) => Array.isArray(call.files) && !call.files.includes("scripts/selection-trigger.js"));
+  assert.equal(lensFileCalls.length, 1);
+  const openCalls = executeScriptCalls.filter((call) => Array.isArray(call.args));
+  assert.deepEqual(JSON.parse(JSON.stringify(openCalls.at(-1).args)), ["Moien"]);
 });
 
 test("background command reads the current selection before opening the lens overlay", async () => {
@@ -484,10 +534,11 @@ test("background command reads the current selection before opening the lens ove
   background.commandsOnCommand.dispatch("open-lod-lens");
   await wait(0);
   await wait(0);
+  await wait(0);
 
-  assert.equal(executeScriptCalls.length, 4);
   assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[0].target)), { tabId: 55 });
-  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[2].files)), [
+  const lensFileCalls = executeScriptCalls.filter((call) => Array.isArray(call.files) && !call.files.includes("scripts/selection-trigger.js"));
+  assert.deepEqual(JSON.parse(JSON.stringify(lensFileCalls[0].files)), [
     "scripts/store-core.js",
     "scripts/entry-presenter.js",
     "scripts/shared.js",
@@ -499,7 +550,8 @@ test("background command reads the current selection before opening the lens ove
     "scripts/lens-overlay-controller.js",
     "scripts/lens-runtime.js"
   ]);
-  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[3].args)), ["déidlechen!"]);
+  const openCalls = executeScriptCalls.filter((call) => Array.isArray(call.args));
+  assert.deepEqual(JSON.parse(JSON.stringify(openCalls[0].args)), ["déidlechen!"]);
 });
 
 test("background command preserves long selections for sentence lookup", async () => {
@@ -522,10 +574,48 @@ test("background command preserves long selections for sentence lookup", async (
   background.commandsOnCommand.dispatch("open-lod-lens");
   await wait(0);
   await wait(0);
+  await wait(0);
 
-  assert.deepEqual(JSON.parse(JSON.stringify(executeScriptCalls[3].args)), [
+  const openCalls = executeScriptCalls.filter((call) => Array.isArray(call.args));
+  assert.deepEqual(JSON.parse(JSON.stringify(openCalls[0].args)), [
     "Dëst ass eng aner laang Auswiel déi iwwer d'Tastaturkommando opgemaach gëtt an dowéinst och komplett beim Overlay ukomme muss ouni an der Mëtt ofgeschnidden ze ginn."
   ]);
+});
+
+test("background re-registers the selection trigger when site permissions are added", async () => {
+  const background = loadBackgroundScript();
+
+  background.chrome.permissions.getAll = async () => ({
+    origins: [
+      "https://www.rtl.lu/*",
+      "https://lod.lu/*",
+      "ftp://example.com/*",
+      "https://*.wildcard.example/*"
+    ]
+  });
+
+  background.permissionsOnAdded.dispatch();
+  await wait(0);
+  await wait(0);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(background.registeredContentScripts.at(-1))), [{
+    id: "lodvault-selection-trigger",
+    matches: ["https://www.rtl.lu/*"],
+    js: ["scripts/selection-trigger.js"],
+    css: ["styles/selection-trigger.css"],
+    runAt: "document_idle"
+  }]);
+});
+
+test("background keeps the selection trigger unregistered until site access is granted", async () => {
+  const background = loadBackgroundScript();
+  await wait(0);
+  await wait(0);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(background.unregisteredContentScripts.at(-1))), {
+    ids: ["lodvault-selection-trigger"]
+  });
+  assert.equal(background.registeredContentScripts.length, 0);
 });
 
 test("background only proxies the approved LOD Lens API endpoints", async () => {
