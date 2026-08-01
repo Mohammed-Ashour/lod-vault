@@ -8,14 +8,20 @@
     let shell = null;
     let sentenceMode = null;
     const audioController = typeof store.createAudioController === "function"
-      ? store.createAudioController(document)
+      ? store.createAudioController(document, {
+          onError(button) {
+            if (button instanceof Element) {
+              button.setAttribute("aria-label", "Pronunciation unavailable");
+            }
+          }
+        })
       : null;
 
-    function playCurrentWordAudio() {
+    function playCurrentWordAudio(button) {
       const session = sessions.getActive();
       const entry = session?.data.entry;
       if (!entry || !audioController || typeof store.playLodAudio !== "function") return;
-      store.playLodAudio(entry, { controller: audioController });
+      store.playLodAudio(entry, { controller: audioController, button });
     }
 
     function ensureShell() {

@@ -14,19 +14,23 @@
     return `https://lod.lu/uploads/OGG/${id}.ogg`;
   }
 
-  function createAudioController(doc) {
+  function createAudioController(doc, options = {}) {
     doc = doc || globalThis.document;
     if (!doc) {
       return { play() {}, stopAll() {} };
     }
     const cache = new Map();
+    const trackedButtons = new Set();
 
     function stopAll() {
       for (const [, audio] of cache) {
         audio.pause();
         audio.currentTime = 0;
       }
-      doc.querySelectorAll(".audio-btn.is-playing").forEach((b) => b.classList.remove("is-playing"));
+      for (const btn of trackedButtons) {
+        btn.classList.remove("is-playing");
+      }
+      trackedButtons.clear();
       cache.clear();
     }
 
@@ -36,6 +40,9 @@
         btn = doc.querySelector(`[data-audio-id="${CSS.escape(buttonOrId)}"]`);
       } else if (buttonOrId instanceof Element) {
         btn = buttonOrId;
+      }
+      if (btn) {
+        trackedButtons.add(btn);
       }
 
       let audio = cache.get(url);
@@ -48,20 +55,28 @@
       }
 
       stopAll();
+      if (btn) {
+        trackedButtons.add(btn);
+      }
 
       audio = new Audio(url);
       cache.set(url, audio);
 
       audio.addEventListener("play", () => { if (btn) btn.classList.add("is-playing"); });
       audio.addEventListener("ended", () => {
-        if (btn) btn.classList.remove("is-playing");
+        if (btn) {
+          btn.classList.remove("is-playing");
+          trackedButtons.delete(btn);
+        }
         cache.delete(url);
       });
       audio.addEventListener("error", () => {
         if (btn) {
           btn.classList.remove("is-playing");
           btn.classList.add("is-error");
+          trackedButtons.delete(btn);
         }
+        options.onError?.(btn);
         cache.delete(url);
       });
 
@@ -80,7 +95,8 @@
     const url = getAudioUrl(entry);
     if (!url) return;
     const ctrl = options.controller || defaultAudioController;
-    ctrl.play(url, entry.id || entry.lod_id || "");
+    const target = options.button || entry.id || entry.lod_id || "";
+    ctrl.play(url, target);
   }
 
   function buildAudioBtnMarkup(entry, options = {}) {

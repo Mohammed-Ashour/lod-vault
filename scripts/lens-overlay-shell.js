@@ -73,7 +73,7 @@
 
         const audioButton = event.target.closest(".lodvault-lens-audio");
         if (audioButton) {
-          handlers.onAudio?.();
+          handlers.onAudio?.(audioButton);
           return;
         }
 

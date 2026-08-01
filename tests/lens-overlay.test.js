@@ -42,7 +42,7 @@ function splitSentence(text) {
     }));
 }
 
-function loadLensOverlay({ lookupOverrides = {}, storeOverrides = {} } = {}) {
+function loadLensOverlay({ lookupOverrides = {}, storeOverrides = {}, buildStoreOverrides = null } = {}) {
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
     url: "https://example.com/",
     pretendToBeVisual: true
@@ -103,7 +103,7 @@ function loadLensOverlay({ lookupOverrides = {}, storeOverrides = {} } = {}) {
     async toggleList(entry, listName) {
       return { ...entry, [listName]: true };
     },
-    ...storeOverrides
+    ...(buildStoreOverrides ? buildStoreOverrides(dom) : storeOverrides)
   };
 
   const context = {
@@ -313,7 +313,11 @@ test("lens overlay exposes a labelled pronunciation control for the resolved wor
     },
     storeOverrides: {
       playLodAudio(entry, options) {
-        played.push({ id: entry.id, controller: Boolean(options?.controller) });
+        played.push({
+          id: entry.id,
+          controller: Boolean(options?.controller),
+          buttonIsElement: options?.button instanceof dom.window.Element
+        });
       }
     }
   });
@@ -331,5 +335,117 @@ test("lens overlay exposes a labelled pronunciation control for the resolved wor
 
   audioBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 
-  assert.deepEqual(played, [{ id: "HAUS1", controller: true }]);
+  assert.deepEqual(played, [{ id: "HAUS1", controller: true, buttonIsElement: true }]);
+});
+
+function loadRealEntryPresenter(extraGlobals = {}) {
+  const storeCoreStub = {
+    TRANSLATION_LANGUAGE_ORDER: [],
+    TRANSLATION_LANGUAGE_LABELS: {},
+    TRANSLATION_LANGUAGE_CHIP_LABELS: {},
+    normalizeEntry: (entry) => entry,
+    normalizeVisitCount: (count) => count
+  };
+  const context = {
+    LodVaultStoreCore: storeCoreStub,
+    console,
+    URL,
+    ...extraGlobals,
+    globalThis: null
+  };
+  context.globalThis = context;
+  const source = fs.readFileSync(path.join(repoRoot, "scripts/entry-presenter.js"), "utf8");
+  vm.runInNewContext(source, context, { filename: "scripts/entry-presenter.js" });
+  return context.LodVaultEntryPresenter;
+}
+
+test("lens audio playback drives playing/error states on the exact button and announces failure", async () => {
+  const audios = [];
+  class FakeAudio {
+    constructor(url) {
+      this.url = url;
+      this.paused = true;
+      this.listeners = {};
+      audios.push(this);
+    }
+    addEventListener(type, listener) {
+      (this.listeners[type] ||= []).push(listener);
+    }
+    fire(type) {
+      (this.listeners[type] || []).forEach((listener) => listener());
+    }
+    play() {
+      this.paused = false;
+      this.fire("play");
+      return Promise.resolve();
+    }
+    pause() {
+      this.paused = true;
+    }
+  }
+
+  const { dom, overlay, getRoot } = loadLensOverlay({
+    lookupOverrides: {
+      async lookup() {
+        return {
+          query: "Haus",
+          status: "resolved",
+          entry: { id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1", translations: { en: "house" } }
+        };
+      }
+    },
+    buildStoreOverrides(dom) {
+      const presenter = loadRealEntryPresenter({
+        Audio: FakeAudio,
+        Element: dom.window.Element
+      });
+      return {
+        createAudioController(doc, options) {
+          return presenter.createAudioController(doc, options);
+        },
+        playLodAudio(entry, options) {
+          presenter.playLodAudio(entry, options);
+        }
+      };
+    }
+  });
+
+  await overlay.openFromSelection("Haus");
+  await wait(dom, 0);
+  await wait(dom, 0);
+
+  const root = getRoot();
+  const audioBtn = root.querySelector(".lodvault-lens-audio");
+
+  // Decoy element on the host page sharing the same audio id: state changes
+  // must land on the lens button only, never on a page-scoped match.
+  const decoy = dom.window.document.createElement("button");
+  decoy.className = "audio-btn";
+  decoy.dataset.audioId = "HAUS1";
+  dom.window.document.body.appendChild(decoy);
+
+  audioBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.equal(audios.length, 1, "expected one audio element");
+  assert.equal(audios[0].url, "https://lod.lu/uploads/OGG/haus1.ogg");
+  assert.ok(audioBtn.classList.contains("is-playing"), "lens button should show playing state");
+  assert.ok(!decoy.classList.contains("is-playing"), "decoy button must not receive playing state");
+
+  audios[0].fire("error");
+  assert.ok(audioBtn.classList.contains("is-error"), "lens button should show error state");
+  assert.ok(!decoy.classList.contains("is-error"), "decoy button must not receive error state");
+  assert.equal(audioBtn.getAttribute("aria-label"), "Pronunciation unavailable", "failure should be announced");
+
+  // A second play after the error restarts cleanly, and ended clears the state.
+  audioBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.equal(audios.length, 2);
+  assert.ok(audioBtn.classList.contains("is-playing"));
+  audios[1].fire("ended");
+  assert.ok(!audioBtn.classList.contains("is-playing"));
+
+  // Closing the overlay stops playback and clears states on tracked buttons only.
+  audioBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.ok(audioBtn.classList.contains("is-playing"));
+  overlay.close();
+  assert.ok(!audioBtn.classList.contains("is-playing"));
+  assert.ok(!decoy.classList.contains("is-playing"), "decoy must never be touched by stopAll");
 });
