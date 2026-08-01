@@ -521,7 +521,18 @@ async function loadPopupScript({
     }
   };
 
-  const source = `${fs.readFileSync(path.join(repoRoot, "scripts/popup-app.js"), "utf8")}
+  const POPUP_MODULE_PATHS = [
+    "scripts/popup-sync.js",
+    "scripts/popup-current.js",
+    "scripts/popup-list.js",
+    "scripts/popup-backup.js"
+  ];
+  const popupModulesSource = POPUP_MODULE_PATHS
+    .map((modulePath) => fs.readFileSync(path.join(repoRoot, modulePath), "utf8"))
+    .join("\n");
+
+  const source = `${popupModulesSource}
+${fs.readFileSync(path.join(repoRoot, "scripts/popup-app.js"), "utf8")}
 ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
 ;globalThis.__popupTest = {
   state: popupApp.state,
