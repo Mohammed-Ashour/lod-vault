@@ -229,7 +229,8 @@
       lastExportedAt: Number.isFinite(timestamp)
         ? new Date(timestamp).toISOString()
         : "",
-      entryCount: Math.max(0, Number(value?.entryCount) || 0)
+      entryCount: Math.max(0, Number(value?.entryCount) || 0),
+      reviewCount: Math.max(0, Number(value?.reviewCount) || 0)
     };
   }
 

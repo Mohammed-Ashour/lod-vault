@@ -1,14 +1,18 @@
 // popup-study.js — Study feature module for the popup page.
 //
-// Renders the compact Study row: due/new counts and a single Start-review
-// entry point into the flashcards page. Data comes from the vault entries
-// (state.savedEntries) and the flashcard review meta
+// Renders the compact Study banner: due/new counts and a single
+// Start-review entry point into the flashcards page. Data comes from the
+// vault entries (state.savedEntries) and the flashcard review meta
 // (store.getFlashcardMeta). Detailed stats (streak, daily target, session
 // progress) live on the flashcards page.
 //
-// Cross-module calls (resolved lazily at runtime):
-//   ctx.list.openFlashcards() — Start review opens the flashcards page
+// The banner's counts are scoped to the deck the button opens: with due
+// cards it deep-links to the Due-today deck (?deck=due); otherwise it
+// opens the flashcards page as-is (default deck).
 (() => {
+  let refreshToken = 0;
+  let lastDueCount = 0;
+
   function createStudyModule(ctx) {
     const { store, chromeApi, state, elements } = ctx;
 
@@ -54,6 +58,7 @@
     }
 
     async function refreshStudyCard() {
+      const token = ++refreshToken;
       const entries = state.savedEntries || [];
 
       let meta = {};
@@ -65,15 +70,20 @@
         }
       }
 
-      renderStudyCard(computeDueAndNewCounts(entries, meta));
+      // A newer refresh superseded this one while we were awaiting storage:
+      // drop the stale result instead of repainting with old counts.
+      if (token !== refreshToken) return;
+
+      const { dueCount, newCount } = computeDueAndNewCounts(entries, meta);
+      lastDueCount = dueCount;
+      renderStudyCard({ dueCount, newCount });
     }
 
     function startDueReview() {
-      if (typeof ctx.list?.openFlashcards === "function") {
-        ctx.list.openFlashcards();
-        return;
-      }
-      chromeApi.tabs.create({ url: chromeApi.runtime.getURL("pages/flashcards.html") });
+      const url = chromeApi.runtime.getURL(
+        `pages/flashcards.html${lastDueCount > 0 ? "?deck=due" : ""}`
+      );
+      chromeApi.tabs.create({ url });
     }
 
     return {

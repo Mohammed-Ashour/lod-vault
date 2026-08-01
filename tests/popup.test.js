@@ -974,13 +974,68 @@ test("popup study row adapts when nothing is due and when the vault is empty", a
   assert.equal(emptyDom.window.document.getElementById("study-summary").textContent, "Nothing due right now");
 });
 
-test("popup Start due review opens the flashcards page", async () => {
+test("popup Start review deep-links to the due deck when cards are due", async () => {
+  const entries = makeEntries(2);
+  const flashcardMeta = makeFlashcardMeta(["WORD1"], ["WORD1"]);
+  const { dom, createdTabs } = await loadPopupScript({ entries, flashcardMeta });
+
+  dom.window.document.getElementById("start-due-review").click();
+
+  assert.equal(createdTabs.length, 1);
+  assert.equal(createdTabs[0], "chrome-extension://test/pages/flashcards.html?deck=due");
+});
+
+test("popup Study cards opens the plain flashcards page when nothing is due", async () => {
   const { dom, createdTabs } = await loadPopupScript({});
 
   dom.window.document.getElementById("start-due-review").click();
 
   assert.equal(createdTabs.length, 1);
   assert.equal(createdTabs[0], "chrome-extension://test/pages/flashcards.html");
+});
+
+test("popup refreshes the study banner on flashcard-meta storage changes", async () => {
+  const entries = makeEntries(2);
+  const flashcardMeta = makeFlashcardMeta(["WORD1"], []);
+  const { dom, chrome } = await loadPopupScript({ entries, flashcardMeta });
+
+  const summary = dom.window.document.getElementById("study-summary");
+  assert.equal(summary.textContent, "1 new");
+
+  // A review on the flashcards page marks WORD2 due via storage.
+  flashcardMeta.WORD2 = {
+    totalReviews: 1,
+    reviews: [{ date: new Date().toISOString(), rating: 2 }],
+    dueAt: new Date(Date.now() - 3600e3).toISOString()
+  };
+  await chrome.storage.local.set({ "lodVault.flashcardMeta": flashcardMeta });
+  await flush();
+
+  assert.equal(summary.textContent, "1 due");
+  assert.equal(dom.window.document.getElementById("start-due-review").textContent, "Start review");
+});
+
+test("popup marks a portable backup stale when review progress moved past the export", async () => {
+  const entries = makeEntries(2);
+  const flashcardMeta = makeFlashcardMeta(["WORD1", "WORD2"], ["WORD1"]);
+  const { dom } = await loadPopupScript({
+    entries,
+    flashcardMeta,
+    portableBackupMeta: {
+      lastExportedAt: new Date().toISOString(),
+      entryCount: 2,
+      reviewCount: 1 // export predates the second reviewed card
+    }
+  });
+
+  const warning = dom.window.document.getElementById("backup-warning");
+  const warningMessage = dom.window.document.getElementById("backup-warning-message");
+
+  assert.equal(warning.classList.contains("is-hidden"), false);
+  assert.equal(warningMessage.textContent, "Portable backup is outdated");
+
+  const portableCard = dom.window.document.getElementById("portable-backup-card");
+  assert.equal(portableCard.classList.contains("is-warning"), true);
 });
 
 test("popup keeps data controls behind the Data & settings disclosure", async () => {

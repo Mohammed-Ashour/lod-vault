@@ -239,3 +239,29 @@ test("stats bar renders computed values", async () => {
 
   assert.equal(dom.window.document.getElementById("stat-new").textContent, "2");
 });
+
+test("?deck=due deep link opens the Due today deck even when study cards exist", async () => {
+  const now = Date.now();
+  const entries = [
+    { id: "DUE1", word: "Due Word", url: "https://lod.lu/artikel/DUE1", study: true, updatedAt: new Date(now).toISOString() },
+    { id: "LATER1", word: "Later Word", url: "https://lod.lu/artikel/LATER1", study: true, updatedAt: new Date(now).toISOString() },
+    { id: "FAV1", word: "Fav Word", url: "https://lod.lu/artikel/FAV1", favorite: true, study: false, updatedAt: new Date(now).toISOString() }
+  ];
+  const { dom } = await loadFlashcardsScript({
+    entries,
+    url: "https://extension.test/pages/flashcards.html?deck=due",
+    storeOverrides: {
+      async getFlashcardMeta() {
+        return {
+          DUE1: { totalReviews: 3, dueAt: new Date(now - 3600e3).toISOString(), reviews: [{ date: new Date().toISOString(), rating: 2 }] },
+          LATER1: { totalReviews: 2, dueAt: new Date(now + 86400e3).toISOString(), reviews: [{ date: new Date().toISOString(), rating: 2 }] }
+        };
+      }
+    }
+  });
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  assert.equal(dom.window.document.getElementById("deck-filter").value, "due");
+  const word = dom.window.document.getElementById("card-word");
+  assert.equal(word.textContent, "Due Word");
+});

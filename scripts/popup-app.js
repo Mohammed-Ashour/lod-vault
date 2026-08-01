@@ -253,6 +253,9 @@
 
       if (hasFlashcardMetaChange) {
         await ctx.study.refreshStudyCard();
+        // Reviews change the exported review progress: refresh the backup
+        // status so a stale portable backup stays visible and actionable.
+        await ctx.backup.refreshPortableBackupMeta();
       }
 
       if (hasEntriesChange || hasSettingsChange) {

@@ -416,6 +416,17 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
   margin-left: 0;
   margin-right: 0;
 }
+.data-settings > .tools-row,
+.data-settings > .history-import-row {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.data-settings > .restore-preview,
+.data-settings > .portable-backup-card,
+.data-settings > .history-import-report {
+  margin-left: 12px;
+  margin-right: 12px;
+}
 
 /* ── Current word section ──────────────────────── */
 .current-section { padding: 8px 12px; }

@@ -461,7 +461,8 @@ async function loadPopupScript({
     async markPortableBackupExported(summary = {}) {
       currentPortableBackupMeta = shared.store.normalizePortableBackupMeta({
         lastExportedAt: new Date().toISOString(),
-        entryCount: summary?.entryCount
+        entryCount: summary?.entryCount,
+        reviewCount: summary?.reviewCount
       });
       return structuredClone(currentPortableBackupMeta);
     },
@@ -591,11 +592,11 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
   };
 }
 
-async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localStorage = {} } = {}) {
+async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localStorage = {}, url = "https://extension.test/pages/flashcards.html" } = {}) {
   const shared = loadSharedStore();
   const html = fs.readFileSync(path.join(repoRoot, "pages/flashcards.html"), "utf8");
   const dom = new JSDOM(html, {
-    url: "https://extension.test/pages/flashcards.html",
+    url,
     pretendToBeVisual: true
   });
 
@@ -664,6 +665,7 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localSt
     LodVaultStore,
     console,
     URL: dom.window.URL,
+    URLSearchParams: dom.window.URLSearchParams,
     setTimeout: dom.window.setTimeout.bind(dom.window),
     clearTimeout: dom.window.clearTimeout.bind(dom.window),
     globalThis: null

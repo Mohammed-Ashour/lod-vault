@@ -44,7 +44,8 @@
 
       return {
         lastExportedAt: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : "",
-        entryCount: Math.max(0, Number(meta?.entryCount) || 0)
+        entryCount: Math.max(0, Number(meta?.entryCount) || 0),
+        reviewCount: Math.max(0, Number(meta?.reviewCount) || 0)
       };
     }
 
@@ -98,6 +99,7 @@
       const meta = normalizePortableBackupMeta(state.portableBackupMeta);
       const exportedAt = meta.lastExportedAt;
       const backupCount = Math.max(0, Number(meta.entryCount) || 0);
+      const reviewCount = Math.max(0, Number(meta.reviewCount) || 0);
       const currentCount = Math.max(0, Number(state.savedEntries?.length) || 0);
       const hasEntries = currentCount > 0;
 
@@ -122,7 +124,10 @@
         : exportedAt;
       const latestVaultChange = getLatestVaultChangeTimestamp(state.savedEntries);
       const exportTimestamp = Date.parse(exportedAt) || 0;
-      const hasUnsavedChanges = latestVaultChange > exportTimestamp || backupCount !== currentCount;
+      const currentReviewCount = Math.max(0, Number(state.flashcardReviewCount) || 0);
+      const hasUnsavedChanges = latestVaultChange > exportTimestamp
+        || backupCount !== currentCount
+        || reviewCount !== currentReviewCount;
       const countLabel = `${backupCount} word${backupCount === 1 ? "" : "s"}`;
 
       if (hasUnsavedChanges) {
@@ -166,6 +171,18 @@
     }
 
     async function refreshPortableBackupMeta() {
+      if (typeof store.getFlashcardMeta === "function") {
+        try {
+          const meta = (await store.getFlashcardMeta()) || {};
+          state.flashcardReviewCount = Object.values(meta).reduce(
+            (total, card) => total + (Math.max(0, Number(card?.totalReviews) || 0)),
+            0
+          );
+        } catch {
+          state.flashcardReviewCount = 0;
+        }
+      }
+
       if (typeof store.getPortableBackupMeta !== "function") {
         state.portableBackupMeta = normalizePortableBackupMeta({});
         renderPortableBackupStatus();
@@ -423,8 +440,12 @@
 
       if (typeof store.markPortableBackupExported === "function") {
         try {
+          const reviewCount = Object.values(flashcardMeta).reduce(
+            (total, card) => total + (Math.max(0, Number(card?.totalReviews) || 0)),
+            0
+          );
           state.portableBackupMeta = normalizePortableBackupMeta(
-            await store.markPortableBackupExported({ entryCount: entries.length })
+            await store.markPortableBackupExported({ entryCount: entries.length, reviewCount })
           );
           renderPortableBackupStatus();
           ctx.showActionFeedback("JSON backup downloaded.");
