@@ -229,7 +229,8 @@
       lastExportedAt: Number.isFinite(timestamp)
         ? new Date(timestamp).toISOString()
         : "",
-      entryCount: Math.max(0, Number(value?.entryCount) || 0)
+      entryCount: Math.max(0, Number(value?.entryCount) || 0),
+      reviewCount: Math.max(0, Number(value?.reviewCount) || 0)
     };
   }
 
@@ -1186,7 +1187,8 @@
   async function markPortableBackupExportedDirect(summary = {}) {
     const nextMeta = normalizePortableBackupMeta({
       lastExportedAt: nowIso(),
-      entryCount: summary?.entryCount
+      entryCount: summary?.entryCount,
+      reviewCount: summary?.reviewCount
     });
 
     try {

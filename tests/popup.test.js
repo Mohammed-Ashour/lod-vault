@@ -925,3 +925,266 @@ test("popup current-note input can auto-save an unsaved current word", async () 
   assert.deepEqual(toggleCalls, [{ id: "HAUS1", listName: "study" }]);
 });
 
+
+function makeFlashcardMeta(reviewedIds, dueIds) {
+  const now = Date.now();
+  const past = new Date(now - 24 * 3600 * 1000).toISOString();
+  const future = new Date(now + 24 * 3600 * 1000).toISOString();
+  const meta = {};
+
+  for (const id of reviewedIds) {
+    meta[id] = {
+      totalReviews: 1,
+      reviews: [{ date: new Date().toISOString(), rating: 2 }],
+      dueAt: dueIds.includes(id) ? past : future
+    };
+  }
+  return meta;
+}
+
+test("popup study row shows due and new counts with a start-review action", async () => {
+  const entries = makeEntries(4);
+  const flashcardMeta = makeFlashcardMeta(["WORD1", "WORD2", "WORD4"], ["WORD1", "WORD4"]);
+
+  const { dom } = await loadPopupScript({ entries, flashcardMeta });
+
+  const summary = dom.window.document.getElementById("study-summary");
+  const button = dom.window.document.getElementById("start-due-review");
+
+  // WORD1 due, WORD2 scheduled later, WORD3 never reviewed (new), WORD4 due.
+  assert.equal(summary.textContent, "2 due · 1 new");
+  assert.equal(button.textContent, "Start review");
+  assert.equal(summary.classList.contains("is-empty"), false);
+});
+
+test("popup study row adapts when nothing is due and when the vault is empty", async () => {
+  const entries = makeEntries(2);
+  const flashcardMeta = makeFlashcardMeta(["WORD1", "WORD2"], []);
+
+  const { dom } = await loadPopupScript({ entries, flashcardMeta });
+
+  const summary = dom.window.document.getElementById("study-summary");
+  const button = dom.window.document.getElementById("start-due-review");
+
+  assert.equal(summary.textContent, "Nothing due right now");
+  assert.equal(summary.classList.contains("is-empty"), true);
+  assert.equal(button.textContent, "Study cards");
+
+  const { dom: emptyDom } = await loadPopupScript({ flashcardMeta: {} });
+  assert.equal(emptyDom.window.document.getElementById("study-summary").textContent, "Nothing due right now");
+});
+
+test("popup Start review deep-links to the due deck when cards are due", async () => {
+  const entries = makeEntries(2);
+  const flashcardMeta = makeFlashcardMeta(["WORD1"], ["WORD1"]);
+  const { dom, createdTabs } = await loadPopupScript({ entries, flashcardMeta });
+
+  dom.window.document.getElementById("start-due-review").click();
+
+  assert.equal(createdTabs.length, 1);
+  assert.equal(createdTabs[0], "chrome-extension://test/pages/flashcards.html?deck=due");
+});
+
+test("popup Study cards opens the plain flashcards page when nothing is due", async () => {
+  const { dom, createdTabs } = await loadPopupScript({});
+
+  dom.window.document.getElementById("start-due-review").click();
+
+  assert.equal(createdTabs.length, 1);
+  assert.equal(createdTabs[0], "chrome-extension://test/pages/flashcards.html");
+});
+
+test("popup refreshes the study banner on flashcard-meta storage changes", async () => {
+  const entries = makeEntries(2);
+  const flashcardMeta = makeFlashcardMeta(["WORD1"], []);
+  const { dom, chrome } = await loadPopupScript({ entries, flashcardMeta });
+
+  const summary = dom.window.document.getElementById("study-summary");
+  assert.equal(summary.textContent, "1 new");
+
+  // A review on the flashcards page marks WORD2 due via storage.
+  flashcardMeta.WORD2 = {
+    totalReviews: 1,
+    reviews: [{ date: new Date().toISOString(), rating: 2 }],
+    dueAt: new Date(Date.now() - 3600e3).toISOString()
+  };
+  await chrome.storage.local.set({ "lodVault.flashcardMeta": flashcardMeta });
+  await flush();
+
+  assert.equal(summary.textContent, "1 due");
+  assert.equal(dom.window.document.getElementById("start-due-review").textContent, "Start review");
+});
+
+test("popup marks a portable backup stale when review progress moved past the export", async () => {
+  const entries = makeEntries(2);
+  const flashcardMeta = makeFlashcardMeta(["WORD1", "WORD2"], ["WORD1"]);
+  const { dom } = await loadPopupScript({
+    entries,
+    flashcardMeta,
+    portableBackupMeta: {
+      lastExportedAt: new Date().toISOString(),
+      entryCount: 2,
+      reviewCount: 1 // export predates the second reviewed card
+    }
+  });
+
+  const warning = dom.window.document.getElementById("backup-warning");
+  const warningMessage = dom.window.document.getElementById("backup-warning-message");
+
+  assert.equal(warning.classList.contains("is-hidden"), false);
+  assert.equal(warningMessage.textContent, "Portable backup is outdated");
+
+  const portableCard = dom.window.document.getElementById("portable-backup-card");
+  assert.equal(portableCard.classList.contains("is-warning"), true);
+});
+
+test("popup keeps data controls behind the Data & settings disclosure", async () => {
+  const { dom } = await loadPopupScript({ entries: makeEntries(1) });
+  const document = dom.window.document;
+
+  const details = document.getElementById("data-settings");
+  const syncRow = document.querySelector(".sync-row");
+  const currentCard = document.getElementById("current-page-card");
+  const studyCard = document.getElementById("study-card");
+
+  // Closed by default: one deliberate action (opening the disclosure) away.
+  assert.equal(details.open, false);
+
+  // Sync, backup, restore, history import and exports live inside it.
+  for (const id of [
+    "sync-language-chips",
+    "export-json",
+    "import-json",
+    "import-browser-history",
+    "export-html",
+    "export-anki",
+    "portable-backup-card",
+    "restore-preview"
+  ]) {
+    assert.ok(details.contains(document.getElementById(id)), `${id} should be inside the disclosure`);
+  }
+  assert.ok(details.contains(syncRow));
+
+  // The header only carries study/navigation actions now.
+  assert.equal(document.querySelector(".header-actions").children.length, 2);
+  assert.equal(document.querySelector(".header-sep"), null);
+
+  // Learner actions come before data management in the tab order.
+  assert.ok(currentCard.compareDocumentPosition(details) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
+  assert.ok(studyCard.compareDocumentPosition(details) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
+});
+
+test("popup backup warning stays visible and actionable while a backup is needed", async () => {
+  const downloadCalls = [];
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    portableBackupMeta: { lastExportedAt: "", entryCount: 0 },
+    storeOverrides: {
+      downloadTextFile(filename, content, mimeType) {
+        downloadCalls.push({ filename, content, mimeType });
+      }
+    }
+  });
+
+  const warning = dom.window.document.getElementById("backup-warning");
+  const warningMessage = dom.window.document.getElementById("backup-warning-message");
+  const warningAction = dom.window.document.getElementById("backup-warning-action");
+
+  assert.equal(warning.classList.contains("is-hidden"), false);
+  assert.equal(warningMessage.textContent, "No portable backup yet");
+
+  warningAction.click();
+  await flush();
+
+  assert.equal(downloadCalls.length, 1);
+  assert.equal(warning.classList.contains("is-hidden"), true);
+});
+
+test("popup backup warning stays hidden while the portable backup is up to date", async () => {
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    portableBackupMeta: {
+      lastExportedAt: new Date().toISOString(),
+      entryCount: 1
+    }
+  });
+
+  const warning = dom.window.document.getElementById("backup-warning");
+  assert.equal(warning.classList.contains("is-hidden"), true);
+});
+
+test("popup opens the Data & settings disclosure when a restore preview is shown", async () => {
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    storeOverrides: {
+      async previewJsonImport() {
+        return {
+          exportedAt: "2026-07-01T10:00:00.000Z",
+          entryCount: 1,
+          skippedCount: 0,
+          newIds: ["WORD2"],
+          mergeIds: [],
+          restoreIds: [],
+          settings: null,
+          hasFlashcardMeta: false,
+          flashcardCount: 0
+        };
+      }
+    }
+  });
+
+  const details = dom.window.document.getElementById("data-settings");
+  assert.equal(details.open, false);
+
+  selectRestoreFile(dom, "{}");
+  await flush();
+
+  assert.equal(details.open, true);
+  assert.equal(dom.window.document.getElementById("restore-preview").classList.contains("is-hidden"), false);
+});
+
+test("popup study banner ignores stale out-of-order flashcard-meta reads", async () => {
+  const entries = makeEntries(2);
+  const flashcardMeta = makeFlashcardMeta(["WORD1"], []);
+  const resolvers = [];
+  let callCount = 0;
+  const { dom, chrome } = await loadPopupScript({
+    entries,
+    flashcardMeta,
+    storeOverrides: {
+      async getFlashcardMeta() {
+        callCount += 1;
+        // First two reads are deferred so we can resolve them out of order;
+        // later reads (backup refresh) resolve immediately.
+        if (callCount <= 2) {
+          return new Promise((resolve) => resolvers.push(resolve));
+        }
+        return structuredClone(flashcardMeta);
+      }
+    }
+  });
+
+  const summary = dom.window.document.getElementById("study-summary");
+
+  // WORD2 becomes due (newer state) while the first read is still pending.
+  flashcardMeta.WORD2 = {
+    totalReviews: 1,
+    reviews: [{ date: new Date().toISOString(), rating: 2 }],
+    dueAt: new Date(Date.now() - 3600e3).toISOString()
+  };
+  await chrome.storage.local.set({ "lodVault.flashcardMeta": flashcardMeta });
+  await flush();
+
+  // The newer read resolves first with the due counts...
+  assert.equal(resolvers.length, 2);
+  resolvers[1](structuredClone(flashcardMeta));
+  await flush();
+
+  // ...then the older read resolves with the pre-change meta. The banner
+  // must keep the newer counts instead of repainting with stale ones.
+  resolvers[0](structuredClone(makeFlashcardMeta(["WORD1"], [])));
+  await flush();
+
+  assert.equal(summary.textContent, "1 due");
+  assert.equal(dom.window.document.getElementById("start-due-review").textContent, "Start review");
+});

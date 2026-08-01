@@ -102,6 +102,13 @@ async function loadEntries() {
     state.filter = state.entries.some((entry) => entry.favorite) ? "favorites" : "all";
   }
 
+  // Deep links (e.g. the popup's "Start review" banner) can request a
+  // specific deck; it wins over the fallback above.
+  const urlDeck = new URLSearchParams(location.search).get("deck");
+  if (urlDeck && DECK_FILTERS.has(urlDeck)) {
+    state.filter = urlDeck;
+  }
+
   if (elements.deckFilter) {
     elements.deckFilter.value = state.filter;
   }

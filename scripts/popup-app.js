@@ -8,6 +8,7 @@
 //   popup-current.js — current word card, note, auto mode
 //   popup-list.js    — saved list, search, stats
 //   popup-backup.js  — exports, imports, portable backup
+//   popup-study.js   — study card (due/new counts, today progress, start review)
 //
 // This file only wires modules together: element lookup, event listeners,
 // tab/storage/message routing and the init/destroy lifecycle. Feature logic
@@ -69,6 +70,7 @@
     ctx.current = globalThis.LodVaultPopupCurrent.create(ctx);
     ctx.list = globalThis.LodVaultPopupList.create(ctx);
     ctx.backup = globalThis.LodVaultPopupBackup.create(ctx);
+    ctx.study = globalThis.LodVaultPopupStudy.create(ctx);
 
     // Note autosave coordinator. Shared by the current-word textarea and the
     // saved-list note textareas; routes saves through the store and refreshes
@@ -226,8 +228,11 @@
       const hasHistoryImportStateChange = Boolean(
         store.HISTORY_IMPORT_STATE_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.HISTORY_IMPORT_STATE_KEY)
       );
+      const hasFlashcardMetaChange = Boolean(
+        store.FLASHCARD_META_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.FLASHCARD_META_KEY)
+      );
 
-      if (!hasEntriesChange && !hasSettingsChange && !hasPortableBackupChange && !hasHistoryImportStateChange) {
+      if (!hasEntriesChange && !hasSettingsChange && !hasPortableBackupChange && !hasHistoryImportStateChange && !hasFlashcardMetaChange) {
         return;
       }
 
@@ -243,6 +248,13 @@
       }
 
       if (hasPortableBackupChange) {
+        await ctx.backup.refreshPortableBackupMeta();
+      }
+
+      if (hasFlashcardMetaChange) {
+        await ctx.study.refreshStudyCard();
+        // Reviews change the exported review progress: refresh the backup
+        // status so a stale portable backup stays visible and actionable.
         await ctx.backup.refreshPortableBackupMeta();
       }
 
@@ -285,6 +297,12 @@
       elements.openPreview = document.getElementById("open-preview");
       elements.exportHtml = document.getElementById("export-html");
       elements.exportAnki = document.getElementById("export-anki");
+      elements.studySummary = document.getElementById("study-summary");
+      elements.startDueReview = document.getElementById("start-due-review");
+      elements.backupWarning = document.getElementById("backup-warning");
+      elements.backupWarningMessage = document.getElementById("backup-warning-message");
+      elements.backupWarningAction = document.getElementById("backup-warning-action");
+      elements.dataSettings = document.getElementById("data-settings");
       elements.exportJson = document.getElementById("export-json");
       elements.importJson = document.getElementById("import-json");
       elements.importBrowserHistory = document.getElementById("import-browser-history");
@@ -337,6 +355,8 @@
       elements.openPreview.addEventListener("click", ctx.list.openPreview);
       elements.exportHtml.addEventListener("click", ctx.backup.exportHtml);
       elements.exportAnki.addEventListener("click", ctx.backup.exportAnki);
+      elements.startDueReview?.addEventListener("click", ctx.study.startDueReview);
+      elements.backupWarningAction?.addEventListener("click", ctx.backup.exportJson);
       elements.exportJson.addEventListener("click", ctx.backup.exportJson);
       elements.portableBackupNowButton?.addEventListener("click", ctx.backup.exportJson);
       elements.importJson.addEventListener("click", () => elements.importJsonFile.click());

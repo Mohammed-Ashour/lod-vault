@@ -17,6 +17,8 @@
   function createBackupModule(ctx) {
     const { store, chromeApi, state, elements } = ctx;
 
+    let backupAttentionState = null;
+
     const HISTORY_IMPORT_RANGE_DAYS = Object.freeze({
       "7d": 7,
       "30d": 30,
@@ -42,7 +44,8 @@
 
       return {
         lastExportedAt: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : "",
-        entryCount: Math.max(0, Number(meta?.entryCount) || 0)
+        entryCount: Math.max(0, Number(meta?.entryCount) || 0),
+        reviewCount: Math.max(0, Number(meta?.reviewCount) || 0)
       };
     }
 
@@ -96,6 +99,7 @@
       const meta = normalizePortableBackupMeta(state.portableBackupMeta);
       const exportedAt = meta.lastExportedAt;
       const backupCount = Math.max(0, Number(meta.entryCount) || 0);
+      const reviewCount = Math.max(0, Number(meta.reviewCount) || 0);
       const currentCount = Math.max(0, Number(state.savedEntries?.length) || 0);
       const hasEntries = currentCount > 0;
 
@@ -120,7 +124,10 @@
         : exportedAt;
       const latestVaultChange = getLatestVaultChangeTimestamp(state.savedEntries);
       const exportTimestamp = Date.parse(exportedAt) || 0;
-      const hasUnsavedChanges = latestVaultChange > exportTimestamp || backupCount !== currentCount;
+      const currentReviewCount = Math.max(0, Number(state.flashcardReviewCount) || 0);
+      const hasUnsavedChanges = latestVaultChange > exportTimestamp
+        || backupCount !== currentCount
+        || reviewCount !== currentReviewCount;
       const countLabel = `${backupCount} word${backupCount === 1 ? "" : "s"}`;
 
       if (hasUnsavedChanges) {
@@ -142,10 +149,40 @@
 
     function renderPortableBackupStatus() {
       const nextState = describePortableBackupStatus();
+      backupAttentionState = nextState;
       setPortableBackupStatus(nextState.message, nextState);
+      renderBackupWarning();
+    }
+
+    // Compact backup-needs-attention strip shown outside the Data & settings
+    // disclosure, so a missing or stale portable backup stays visible and
+    // actionable without opening the disclosure.
+    function renderBackupWarning() {
+      if (!elements.backupWarning || !elements.backupWarningMessage) return;
+
+      const needsAttention = backupAttentionState?.showAction === true;
+      elements.backupWarning.classList.toggle("is-hidden", !needsAttention);
+      if (needsAttention) {
+        const meta = normalizePortableBackupMeta(state.portableBackupMeta);
+        elements.backupWarningMessage.textContent = meta.lastExportedAt
+          ? "Portable backup is outdated"
+          : "No portable backup yet";
+      }
     }
 
     async function refreshPortableBackupMeta() {
+      if (typeof store.getFlashcardMeta === "function") {
+        try {
+          const meta = (await store.getFlashcardMeta()) || {};
+          state.flashcardReviewCount = Object.values(meta).reduce(
+            (total, card) => total + (Math.max(0, Number(card?.totalReviews) || 0)),
+            0
+          );
+        } catch {
+          state.flashcardReviewCount = 0;
+        }
+      }
+
       if (typeof store.getPortableBackupMeta !== "function") {
         state.portableBackupMeta = normalizePortableBackupMeta({});
         renderPortableBackupStatus();
@@ -403,8 +440,12 @@
 
       if (typeof store.markPortableBackupExported === "function") {
         try {
+          const reviewCount = Object.values(flashcardMeta).reduce(
+            (total, card) => total + (Math.max(0, Number(card?.totalReviews) || 0)),
+            0
+          );
           state.portableBackupMeta = normalizePortableBackupMeta(
-            await store.markPortableBackupExported({ entryCount: entries.length })
+            await store.markPortableBackupExported({ entryCount: entries.length, reviewCount })
           );
           renderPortableBackupStatus();
           ctx.showActionFeedback("JSON backup downloaded.");
@@ -588,6 +629,11 @@
         pendingRestoreText = text;
         pendingRestorePreview = preview;
         renderRestorePreview(preview);
+        // The preview lives inside the Data & settings disclosure: open it so
+        // the user can review the changes before choosing Merge backup.
+        if (elements.dataSettings) {
+          elements.dataSettings.open = true;
+        }
         setSearchStatusFeedback("Review the backup below, then choose Merge backup.", "success");
       } catch (error) {
         clearRestorePreview();
@@ -659,6 +705,7 @@
     return {
       refreshPortableBackupMeta,
       renderPortableBackupStatus,
+      renderBackupWarning,
       renderBrowserHistoryImportAction,
       onHistoryImportRangeChange,
       refreshHistoryImportState,

@@ -369,6 +369,7 @@ async function loadPopupScript({
   autoMode = false,
   syncLanguages = ["en", "fr", "de"],
   portableBackupMeta = null,
+  flashcardMeta = {},
   popupHtml,
   storeOverrides = {},
   syncOverrides = null
@@ -395,6 +396,7 @@ async function loadPopupScript({
     LEGACY_STORAGE_KEY: "lodWrapper.entries",
     HISTORY_IMPORT_STATE_KEY: "lodVault.historyImport",
     PORTABLE_BACKUP_KEY: "lodVault.portableBackup",
+    FLASHCARD_META_KEY: "lodVault.flashcardMeta",
     DEFAULT_SETTINGS: structuredClone(shared.store.DEFAULT_SETTINGS),
     MAX_SYNC_LANGUAGES: shared.store.MAX_SYNC_LANGUAGES,
     TRANSLATION_LANGUAGE_ORDER: [...shared.store.TRANSLATION_LANGUAGE_ORDER],
@@ -459,7 +461,8 @@ async function loadPopupScript({
     async markPortableBackupExported(summary = {}) {
       currentPortableBackupMeta = shared.store.normalizePortableBackupMeta({
         lastExportedAt: new Date().toISOString(),
-        entryCount: summary?.entryCount
+        entryCount: summary?.entryCount,
+        reviewCount: summary?.reviewCount
       });
       return structuredClone(currentPortableBackupMeta);
     },
@@ -471,7 +474,7 @@ async function loadPopupScript({
       return lastVerifiedSyncAt;
     },
     async getFlashcardMeta() {
-      return {};
+      return structuredClone(flashcardMeta);
     },
     buildJsonExport(entriesToExport, options) {
       return shared.store.buildJsonExport(entriesToExport, options);
@@ -486,7 +489,10 @@ async function loadPopupScript({
     ...storeOverrides
   };
 
+  const popupStorage = createChromeStorage({});
+
   const chrome = {
+    storage: popupStorage.chrome.storage,
     tabs: {
       onActivated: tabsOnActivated,
       onUpdated: tabsOnUpdated,
@@ -528,7 +534,8 @@ async function loadPopupScript({
     "scripts/popup-sync.js",
     "scripts/popup-current.js",
     "scripts/popup-list.js",
-    "scripts/popup-backup.js"
+    "scripts/popup-backup.js",
+    "scripts/popup-study.js"
   ];
   const popupModulesSource = POPUP_MODULE_PATHS
     .map((modulePath) => fs.readFileSync(path.join(repoRoot, modulePath), "utf8"))
@@ -585,11 +592,11 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
   };
 }
 
-async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localStorage = {} } = {}) {
+async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localStorage = {}, url = "https://extension.test/pages/flashcards.html" } = {}) {
   const shared = loadSharedStore();
   const html = fs.readFileSync(path.join(repoRoot, "pages/flashcards.html"), "utf8");
   const dom = new JSDOM(html, {
-    url: "https://extension.test/pages/flashcards.html",
+    url,
     pretendToBeVisual: true
   });
 
@@ -658,6 +665,7 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localSt
     LodVaultStore,
     console,
     URL: dom.window.URL,
+    URLSearchParams: dom.window.URLSearchParams,
     setTimeout: dom.window.setTimeout.bind(dom.window),
     clearTimeout: dom.window.clearTimeout.bind(dom.window),
     globalThis: null
