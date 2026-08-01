@@ -13,6 +13,7 @@
 //   ctx.sync.renderVerifiedSyncStatus()   — verified label after vault changes
 //   ctx.sync.refreshSyncHealth()          — health banner after vault changes
 //   ctx.backup.renderPortableBackupStatus() — backup chip after vault changes
+//   ctx.study.refreshStudyCard()           — due/new counts after vault changes
 //   ctx.showActionFeedback()              — transient action feedback toast
 //   ctx.deleteUndo.deleteEntry()          — delete-with-undo for list items
 //   ctx.noteAutosave                      — autosave for list note textareas
@@ -99,6 +100,7 @@
       await ctx.sync.refreshSyncHealth();
       renderList();
       ctx.backup.renderPortableBackupStatus();
+      if (ctx.study) await ctx.study.refreshStudyCard();
       await ctx.current.syncCurrentCardState();
     }
 

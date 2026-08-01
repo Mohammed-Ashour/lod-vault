@@ -20,48 +20,8 @@
       <div class="header-actions">
         <button id="open-flashcards" class="btn-ghost">Flashcards</button>
         <button id="open-preview" class="btn-ghost">Vault</button>
-        <span class="header-sep" aria-hidden="true"></span>
-        <button id="export-html" class="btn-ghost btn-secondary">HTML</button>
-        <button id="export-anki" class="btn-ghost btn-secondary">Anki</button>
       </div>
     </header>
-
-    <section class="auto-row auto-mode-card">
-      <div class="auto-row__copy">
-        <p class="section-label">Auto mode</p>
-        <h2 id="auto-mode-title">Off</h2>
-        <p id="auto-mode-meta" class="muted">Saves every visited word to Study and History.</p>
-      </div>
-      <button id="toggle-auto-mode" class="auto-toggle">Turn on</button>
-    </section>
-
-    <section class="sync-row" aria-labelledby="sync-languages-title">
-      <div class="sync-row__copy">
-        <p class="section-label">Sync languages</p>
-        <h2 id="sync-languages-title">Choose up to 3 languages to include in sync.</h2>
-        <p class="helper-text muted sync-language-helper">Only these languages are synced. This device keeps every saved translation.</p>
-        <div id="sync-language-chips" class="sync-language-chips" role="group" aria-label="Sync languages"></div>
-        <div class="sync-language-meta">
-          <div class="sync-meta-top">
-            <p id="sync-language-count" class="muted">3 of 3 selected</p>
-            <p id="sync-language-capacity" class="muted">Sync: 0 / 100 KB used</p>
-          </div>
-          <div id="sync-capacity-bar" class="sync-capacity-bar">
-            <div id="sync-capacity-fill" class="sync-capacity-fill" style="width: 0%"></div>
-          </div>
-        </div>
-        <div class="sync-actions-row">
-          <button id="sync-now" class="btn-link sync-now-btn" type="button">Sync now</button>
-          <button id="sync-pull" class="btn-link sync-pull-btn" type="button">Pull synced data</button>
-        </div>
-        <p id="sync-now-status" class="helper-text muted sync-now-status" aria-live="polite"></p>
-        <button id="sync-retry" class="btn-link sync-retry is-hidden" type="button">Retry sync</button>
-        <p id="sync-verified-status" class="helper-text muted sync-verified-status" aria-live="polite"></p>
-        <p id="sync-health-status" class="helper-text muted sync-health-status is-hidden" aria-live="polite"></p>
-      </div>
-    </section>
-
-    <p id="action-feedback" class="action-feedback is-hidden" role="status" aria-live="polite"></p>
 
     <section id="current-page-card" class="current-section">
       <p class="section-label">Current word</p>
@@ -93,6 +53,24 @@
       </div>
     </section>
 
+    <section id="study-card" class="study-card" aria-labelledby="study-card-title">
+      <div class="study-card__copy">
+        <p class="section-label">Study</p>
+        <p id="study-summary" class="study-summary" aria-live="polite">Loading…</p>
+        <p id="study-progress" class="muted study-progress"></p>
+      </div>
+      <button id="start-due-review" class="study-start-btn" type="button">Start review</button>
+    </section>
+
+    <section class="auto-row auto-mode-card">
+      <div class="auto-row__copy">
+        <p class="section-label">Auto mode</p>
+        <h2 id="auto-mode-title">Off</h2>
+        <p id="auto-mode-meta" class="muted">Saves every visited word to Study and History.</p>
+      </div>
+      <button id="toggle-auto-mode" class="auto-toggle">Turn on</button>
+    </section>
+
     <div class="stats-row">
       <div class="stat">
         <strong id="favorite-count">0</strong>
@@ -115,13 +93,81 @@
       </div>
     </div>
 
+    <p id="action-feedback" class="action-feedback is-hidden" role="status" aria-live="polite"></p>
+
+    <div id="backup-warning" class="backup-warning is-hidden" role="status" aria-live="polite">
+      <span id="backup-warning-message" class="backup-warning-message"></span>
+      <button id="backup-warning-action" class="btn-link backup-warning-action" type="button">Back up now</button>
+    </div>
+
     <div class="search-section">
       <input id="search-input" class="search-input" type="search" placeholder="Search words, type, translation, note…" autocomplete="off">
+      <p id="search-status" class="helper-text muted" aria-live="polite">0 saved words</p>
+    </div>
+
+    <div id="saved-list" class="saved-list"></div>
+
+    <div id="empty-state" class="empty-state is-hidden">
+      No saved words yet. Open a word on lod.lu and save it.
+    </div>
+    <div id="no-results" class="empty-state is-hidden">
+      No words match your search.
+    </div>
+
+    <details id="data-settings" class="data-settings">
+      <summary class="data-settings-summary">
+        <span class="data-settings-label">Data &amp; settings</span>
+        <span class="data-settings-hint">sync · backup · import · export</span>
+      </summary>
+
+      <section class="sync-row" aria-labelledby="sync-languages-title">
+        <div class="sync-row__copy">
+          <p class="section-label">Sync languages</p>
+          <h2 id="sync-languages-title">Choose up to 3 languages to include in sync.</h2>
+          <p class="helper-text muted sync-language-helper">Only these languages are synced. This device keeps every saved translation.</p>
+          <div id="sync-language-chips" class="sync-language-chips" role="group" aria-label="Sync languages"></div>
+          <div class="sync-language-meta">
+            <div class="sync-meta-top">
+              <p id="sync-language-count" class="muted">3 of 3 selected</p>
+              <p id="sync-language-capacity" class="muted">Sync: 0 / 100 KB used</p>
+            </div>
+            <div id="sync-capacity-bar" class="sync-capacity-bar">
+              <div id="sync-capacity-fill" class="sync-capacity-fill" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="sync-actions-row">
+            <button id="sync-now" class="btn-link sync-now-btn" type="button">Sync now</button>
+            <button id="sync-pull" class="btn-link sync-pull-btn" type="button">Pull synced data</button>
+          </div>
+          <p id="sync-now-status" class="helper-text muted sync-now-status" aria-live="polite"></p>
+          <button id="sync-retry" class="btn-link sync-retry is-hidden" type="button">Retry sync</button>
+          <p id="sync-verified-status" class="helper-text muted sync-verified-status" aria-live="polite"></p>
+          <p id="sync-health-status" class="helper-text muted sync-health-status is-hidden" aria-live="polite"></p>
+        </div>
+      </section>
+
       <div class="tools-row">
         <button id="export-json" class="btn-tool">Backup JSON</button>
         <button id="import-json" class="btn-tool">Restore JSON</button>
         <button id="import-browser-history" class="btn-tool">Import history</button>
       </div>
+
+      <div id="import-history-range-row" class="history-import-row">
+        <label class="history-import-label" for="import-history-range">History range</label>
+        <select id="import-history-range" class="history-import-select">
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+          <option value="365d">Last year</option>
+          <option value="all" selected>All time</option>
+        </select>
+      </div>
+
+      <div class="tools-row">
+        <button id="export-html" class="btn-tool">Export HTML</button>
+        <button id="export-anki" class="btn-tool">Export Anki</button>
+      </div>
+
       <section id="restore-preview" class="restore-preview is-hidden" aria-labelledby="restore-preview-title">
         <div class="restore-preview-header">
           <div class="restore-preview-heading">
@@ -137,6 +183,7 @@
           <button id="restore-cancel" class="btn-link" type="button">Cancel</button>
         </div>
       </section>
+
       <section id="portable-backup-card" class="portable-backup-card is-neutral" aria-labelledby="portable-backup-title">
         <div class="portable-backup-header">
           <div class="portable-backup-heading">
@@ -150,33 +197,15 @@
         </div>
         <p id="portable-backup-status" class="portable-backup-copy" aria-live="polite">Portable backup: checking status…</p>
       </section>
-      <div id="import-history-range-row" class="history-import-row">
-        <label class="history-import-label" for="import-history-range">History range</label>
-        <select id="import-history-range" class="history-import-select">
-          <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
-          <option value="90d">Last 90 days</option>
-          <option value="365d">Last year</option>
-          <option value="all" selected>All time</option>
-        </select>
-      </div>
-      <p id="search-status" class="helper-text muted" aria-live="polite">0 saved words</p>
+
       <section id="import-history-report" class="history-import-report is-hidden" aria-live="polite">
         <p id="import-history-report-summary" class="history-import-report-summary"></p>
         <div id="import-history-report-list" class="history-import-report-list"></div>
       </section>
+
       <input id="import-json-file" type="file" accept="application/json,.json" hidden>
 
-    </div>
-
-    <div id="saved-list" class="saved-list"></div>
-
-    <div id="empty-state" class="empty-state is-hidden">
-      No saved words yet. Open a word on lod.lu and save it.
-    </div>
-    <div id="no-results" class="empty-state is-hidden">
-      No words match your search.
-    </div>
+    </details>
 
     <div id="delete-undo" class="undo-toast is-hidden" role="status" aria-live="polite">
       <span id="delete-undo-message"></span>
@@ -194,6 +223,7 @@
   <script src="../scripts/popup-current.js"></script>
   <script src="../scripts/popup-list.js"></script>
   <script src="../scripts/popup-backup.js"></script>
+  <script src="../scripts/popup-study.js"></script>
   <script src="../scripts/popup-app.js"></script>
   <script src="../scripts/popup.js"></script>
 </body>

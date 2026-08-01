@@ -369,6 +369,8 @@ async function loadPopupScript({
   autoMode = false,
   syncLanguages = ["en", "fr", "de"],
   portableBackupMeta = null,
+  flashcardMeta = {},
+  dailyTarget = 0,
   popupHtml,
   storeOverrides = {},
   syncOverrides = null
@@ -395,6 +397,7 @@ async function loadPopupScript({
     LEGACY_STORAGE_KEY: "lodWrapper.entries",
     HISTORY_IMPORT_STATE_KEY: "lodVault.historyImport",
     PORTABLE_BACKUP_KEY: "lodVault.portableBackup",
+    FLASHCARD_META_KEY: "lodVault.flashcardMeta",
     DEFAULT_SETTINGS: structuredClone(shared.store.DEFAULT_SETTINGS),
     MAX_SYNC_LANGUAGES: shared.store.MAX_SYNC_LANGUAGES,
     TRANSLATION_LANGUAGE_ORDER: [...shared.store.TRANSLATION_LANGUAGE_ORDER],
@@ -471,7 +474,31 @@ async function loadPopupScript({
       return lastVerifiedSyncAt;
     },
     async getFlashcardMeta() {
-      return {};
+      return structuredClone(flashcardMeta);
+    },
+    async getFlashcardStats() {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      let todayCount = 0;
+      const reviewDates = new Set();
+
+      for (const data of Object.values(flashcardMeta || {})) {
+        const reviews = Array.isArray(data?.reviews) ? data.reviews : [];
+        const totalReviews = Number(data?.totalReviews) || reviews.length;
+        if (!totalReviews) continue;
+
+        for (const review of reviews) {
+          const date = String(review?.date || "").slice(0, 10);
+          if (date) reviewDates.add(date);
+        }
+
+        const last = reviews[reviews.length - 1];
+        if (last && String(last.date || "").slice(0, 10) === todayIso) {
+          todayCount += 1;
+        }
+      }
+
+      const streak = shared.store.computeFlashcardStreak(Array.from(reviewDates).sort().reverse());
+      return { streak, todayCount, newCount: 0, learningCount: 0, masteredCount: 0, reviewDates: [] };
     },
     buildJsonExport(entriesToExport, options) {
       return shared.store.buildJsonExport(entriesToExport, options);
@@ -486,7 +513,14 @@ async function loadPopupScript({
     ...storeOverrides
   };
 
+  const popupStorage = createChromeStorage({
+    local: {
+      "lodVault.flashcardSettings": { dailyTarget }
+    }
+  });
+
   const chrome = {
+    storage: popupStorage.chrome.storage,
     tabs: {
       onActivated: tabsOnActivated,
       onUpdated: tabsOnUpdated,
@@ -528,7 +562,8 @@ async function loadPopupScript({
     "scripts/popup-sync.js",
     "scripts/popup-current.js",
     "scripts/popup-list.js",
-    "scripts/popup-backup.js"
+    "scripts/popup-backup.js",
+    "scripts/popup-study.js"
   ];
   const popupModulesSource = POPUP_MODULE_PATHS
     .map((modulePath) => fs.readFileSync(path.join(repoRoot, modulePath), "utf8"))

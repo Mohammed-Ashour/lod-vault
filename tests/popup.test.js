@@ -925,3 +925,171 @@ test("popup current-note input can auto-save an unsaved current word", async () 
   assert.deepEqual(toggleCalls, [{ id: "HAUS1", listName: "study" }]);
 });
 
+
+function makeFlashcardMeta(reviewedIds, dueIds) {
+  const now = Date.now();
+  const past = new Date(now - 24 * 3600 * 1000).toISOString();
+  const future = new Date(now + 24 * 3600 * 1000).toISOString();
+  const meta = {};
+
+  for (const id of reviewedIds) {
+    meta[id] = {
+      totalReviews: 1,
+      reviews: [{ date: new Date().toISOString(), rating: 2 }],
+      dueAt: dueIds.includes(id) ? past : future
+    };
+  }
+  return meta;
+}
+
+test("popup study card shows due, new, today and streak counts with the daily target", async () => {
+  const entries = makeEntries(4);
+  const flashcardMeta = makeFlashcardMeta(["WORD1", "WORD2", "WORD4"], ["WORD1", "WORD4"]);
+
+  const { dom } = await loadPopupScript({ entries, flashcardMeta, dailyTarget: 10 });
+
+  const summary = dom.window.document.getElementById("study-summary");
+  const progress = dom.window.document.getElementById("study-progress");
+  const button = dom.window.document.getElementById("start-due-review");
+
+  // WORD1 due, WORD2 scheduled later, WORD3 never reviewed (new), WORD4 due.
+  assert.equal(summary.textContent, "2 due · 1 new");
+  // All reviewed words were reviewed today, so 3 of 10 today with a 1-day streak.
+  assert.match(progress.textContent, /3 of 10 today · 1-day streak/);
+  assert.equal(button.textContent, "Start due review");
+  assert.equal(dom.window.document.getElementById("study-summary").classList.contains("is-empty"), false);
+});
+
+test("popup study card adapts when nothing is due and when the vault is empty", async () => {
+  const entries = makeEntries(2);
+  const flashcardMeta = makeFlashcardMeta(["WORD1", "WORD2"], []);
+
+  const { dom } = await loadPopupScript({ entries, flashcardMeta, dailyTarget: 0 });
+
+  const summary = dom.window.document.getElementById("study-summary");
+  const button = dom.window.document.getElementById("start-due-review");
+
+  assert.equal(summary.textContent, "Nothing due right now");
+  assert.equal(summary.classList.contains("is-empty"), true);
+  assert.equal(button.textContent, "Open flashcards");
+
+  const { dom: emptyDom } = await loadPopupScript({ flashcardMeta: {} });
+  const emptySummary = emptyDom.window.document.getElementById("study-summary");
+  const emptyProgress = emptyDom.window.document.getElementById("study-progress");
+  assert.match(emptyProgress.textContent, /Save words on lod\.lu to start studying/);
+  assert.equal(emptySummary.textContent, "Nothing due right now");
+});
+
+test("popup Start due review opens the flashcards page", async () => {
+  const { dom, createdTabs } = await loadPopupScript({});
+
+  dom.window.document.getElementById("start-due-review").click();
+
+  assert.equal(createdTabs.length, 1);
+  assert.equal(createdTabs[0], "chrome-extension://test/pages/flashcards.html");
+});
+
+test("popup keeps data controls behind the Data & settings disclosure", async () => {
+  const { dom } = await loadPopupScript({ entries: makeEntries(1) });
+  const document = dom.window.document;
+
+  const details = document.getElementById("data-settings");
+  const syncRow = document.querySelector(".sync-row");
+  const currentCard = document.getElementById("current-page-card");
+  const studyCard = document.getElementById("study-card");
+
+  // Closed by default: one deliberate action (opening the disclosure) away.
+  assert.equal(details.open, false);
+
+  // Sync, backup, restore, history import and exports live inside it.
+  for (const id of [
+    "sync-language-chips",
+    "export-json",
+    "import-json",
+    "import-browser-history",
+    "export-html",
+    "export-anki",
+    "portable-backup-card",
+    "restore-preview"
+  ]) {
+    assert.ok(details.contains(document.getElementById(id)), `${id} should be inside the disclosure`);
+  }
+  assert.ok(details.contains(syncRow));
+
+  // The header only carries study/navigation actions now.
+  assert.equal(document.querySelector(".header-actions").children.length, 2);
+  assert.equal(document.querySelector(".header-sep"), null);
+
+  // Learner actions come before data management in the tab order.
+  assert.ok(currentCard.compareDocumentPosition(details) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
+  assert.ok(studyCard.compareDocumentPosition(details) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
+});
+
+test("popup backup warning stays visible and actionable while a backup is needed", async () => {
+  const downloadCalls = [];
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    portableBackupMeta: { lastExportedAt: "", entryCount: 0 },
+    storeOverrides: {
+      downloadTextFile(filename, content, mimeType) {
+        downloadCalls.push({ filename, content, mimeType });
+      }
+    }
+  });
+
+  const warning = dom.window.document.getElementById("backup-warning");
+  const warningMessage = dom.window.document.getElementById("backup-warning-message");
+  const warningAction = dom.window.document.getElementById("backup-warning-action");
+
+  assert.equal(warning.classList.contains("is-hidden"), false);
+  assert.match(warningMessage.textContent, /No backup created yet/i);
+
+  warningAction.click();
+  await flush();
+
+  assert.equal(downloadCalls.length, 1);
+  assert.equal(warning.classList.contains("is-hidden"), true);
+});
+
+test("popup backup warning stays hidden while the portable backup is up to date", async () => {
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    portableBackupMeta: {
+      lastExportedAt: new Date().toISOString(),
+      entryCount: 1
+    }
+  });
+
+  const warning = dom.window.document.getElementById("backup-warning");
+  assert.equal(warning.classList.contains("is-hidden"), true);
+});
+
+test("popup opens the Data & settings disclosure when a restore preview is shown", async () => {
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    storeOverrides: {
+      async previewJsonImport() {
+        return {
+          exportedAt: "2026-07-01T10:00:00.000Z",
+          entryCount: 1,
+          skippedCount: 0,
+          newIds: ["WORD2"],
+          mergeIds: [],
+          restoreIds: [],
+          settings: null,
+          hasFlashcardMeta: false,
+          flashcardCount: 0
+        };
+      }
+    }
+  });
+
+  const details = dom.window.document.getElementById("data-settings");
+  assert.equal(details.open, false);
+
+  selectRestoreFile(dom, "{}");
+  await flush();
+
+  assert.equal(details.open, true);
+  assert.equal(dom.window.document.getElementById("restore-preview").classList.contains("is-hidden"), false);
+});

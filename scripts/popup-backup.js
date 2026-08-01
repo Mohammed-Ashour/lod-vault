@@ -17,6 +17,8 @@
   function createBackupModule(ctx) {
     const { store, chromeApi, state, elements } = ctx;
 
+    let backupAttentionState = null;
+
     const HISTORY_IMPORT_RANGE_DAYS = Object.freeze({
       "7d": 7,
       "30d": 30,
@@ -142,7 +144,22 @@
 
     function renderPortableBackupStatus() {
       const nextState = describePortableBackupStatus();
+      backupAttentionState = nextState;
       setPortableBackupStatus(nextState.message, nextState);
+      renderBackupWarning();
+    }
+
+    // Compact backup-needs-attention strip shown outside the Data & settings
+    // disclosure, so a missing or stale portable backup stays visible and
+    // actionable without opening the disclosure.
+    function renderBackupWarning() {
+      if (!elements.backupWarning || !elements.backupWarningMessage) return;
+
+      const needsAttention = backupAttentionState?.showAction === true;
+      elements.backupWarning.classList.toggle("is-hidden", !needsAttention);
+      if (needsAttention) {
+        elements.backupWarningMessage.textContent = backupAttentionState.message;
+      }
     }
 
     async function refreshPortableBackupMeta() {
@@ -588,6 +605,11 @@
         pendingRestoreText = text;
         pendingRestorePreview = preview;
         renderRestorePreview(preview);
+        // The preview lives inside the Data & settings disclosure: open it so
+        // the user can review the changes before choosing Merge backup.
+        if (elements.dataSettings) {
+          elements.dataSettings.open = true;
+        }
         setSearchStatusFeedback("Review the backup below, then choose Merge backup.", "success");
       } catch (error) {
         clearRestorePreview();
@@ -659,6 +681,7 @@
     return {
       refreshPortableBackupMeta,
       renderPortableBackupStatus,
+      renderBackupWarning,
       renderBrowserHistoryImportAction,
       onHistoryImportRangeChange,
       refreshHistoryImportState,
