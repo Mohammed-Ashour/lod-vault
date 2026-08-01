@@ -79,23 +79,6 @@
       "css": [
         "styles/content.css"
       ]
-    },
-    {
-      "matches": [
-        "http://*/*",
-        "https://*/*"
-      ],
-      "exclude_matches": [
-        "https://lod.lu/*",
-        "https://www.lod.lu/*"
-      ],
-      "js": [
-        "scripts/selection-trigger.js"
-      ],
-      "css": [
-        "styles/selection-trigger.css"
-      ],
-      "run_at": "document_idle"
     }
   ]
 }

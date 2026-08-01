@@ -692,9 +692,13 @@ function loadBackgroundScript(initialStorage = {}) {
   const removedContextMenus = [];
   const executedScripts = [];
   const insertedCss = [];
+  const registeredContentScripts = [];
+  const unregisteredContentScripts = [];
   const grantedOrigins = new Set();
   const permissionRequests = [];
   const permissionContainsCalls = [];
+  const permissionsOnAdded = createChromeEvent();
+  const permissionsOnRemoved = createChromeEvent();
 
   chrome.runtime.getURL = (relativePath) => path.join(repoRoot, relativePath);
   chrome.runtime.onInstalled = runtimeOnInstalled;
@@ -737,9 +741,20 @@ function loadBackgroundScript(initialStorage = {}) {
         return [{ result: await details.func(...(details.args || [])) }];
       }
       return [];
+    },
+    async unregisterContentScripts(details = {}) {
+      unregisteredContentScripts.push(structuredClone(details));
+    },
+    async registerContentScripts(details = []) {
+      registeredContentScripts.push(structuredClone(details));
     }
   };
   chrome.permissions = {
+    onAdded: permissionsOnAdded,
+    onRemoved: permissionsOnRemoved,
+    async getAll() {
+      return { origins: [...grantedOrigins] };
+    },
     async contains(details = {}) {
       const origins = Array.isArray(details.origins) ? details.origins : [];
       permissionContainsCalls.push(structuredClone(origins));
@@ -814,8 +829,12 @@ function loadBackgroundScript(initialStorage = {}) {
     removedContextMenus,
     executedScripts,
     insertedCss,
+    registeredContentScripts,
+    unregisteredContentScripts,
     permissionRequests,
     permissionContainsCalls,
+    permissionsOnAdded,
+    permissionsOnRemoved,
     dispatchRuntimeMessage,
     dispatchStoreMutation(message) {
       return dispatchRuntimeMessage(message, null);

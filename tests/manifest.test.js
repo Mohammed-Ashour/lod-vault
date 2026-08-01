@@ -40,21 +40,16 @@ test("manifest exposes permissions needed for LOD Lens MVP", () => {
   assert.ok(manifest.commands?.["open-lod-lens"]);
 });
 
-test("manifest injects only the lightweight selection trigger on regular web pages", () => {
+test("manifest leaves regular web pages free of content scripts until site access is granted", () => {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-  const contentScript = manifest.content_scripts?.[1];
 
-  assert.ok(contentScript, "second content script block should exist");
-  assert.deepEqual(contentScript.matches, [
-    "http://*/*",
-    "https://*/*"
-  ]);
-  assert.deepEqual(contentScript.exclude_matches, [
+  assert.equal(manifest.content_scripts.length, 1, "only the lod.lu content script should be statically registered");
+  assert.deepEqual(manifest.content_scripts[0].matches, [
     "https://lod.lu/*",
     "https://www.lod.lu/*"
   ]);
-  assert.deepEqual(contentScript.js, ["scripts/selection-trigger.js"]);
-  assert.deepEqual(contentScript.css, ["styles/selection-trigger.css"]);
+  assert.ok(manifest.optional_host_permissions.includes("http://*/*"));
+  assert.ok(manifest.optional_host_permissions.includes("https://*/*"));
 });
 
 test("manifest exposes the floating trigger logo as a web-accessible resource", () => {
