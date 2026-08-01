@@ -218,6 +218,218 @@ test("popup JSON backup includes flashcard review metadata", async () => {
   assert.equal(parsed.flashcardMeta.WORD1.dueAt, "2026-07-09T10:00:00.000Z");
 });
 
+function selectRestoreFile(dom, content) {
+  const fileInput = dom.window.document.getElementById("import-json-file");
+  const file = { name: "lodvault-export.json", text: async () => content };
+  Object.defineProperty(fileInput, "files", { value: [file], configurable: true });
+  fileInput.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+}
+
+function flush() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+test("popup previews a JSON restore and only merges on confirm", async () => {
+  const importCalls = [];
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    storeOverrides: {
+      async previewJsonImport() {
+        return {
+          exportedAt: "2026-07-01T10:00:00.000Z",
+          entryCount: 1,
+          skippedCount: 0,
+          newIds: ["WORD2"],
+          mergeIds: [],
+          restoreIds: [],
+          settings: { autoMode: true, syncLanguages: ["en", "fr", "de"] },
+          hasFlashcardMeta: true,
+          flashcardCount: 1
+        };
+      },
+      async importJson(text) {
+        importCalls.push(text);
+        return { imported: 1, total: 2, newCount: 1, mergeCount: 0, restoreCount: 0 };
+      }
+    }
+  });
+
+  const preview = dom.window.document.getElementById("restore-preview");
+  const summary = dom.window.document.getElementById("restore-preview-summary");
+  const details = dom.window.document.getElementById("restore-preview-details");
+  const chip = dom.window.document.getElementById("restore-preview-chip");
+
+  selectRestoreFile(dom, "{}");
+  await flush();
+
+  // Selecting a file must never merge on its own.
+  assert.equal(importCalls.length, 0);
+  assert.equal(preview.classList.contains("is-hidden"), false);
+  assert.equal(dom.window.document.getElementById("restore-preview-title").textContent, "Backup from 2026-07-01T10:00:00.000Z");
+  assert.match(summary.textContent, /1 valid word in this backup/);
+  assert.match(summary.textContent, /never removes words/);
+  const lines = Array.from(details.querySelectorAll("li")).map((li) => li.textContent);
+  assert.ok(lines.some((line) => line.includes("1 new word will be added")));
+  assert.ok(lines.some((line) => line.includes("Will restore settings: auto mode on · sync languages: en, fr, de")));
+  assert.ok(lines.some((line) => line.includes("Includes flashcard review progress (1 word)")));
+  assert.equal(chip.textContent.trim(), "Review");
+
+  dom.window.document.getElementById("restore-confirm").click();
+  await flush();
+
+  assert.equal(importCalls.length, 1);
+  assert.equal(importCalls[0], "{}");
+  assert.equal(chip.textContent.trim(), "Merged");
+  assert.equal(chip.classList.contains("is-success"), true);
+  assert.match(summary.textContent, /Imported 1 word \(1 new\)/);
+  assert.equal(dom.window.document.getElementById("restore-confirm").classList.contains("is-hidden"), true);
+  assert.equal(dom.window.document.getElementById("restore-cancel").textContent, "Close");
+  assert.match(dom.window.document.getElementById("search-status").textContent, /Imported 1 word\. Settings restored\. Review progress merged/);
+});
+
+test("popup completed summary uses the actual merge counts when they differ from the preview", async () => {
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    storeOverrides: {
+      async previewJsonImport() {
+        return {
+          exportedAt: "",
+          entryCount: 1,
+          skippedCount: 0,
+          newIds: ["WORD2"],
+          mergeIds: [],
+          restoreIds: [],
+          settings: null,
+          hasFlashcardMeta: false,
+          flashcardCount: 0
+        };
+      },
+      async importJson() {
+        // The vault changed between preview and merge: the word already exists.
+        return { imported: 1, total: 2, newCount: 0, mergeCount: 1, restoreCount: 0 };
+      }
+    }
+  });
+
+  const summary = dom.window.document.getElementById("restore-preview-summary");
+  selectRestoreFile(dom, "{}");
+  await flush();
+
+  dom.window.document.getElementById("restore-confirm").click();
+  await flush();
+
+  assert.match(summary.textContent, /Imported 1 word \(1 merged\)/);
+  const lines = Array.from(dom.window.document.getElementById("restore-preview-details").querySelectorAll("li")).map((li) => li.textContent);
+  assert.ok(lines.some((line) => /nothing in your vault was removed/i.test(line)));
+});
+
+test("popup reports a successful merge even when the post-commit refresh fails", async () => {
+  let failRefreshes = false;
+  const importCalls = [];
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    storeOverrides: {
+      async previewJsonImport() {
+        return {
+          exportedAt: "",
+          entryCount: 1,
+          skippedCount: 0,
+          newIds: ["WORD2"],
+          mergeIds: [],
+          restoreIds: [],
+          settings: null,
+          hasFlashcardMeta: false,
+          flashcardCount: 0
+        };
+      },
+      async importJson(text) {
+        importCalls.push(text);
+        return { imported: 1, total: 2, newCount: 1, mergeCount: 0, restoreCount: 0 };
+      },
+      async getEntries() {
+        if (failRefreshes) {
+          throw new Error("storage unavailable");
+        }
+        return makeEntries(1);
+      }
+    }
+  });
+
+  const preview = dom.window.document.getElementById("restore-preview");
+  const summary = dom.window.document.getElementById("restore-preview-summary");
+  const chip = dom.window.document.getElementById("restore-preview-chip");
+  const searchStatus = dom.window.document.getElementById("search-status");
+
+  selectRestoreFile(dom, "{}");
+  await flush();
+  assert.equal(preview.classList.contains("is-hidden"), false);
+
+  // The vault merge succeeds, but the follow-up list refresh fails.
+  failRefreshes = true;
+  dom.window.document.getElementById("restore-confirm").click();
+  await flush();
+
+  assert.equal(importCalls.length, 1);
+  assert.equal(chip.textContent.trim(), "Merged");
+  assert.match(summary.textContent, /Imported 1 word \(1 new\)/);
+  assert.match(searchStatus.textContent, /Imported 1 word\./);
+  assert.doesNotMatch(searchStatus.textContent, /Could not import/);
+  assert.equal(dom.window.document.getElementById("restore-confirm").classList.contains("is-hidden"), true);
+});
+
+test("popup restore preview can be cancelled without merging", async () => {
+  const importCalls = [];
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    storeOverrides: {
+      async previewJsonImport() {
+        return { exportedAt: "", entryCount: 0, skippedCount: 0, newIds: [], mergeIds: [], restoreIds: [], settings: null, hasFlashcardMeta: false, flashcardCount: 0 };
+      },
+      async importJson() {
+        importCalls.push(1);
+        return { imported: 0, total: 1 };
+      }
+    }
+  });
+
+  const preview = dom.window.document.getElementById("restore-preview");
+  selectRestoreFile(dom, "{}");
+  await flush();
+  assert.equal(preview.classList.contains("is-hidden"), false);
+
+  dom.window.document.getElementById("restore-cancel").click();
+
+  assert.equal(importCalls.length, 0);
+  assert.equal(preview.classList.contains("is-hidden"), true);
+  assert.match(dom.window.document.getElementById("action-feedback").textContent, /Restore cancelled/);
+});
+
+test("popup shows an error for an invalid backup file and leaves the vault untouched", async () => {
+  const importCalls = [];
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(1),
+    storeOverrides: {
+      async previewJsonImport() {
+        throw new Error("This JSON file is not a LODVault export.");
+      },
+      async importJson() {
+        importCalls.push(1);
+        return { imported: 1, total: 2 };
+      }
+    }
+  });
+
+  const preview = dom.window.document.getElementById("restore-preview");
+  const searchStatus = dom.window.document.getElementById("search-status");
+  selectRestoreFile(dom, "{}");
+  await flush();
+
+  assert.equal(importCalls.length, 0);
+  assert.equal(preview.classList.contains("is-hidden"), true);
+  assert.match(searchStatus.textContent, /not a LODVault export/);
+  assert.equal(searchStatus.classList.contains("is-error"), true);
+});
+
 test("popup shows the Needs backup chip and one-click Backup now action when the vault changed after the last backup", async () => {
   const downloadCalls = [];
   const { dom } = await loadPopupScript({

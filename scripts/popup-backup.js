@@ -414,28 +414,229 @@
       }
     }
 
+    let pendingRestoreText = "";
+    let pendingRestorePreview = null;
+    let restoreCompleted = false;
+
+    function clearRestorePreview() {
+      pendingRestoreText = "";
+      pendingRestorePreview = null;
+      restoreCompleted = false;
+      if (elements.restorePreview) {
+        elements.restorePreview.classList.add("is-hidden");
+        elements.restorePreview.classList.remove("is-success");
+      }
+    }
+
+    function buildRestoreDetailLines(preview) {
+      const lines = [];
+
+      if (preview.newIds.length) {
+        lines.push(`${preview.newIds.length} new word${preview.newIds.length === 1 ? "" : "s"} will be added.`);
+      }
+      if (preview.mergeIds.length) {
+        lines.push(`${preview.mergeIds.length} existing word${preview.mergeIds.length === 1 ? "" : "s"} will be merged (notes and list flags combine).`);
+      }
+      if (preview.restoreIds.length) {
+        lines.push(`${preview.restoreIds.length} previously deleted word${preview.restoreIds.length === 1 ? "" : "s"} will be restored.`);
+      }
+      if (preview.skippedCount > 0) {
+        lines.push(`${preview.skippedCount} invalid record${preview.skippedCount === 1 ? "" : "s"} will be skipped.`);
+      }
+      if (preview.settings) {
+        const parts = [];
+        if ("autoMode" in preview.settings) {
+          parts.push(`auto mode ${preview.settings.autoMode ? "on" : "off"}`);
+        }
+        if ("syncLanguages" in preview.settings) {
+          parts.push(`sync languages: ${preview.settings.syncLanguages.join(", ")}`);
+        }
+        lines.push(`Will restore settings: ${parts.join(" · ")}.`);
+      } else {
+        lines.push("No settings in this backup.");
+      }
+      if (preview.hasFlashcardMeta) {
+        lines.push(`Includes flashcard review progress (${preview.flashcardCount} word${preview.flashcardCount === 1 ? "" : "s"}).`);
+      } else {
+        lines.push("No flashcard review progress in this backup.");
+      }
+
+      return lines;
+    }
+
+    function renderRestorePreview(preview) {
+      if (!elements.restorePreview) return;
+
+      elements.restorePreview.classList.remove("is-hidden", "is-success");
+
+      const dateLabel = preview.exportedAt && typeof store.formatWhen === "function"
+        ? store.formatWhen(preview.exportedAt)
+        : preview.exportedAt || "";
+      if (elements.restorePreviewTitle) {
+        elements.restorePreviewTitle.textContent = dateLabel ? `Backup from ${dateLabel}` : "Backup file";
+      }
+
+      if (elements.restorePreviewChip) {
+        elements.restorePreviewChip.textContent = "Review";
+        elements.restorePreviewChip.classList.remove("is-success", "is-warning", "is-error");
+      }
+
+      if (elements.restorePreviewSummary) {
+        elements.restorePreviewSummary.textContent = `${preview.entryCount} valid word${preview.entryCount === 1 ? "" : "s"} in this backup. Merging never removes words from your vault.`;
+      }
+
+      if (elements.restorePreviewDetails) {
+        elements.restorePreviewDetails.innerHTML = buildRestoreDetailLines(preview)
+          .map((line) => `<li>${store.escapeHtml(line)}</li>`)
+          .join("");
+      }
+
+      if (elements.restoreConfirm) {
+        elements.restoreConfirm.classList.remove("is-hidden");
+        elements.restoreConfirm.disabled = false;
+      }
+      if (elements.restoreCancel) {
+        elements.restoreCancel.textContent = "Cancel";
+        elements.restoreCancel.classList.remove("is-hidden");
+      }
+    }
+
+    function renderRestoreCompleted(preview, result) {
+      if (!elements.restorePreview) return;
+
+      restoreCompleted = true;
+      elements.restorePreview.classList.remove("is-hidden");
+      elements.restorePreview.classList.add("is-success");
+
+      if (elements.restorePreviewChip) {
+        elements.restorePreviewChip.textContent = "Merged";
+        elements.restorePreviewChip.classList.add("is-success");
+      }
+
+      const newCount = Number(result?.newCount);
+      const mergeCount = Number(result?.mergeCount);
+      const restoreCount = Number(result?.restoreCount);
+      const hasResultCounts = [newCount, mergeCount, restoreCount].every(Number.isFinite);
+      const newTotal = hasResultCounts ? newCount : preview.newIds.length;
+      const mergeTotal = hasResultCounts ? mergeCount : preview.mergeIds.length;
+      const restoreTotal = hasResultCounts ? restoreCount : preview.restoreIds.length;
+      const breakdown = [
+        ...(newTotal > 0 ? [`${newTotal} new`] : []),
+        ...(mergeTotal > 0 ? [`${mergeTotal} merged`] : []),
+        ...(restoreTotal > 0 ? [`${restoreTotal} restored`] : [])
+      ].join(", ");
+      const importedCount = Number(result?.imported) || 0;
+
+      if (elements.restorePreviewSummary) {
+        elements.restorePreviewSummary.textContent = breakdown
+          ? `Imported ${importedCount} word${importedCount === 1 ? "" : "s"} (${breakdown}).`
+          : "Nothing to import.";
+      }
+
+      if (elements.restorePreviewDetails) {
+        const lines = [];
+        if (preview.settings) {
+          lines.push("Settings restored from this backup.");
+        }
+        if (preview.hasFlashcardMeta) {
+          lines.push("Flashcard review progress merged.");
+        }
+        lines.push("Nothing in your vault was removed.");
+        elements.restorePreviewDetails.innerHTML = lines
+          .map((line) => `<li>${store.escapeHtml(line)}</li>`)
+          .join("");
+      }
+
+      if (elements.restoreConfirm) {
+        elements.restoreConfirm.classList.add("is-hidden");
+      }
+      if (elements.restoreCancel) {
+        elements.restoreCancel.textContent = "Close";
+      }
+    }
+
+    function describeRestoreReadError(error) {
+      const message = String(error?.message || "");
+      if (/LODVault export|export version|JSON import format/i.test(message)) {
+        return message;
+      }
+      return "Could not read that file as a LODVault backup.";
+    }
+
+    async function refreshAfterRestore() {
+      await ctx.sync.refreshSettingsState();
+      ctx.current.renderAutoMode();
+      ctx.sync.renderSyncLanguages();
+      await ctx.list.renderSavedList();
+      await ctx.current.refreshCurrentPage();
+      ctx.sync.scheduleSyncCapacityRefresh();
+    }
+
     async function importJsonFile(event) {
       const file = event.target.files?.[0];
       if (!file) return;
 
+      clearRestorePreview();
+
       try {
         const text = await file.text();
-        const result = await store.importJson(text);
-        await ctx.sync.refreshSettingsState();
-        ctx.current.renderAutoMode();
-        ctx.sync.renderSyncLanguages();
-        await ctx.list.renderSavedList();
-        await ctx.current.refreshCurrentPage();
-        ctx.sync.scheduleSyncCapacityRefresh();
-        const message = `Imported ${result.imported} word${result.imported === 1 ? "" : "s"}.`;
-        setSearchStatusFeedback(message, "success");
-        ctx.showActionFeedback(message);
-      } catch {
-        setSearchStatusFeedback("Could not import that JSON file.", "error");
+        const preview = await store.previewJsonImport(text);
+        if (!preview) {
+          throw new Error("Could not read that file as a LODVault backup.");
+        }
+
+        pendingRestoreText = text;
+        pendingRestorePreview = preview;
+        renderRestorePreview(preview);
+        setSearchStatusFeedback("Review the backup below, then choose Merge backup.", "success");
+      } catch (error) {
+        clearRestorePreview();
+        setSearchStatusFeedback(describeRestoreReadError(error), "error");
       } finally {
         event.target.value = "";
         clearSearchStatusToneAfter();
       }
+    }
+
+    async function confirmRestoreJson() {
+      if (!pendingRestoreText || !pendingRestorePreview) return;
+
+      const preview = pendingRestorePreview;
+      if (elements.restoreConfirm) elements.restoreConfirm.disabled = true;
+
+      try {
+        const result = await store.importJson(pendingRestoreText);
+        // The commit succeeded from here on; only refresh is still pending.
+        pendingRestoreText = "";
+        pendingRestorePreview = null;
+
+        try {
+          await refreshAfterRestore();
+        } catch {
+          // Post-commit refresh is best-effort: the vault is already merged and
+          // storage listeners will re-render the affected sections.
+        }
+
+        renderRestoreCompleted(preview, result);
+
+        const importedCount = Number(result?.imported) || 0;
+        const extras = [];
+        if (preview.settings) extras.push("Settings restored.");
+        if (preview.hasFlashcardMeta) extras.push("Review progress merged.");
+        const message = `Imported ${importedCount} word${importedCount === 1 ? "" : "s"}.${extras.length ? ` ${extras.join(" ")}` : ""}`;
+        setSearchStatusFeedback(message, "success");
+        ctx.showActionFeedback(message);
+      } catch {
+        // The commit itself failed; keep the review panel so the user can retry.
+        if (elements.restoreConfirm) elements.restoreConfirm.disabled = false;
+        setSearchStatusFeedback("Could not import that JSON file.", "error");
+      }
+    }
+
+    function cancelRestoreJson() {
+      const wasCompleted = restoreCompleted;
+      clearRestorePreview();
+      ctx.showActionFeedback(wasCompleted ? "Restore summary closed." : "Restore cancelled.");
     }
 
     function setSearchStatusFeedback(message, tone = "") {
@@ -466,6 +667,8 @@
       exportAnki,
       exportJson,
       importJsonFile,
+      confirmRestoreJson,
+      cancelRestoreJson,
       importFromBrowserHistory
     };
   }

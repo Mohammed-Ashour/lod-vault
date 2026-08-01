@@ -717,7 +717,7 @@ test("importJson merges flags, keeps valid entries only, prefers the imported no
     ]
   }));
 
-  assert.deepEqual({ ...result }, { imported: 3, total: 3 });
+  assert.deepEqual({ ...result }, { imported: 3, total: 3, newCount: 2, mergeCount: 1, restoreCount: 0 });
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.favorite, true);
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.study, true);
   assert.equal(storageData[store.STORAGE_KEY].HAUS1.note, "new note");
@@ -929,6 +929,184 @@ test("importJson rejects exports from other apps", async () => {
     () => store.importJson(JSON.stringify({ app: "someone-else", version: 2, entries: [] })),
     /not a LODVault export/
   );
+});
+
+test("previewJsonImport reports what a restore would change without writing", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        favorite: true
+      }
+    },
+    ["lodVault.deleted"]: {
+      GONE1: "2026-01-01T00:00:00.000Z"
+    }
+  });
+
+  const before = JSON.stringify(storageData);
+
+  const preview = JSON.parse(JSON.stringify(await store.previewJsonImport(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    exportedAt: "2026-07-01T10:00:00.000Z",
+    settings: { autoMode: true, syncLanguages: ["en", "fr"] },
+    entries: [
+      { id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1", note: "merge me", study: true },
+      { id: "BEEM1", word: "Beem", url: "https://lod.lu/artikel/BEEM1", study: true },
+      { id: "GONE1", word: "Gone", url: "https://lod.lu/artikel/GONE1", favorite: true },
+      { id: "", word: "No id", favorite: true },
+      { id: "NEUT1", word: "Neut", url: "https://lod.lu/artikel/NEUT1", favorite: false, study: false }
+    ],
+    flashcardMeta: {
+      HAUS1: { totalReviews: 3, reviews: [], lastReviewedAt: "2026-07-01T10:00:00.000Z" }
+    }
+  }))));
+
+  assert.equal(preview.exportedAt, "2026-07-01T10:00:00.000Z");
+  assert.deepEqual(preview.newIds, ["BEEM1"]);
+  assert.deepEqual(preview.mergeIds, ["HAUS1"]);
+  assert.deepEqual(preview.restoreIds, ["GONE1"]);
+  assert.equal(preview.entryCount, 3);
+  assert.equal(preview.skippedCount, 2);
+  assert.deepEqual(preview.settings, { autoMode: true, syncLanguages: ["en", "fr"] });
+  assert.equal(preview.hasFlashcardMeta, true);
+  assert.equal(preview.flashcardCount, 1);
+  assert.equal(JSON.stringify(storageData), before, "preview must not write to storage");
+});
+
+test("previewJsonImport reports absent settings and flashcard progress", async () => {
+  const { store } = loadSharedStore();
+
+  const preview = JSON.parse(JSON.stringify(await store.previewJsonImport(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    entries: [
+      { id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1", study: true }
+    ]
+  }))));
+
+  assert.equal(preview.exportedAt, "");
+  assert.equal(preview.settings, null);
+  assert.equal(preview.hasFlashcardMeta, false);
+  assert.equal(preview.flashcardCount, 0);
+  assert.deepEqual(preview.newIds, ["HAUS1"]);
+  assert.equal(preview.mergeIds.length, 0);
+  assert.equal(preview.restoreIds.length, 0);
+  assert.equal(preview.skippedCount, 0);
+});
+
+test("previewJsonImport rejects foreign or invalid files without touching the vault", async () => {
+  const { store, storageData } = loadSharedStore();
+  const before = JSON.stringify(storageData);
+
+  await assert.rejects(() => store.previewJsonImport("not json"));
+  await assert.rejects(
+    () => store.previewJsonImport(JSON.stringify({ app: "someone-else", version: 2, entries: [] })),
+    /not a LODVault export/
+  );
+  await assert.rejects(
+    () => store.previewJsonImport(JSON.stringify({ app: "lodvault", version: 99, entries: [] })),
+    /Unsupported LODVault export version/
+  );
+  await assert.rejects(
+    () => store.previewJsonImport(JSON.stringify({})),
+    /Invalid JSON import format/
+  );
+  await assert.rejects(
+    () => store.previewJsonImport(JSON.stringify({ app: "lodvault", version: 2 })),
+    /Invalid JSON import format/
+  );
+  await assert.rejects(
+    () => store.importJson(JSON.stringify({})),
+    /Invalid JSON import format/
+  );
+
+  assert.equal(JSON.stringify(storageData), before);
+});
+
+test("previewJsonImport simulates import order for duplicate ids", async () => {
+  const { store } = loadSharedStore();
+
+  const preview = JSON.parse(JSON.stringify(await store.previewJsonImport(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    entries: [
+      { id: "BEEM1", word: "Beem", url: "https://lod.lu/artikel/BEEM1", study: true },
+      { id: "BEEM1", word: "Beem", url: "https://lod.lu/artikel/BEEM1", study: true }
+    ]
+  }))));
+
+  assert.deepEqual(preview.newIds, ["BEEM1"]);
+  assert.deepEqual(preview.mergeIds, ["BEEM1"]);
+  assert.equal(preview.entryCount, 2);
+  assert.equal(preview.skippedCount, 0);
+});
+
+test("previewJsonImport does not migrate legacy storage", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodWrapper.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        favorite: true
+      }
+    }
+  });
+
+  const before = JSON.stringify(storageData);
+  const preview = JSON.parse(JSON.stringify(await store.previewJsonImport(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    entries: [
+      { id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1", favorite: true },
+      { id: "BEEM1", word: "Beem", url: "https://lod.lu/artikel/BEEM1", study: true }
+    ]
+  }))));
+
+  // Legacy entries are visible to the preview (so HAUS1 merges)…
+  assert.deepEqual(preview.mergeIds, ["HAUS1"]);
+  assert.deepEqual(preview.newIds, ["BEEM1"]);
+  // …but nothing is written or migrated: the legacy key stays untouched.
+  assert.equal(JSON.stringify(storageData), before);
+  assert.ok(storageData["lodWrapper.entries"], "legacy key must be preserved");
+  assert.equal(storageData["lodVault.entries"], undefined, "no migrated copy may be written");
+});
+
+test("importJson reports per-category counts from the actual merge", async () => {
+  const { store, storageData } = loadSharedStore({
+    ["lodVault.entries"]: {
+      HAUS1: {
+        id: "HAUS1",
+        word: "Haus",
+        url: "https://lod.lu/artikel/HAUS1",
+        favorite: true
+      }
+    },
+    ["lodVault.deleted"]: {
+      GONE1: "2026-01-01T00:00:00.000Z"
+    }
+  });
+
+  const result = await store.importJson(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    entries: [
+      { id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1", study: true },
+      { id: "BEEM1", word: "Beem", url: "https://lod.lu/artikel/BEEM1", study: true },
+      { id: "GONE1", word: "Gone", url: "https://lod.lu/artikel/GONE1", favorite: true },
+      { id: "", word: "No id", favorite: true }
+    ]
+  }));
+
+  assert.deepEqual({ ...result }, { imported: 3, total: 3, newCount: 1, mergeCount: 1, restoreCount: 1 });
+  assert.equal(storageData[store.STORAGE_KEY].HAUS1.study, true);
+  assert.equal(storageData[store.STORAGE_KEY].BEEM1.study, true);
+  assert.equal(storageData[store.STORAGE_KEY].GONE1.favorite, true);
+  assert.equal(storageData[store.DELETED_KEY]?.GONE1, undefined, "restored word must lose its tombstone");
 });
 
 test("createNoteAutosaveController trims, saves, and updates textarea dataset state", async () => {
