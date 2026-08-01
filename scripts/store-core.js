@@ -1187,7 +1187,8 @@
   async function markPortableBackupExportedDirect(summary = {}) {
     const nextMeta = normalizePortableBackupMeta({
       lastExportedAt: nowIso(),
-      entryCount: summary?.entryCount
+      entryCount: summary?.entryCount,
+      reviewCount: summary?.reviewCount
     });
 
     try {

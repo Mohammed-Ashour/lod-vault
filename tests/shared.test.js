@@ -199,15 +199,18 @@ test("portable backup metadata records the last JSON backup time and entry count
   assert.equal(initialMeta.lastExportedAt, "");
   assert.equal(initialMeta.entryCount, 0);
 
-  const recorded = await store.markPortableBackupExported({ entryCount: 7 });
+  const recorded = await store.markPortableBackupExported({ entryCount: 7, reviewCount: 42 });
 
   assert.equal(recorded.entryCount, 7);
+  assert.equal(recorded.reviewCount, 42);
   assert.match(recorded.lastExportedAt, /^\d{4}-\d{2}-\d{2}T/);
 
   const persistedMeta = await store.getPortableBackupMeta();
   assert.equal(persistedMeta.lastExportedAt, recorded.lastExportedAt);
   assert.equal(persistedMeta.entryCount, recorded.entryCount);
+  assert.equal(persistedMeta.reviewCount, recorded.reviewCount);
   assert.equal(storageData[store.PORTABLE_BACKUP_KEY].lastExportedAt, recorded.lastExportedAt);
+  assert.equal(storageData[store.PORTABLE_BACKUP_KEY].reviewCount, 42);
   assert.equal(storageData[store.PORTABLE_BACKUP_KEY].entryCount, recorded.entryCount);
 });
 

@@ -297,9 +297,7 @@
       elements.openPreview = document.getElementById("open-preview");
       elements.exportHtml = document.getElementById("export-html");
       elements.exportAnki = document.getElementById("export-anki");
-      elements.studyCard = document.getElementById("study-card");
       elements.studySummary = document.getElementById("study-summary");
-      elements.studyProgress = document.getElementById("study-progress");
       elements.startDueReview = document.getElementById("start-due-review");
       elements.backupWarning = document.getElementById("backup-warning");
       elements.backupWarningMessage = document.getElementById("backup-warning-message");

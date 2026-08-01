@@ -1142,3 +1142,49 @@ test("popup opens the Data & settings disclosure when a restore preview is shown
   assert.equal(details.open, true);
   assert.equal(dom.window.document.getElementById("restore-preview").classList.contains("is-hidden"), false);
 });
+
+test("popup study banner ignores stale out-of-order flashcard-meta reads", async () => {
+  const entries = makeEntries(2);
+  const flashcardMeta = makeFlashcardMeta(["WORD1"], []);
+  const resolvers = [];
+  let callCount = 0;
+  const { dom, chrome } = await loadPopupScript({
+    entries,
+    flashcardMeta,
+    storeOverrides: {
+      async getFlashcardMeta() {
+        callCount += 1;
+        // First two reads are deferred so we can resolve them out of order;
+        // later reads (backup refresh) resolve immediately.
+        if (callCount <= 2) {
+          return new Promise((resolve) => resolvers.push(resolve));
+        }
+        return structuredClone(flashcardMeta);
+      }
+    }
+  });
+
+  const summary = dom.window.document.getElementById("study-summary");
+
+  // WORD2 becomes due (newer state) while the first read is still pending.
+  flashcardMeta.WORD2 = {
+    totalReviews: 1,
+    reviews: [{ date: new Date().toISOString(), rating: 2 }],
+    dueAt: new Date(Date.now() - 3600e3).toISOString()
+  };
+  await chrome.storage.local.set({ "lodVault.flashcardMeta": flashcardMeta });
+  await flush();
+
+  // The newer read resolves first with the due counts...
+  assert.equal(resolvers.length, 2);
+  resolvers[1](structuredClone(flashcardMeta));
+  await flush();
+
+  // ...then the older read resolves with the pre-change meta. The banner
+  // must keep the newer counts instead of repainting with stale ones.
+  resolvers[0](structuredClone(makeFlashcardMeta(["WORD1"], [])));
+  await flush();
+
+  assert.equal(summary.textContent, "1 due");
+  assert.equal(dom.window.document.getElementById("start-due-review").textContent, "Start review");
+});
