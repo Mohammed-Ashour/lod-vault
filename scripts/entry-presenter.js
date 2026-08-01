@@ -1,26 +1,12 @@
 (() => {
-  const store = globalThis.LodVaultStoreCore || globalThis.LodVaultStore || {};
-  const TRANSLATION_LANGUAGE_ORDER = store.TRANSLATION_LANGUAGE_ORDER || ["en", "fr", "de", "pt", "nl"];
-  const TRANSLATION_LANGUAGE_LABELS = store.TRANSLATION_LANGUAGE_LABELS || {
-    en: "English",
-    fr: "Français",
-    de: "Deutsch",
-    pt: "Português",
-    nl: "Nederlands"
-  };
-  const TRANSLATION_LANGUAGE_CHIP_LABELS = store.TRANSLATION_LANGUAGE_CHIP_LABELS || {
-    en: "EN",
-    fr: "FR",
-    de: "DE",
-    pt: "PT",
-    nl: "NL"
-  };
-  const normalizeEntry = typeof store.normalizeEntry === "function"
-    ? store.normalizeEntry
-    : (entry) => entry || {};
-  const normalizeVisitCount = typeof store.normalizeVisitCount === "function"
-    ? store.normalizeVisitCount
-    : (value) => Number(value) > 0 ? Math.floor(Number(value)) : 0;
+  const store = globalThis.LodVaultStoreCore;
+  const {
+    TRANSLATION_LANGUAGE_ORDER,
+    TRANSLATION_LANGUAGE_LABELS,
+    TRANSLATION_LANGUAGE_CHIP_LABELS,
+    normalizeEntry,
+    normalizeVisitCount
+  } = store;
 
   function getAudioUrl(entry) {
     const id = (entry && (entry.id || entry.lod_id) || "").toLowerCase();
