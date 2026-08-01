@@ -251,14 +251,15 @@
   });
 
   document.addEventListener("keyup", (event) => {
-    if (event.key === "Shift" || event.key.startsWith("Arrow")) {
+    const key = typeof event.key === "string" ? event.key : "";
+    if (key === "Shift" || key.startsWith("Arrow")) {
       clearHideTimer();
       setTimeout(updateSelectionState, 0);
     }
   });
 
   document.addEventListener("mousedown", (event) => {
-    if (event.target.closest(`#${BUTTON_ID}, #lodvault-lens-overlay-root`)) return;
+    if (event.target?.closest?.(`#${BUTTON_ID}, #lodvault-lens-overlay-root`)) return;
     scheduleHide(0);
   });
 

@@ -3,13 +3,13 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
-const { JSDOM } = require("jsdom");
+const { JSDOM, VirtualConsole } = require("jsdom");
 
 const repoRoot = path.join(__dirname, "..");
 const source = fs.readFileSync(path.join(repoRoot, "scripts/selection-trigger.js"), "utf8");
 
-function loadSelectionTrigger({ html = "<!doctype html><html><body></body></html>", url = "https://example.com/", overlay = null } = {}) {
-  const dom = new JSDOM(html, { url });
+function loadSelectionTrigger({ html = "<!doctype html><html><body></body></html>", url = "https://example.com/", overlay = null, virtualConsole = null } = {}) {
+  const dom = new JSDOM(html, { url, virtualConsole: virtualConsole || undefined });
   const sentMessages = [];
   const chrome = {
     runtime: {
@@ -121,4 +121,28 @@ test("selection trigger always asks the background to open the lens runtime", as
     type: "lodvault:open-lens-overlay",
     selectionText: "Dëst ass gutt"
   }]);
+});
+
+test("selection trigger ignores keyup events without a key property", async () => {
+  const errors = [];
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on("jsdomError", (error) => errors.push(error));
+  const { dom } = loadSelectionTrigger({ virtualConsole });
+
+  dom.window.document.dispatchEvent(new dom.window.Event("keyup"));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  assert.deepEqual(errors.map((error) => error.message), []);
+});
+
+test("selection trigger ignores mousedown events without an element target", async () => {
+  const errors = [];
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on("jsdomError", (error) => errors.push(error));
+  const { dom } = loadSelectionTrigger({ virtualConsole });
+
+  dom.window.document.dispatchEvent(new dom.window.Event("mousedown"));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  assert.deepEqual(errors.map((error) => error.message), []);
 });
