@@ -97,24 +97,10 @@
       <button id="backup-warning-action" class="btn-link backup-warning-action" type="button">Back up now</button>
     </div>
 
-    <div class="search-section">
-      <input id="search-input" class="search-input" type="search" placeholder="Search words, type, translation, note…" autocomplete="off">
-      <p id="search-status" class="helper-text muted" aria-live="polite">0 saved words</p>
-    </div>
-
-    <div id="saved-list" class="saved-list"></div>
-
-    <div id="empty-state" class="empty-state is-hidden">
-      No saved words yet. Open a word on lod.lu and save it.
-    </div>
-    <div id="no-results" class="empty-state is-hidden">
-      No words match your search.
-    </div>
-
-    <details id="data-settings" class="data-settings">
+<details id="data-settings" class="data-settings">
       <summary class="data-settings-summary">
         <span class="data-settings-label">Data &amp; settings</span>
-        <span class="data-settings-hint">sync · backup · import · export</span>
+        <span class="data-settings-hint">sync · backup · restore · export</span>
       </summary>
 
       <section class="sync-row" aria-labelledby="sync-languages-title">
@@ -203,6 +189,22 @@
       <input id="import-json-file" type="file" accept="application/json,.json" hidden>
 
     </details>
+
+    <div class="search-section">
+      <input id="search-input" class="search-input" type="search" placeholder="Search words, type, translation, note…" autocomplete="off">
+      <p id="search-status" class="helper-text muted" aria-live="polite">0 saved words</p>
+    </div>
+
+    <div id="saved-list" class="saved-list"></div>
+
+    <div id="empty-state" class="empty-state is-hidden">
+      No saved words yet. Open a word on lod.lu and save it.
+    </div>
+    <div id="no-results" class="empty-state is-hidden">
+      No words match your search.
+    </div>
+
+    
 
     <div id="delete-undo" class="undo-toast is-hidden" role="status" aria-live="polite">
       <span id="delete-undo-message"></span>
