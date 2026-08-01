@@ -942,42 +942,36 @@ function makeFlashcardMeta(reviewedIds, dueIds) {
   return meta;
 }
 
-test("popup study card shows due, new, today and streak counts with the daily target", async () => {
+test("popup study row shows due and new counts with a start-review action", async () => {
   const entries = makeEntries(4);
   const flashcardMeta = makeFlashcardMeta(["WORD1", "WORD2", "WORD4"], ["WORD1", "WORD4"]);
 
-  const { dom } = await loadPopupScript({ entries, flashcardMeta, dailyTarget: 10 });
+  const { dom } = await loadPopupScript({ entries, flashcardMeta });
 
   const summary = dom.window.document.getElementById("study-summary");
-  const progress = dom.window.document.getElementById("study-progress");
   const button = dom.window.document.getElementById("start-due-review");
 
   // WORD1 due, WORD2 scheduled later, WORD3 never reviewed (new), WORD4 due.
   assert.equal(summary.textContent, "2 due · 1 new");
-  // All reviewed words were reviewed today, so 3 of 10 today with a 1-day streak.
-  assert.match(progress.textContent, /3 of 10 today · 1-day streak/);
-  assert.equal(button.textContent, "Start due review");
-  assert.equal(dom.window.document.getElementById("study-summary").classList.contains("is-empty"), false);
+  assert.equal(button.textContent, "Start review");
+  assert.equal(summary.classList.contains("is-empty"), false);
 });
 
-test("popup study card adapts when nothing is due and when the vault is empty", async () => {
+test("popup study row adapts when nothing is due and when the vault is empty", async () => {
   const entries = makeEntries(2);
   const flashcardMeta = makeFlashcardMeta(["WORD1", "WORD2"], []);
 
-  const { dom } = await loadPopupScript({ entries, flashcardMeta, dailyTarget: 0 });
+  const { dom } = await loadPopupScript({ entries, flashcardMeta });
 
   const summary = dom.window.document.getElementById("study-summary");
   const button = dom.window.document.getElementById("start-due-review");
 
   assert.equal(summary.textContent, "Nothing due right now");
   assert.equal(summary.classList.contains("is-empty"), true);
-  assert.equal(button.textContent, "Open flashcards");
+  assert.equal(button.textContent, "Study cards");
 
   const { dom: emptyDom } = await loadPopupScript({ flashcardMeta: {} });
-  const emptySummary = emptyDom.window.document.getElementById("study-summary");
-  const emptyProgress = emptyDom.window.document.getElementById("study-progress");
-  assert.match(emptyProgress.textContent, /Save words on lod\.lu to start studying/);
-  assert.equal(emptySummary.textContent, "Nothing due right now");
+  assert.equal(emptyDom.window.document.getElementById("study-summary").textContent, "Nothing due right now");
 });
 
 test("popup Start due review opens the flashcards page", async () => {
@@ -1042,7 +1036,7 @@ test("popup backup warning stays visible and actionable while a backup is needed
   const warningAction = dom.window.document.getElementById("backup-warning-action");
 
   assert.equal(warning.classList.contains("is-hidden"), false);
-  assert.match(warningMessage.textContent, /No backup created yet/i);
+  assert.equal(warningMessage.textContent, "No portable backup yet");
 
   warningAction.click();
   await flush();

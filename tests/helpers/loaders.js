@@ -370,7 +370,6 @@ async function loadPopupScript({
   syncLanguages = ["en", "fr", "de"],
   portableBackupMeta = null,
   flashcardMeta = {},
-  dailyTarget = 0,
   popupHtml,
   storeOverrides = {},
   syncOverrides = null
@@ -476,30 +475,6 @@ async function loadPopupScript({
     async getFlashcardMeta() {
       return structuredClone(flashcardMeta);
     },
-    async getFlashcardStats() {
-      const todayIso = new Date().toISOString().slice(0, 10);
-      let todayCount = 0;
-      const reviewDates = new Set();
-
-      for (const data of Object.values(flashcardMeta || {})) {
-        const reviews = Array.isArray(data?.reviews) ? data.reviews : [];
-        const totalReviews = Number(data?.totalReviews) || reviews.length;
-        if (!totalReviews) continue;
-
-        for (const review of reviews) {
-          const date = String(review?.date || "").slice(0, 10);
-          if (date) reviewDates.add(date);
-        }
-
-        const last = reviews[reviews.length - 1];
-        if (last && String(last.date || "").slice(0, 10) === todayIso) {
-          todayCount += 1;
-        }
-      }
-
-      const streak = shared.store.computeFlashcardStreak(Array.from(reviewDates).sort().reverse());
-      return { streak, todayCount, newCount: 0, learningCount: 0, masteredCount: 0, reviewDates: [] };
-    },
     buildJsonExport(entriesToExport, options) {
       return shared.store.buildJsonExport(entriesToExport, options);
     },
@@ -513,11 +488,7 @@ async function loadPopupScript({
     ...storeOverrides
   };
 
-  const popupStorage = createChromeStorage({
-    local: {
-      "lodVault.flashcardSettings": { dailyTarget }
-    }
-  });
+  const popupStorage = createChromeStorage({});
 
   const chrome = {
     storage: popupStorage.chrome.storage,

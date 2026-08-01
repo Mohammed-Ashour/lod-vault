@@ -158,7 +158,10 @@
       const needsAttention = backupAttentionState?.showAction === true;
       elements.backupWarning.classList.toggle("is-hidden", !needsAttention);
       if (needsAttention) {
-        elements.backupWarningMessage.textContent = backupAttentionState.message;
+        const meta = normalizePortableBackupMeta(state.portableBackupMeta);
+        elements.backupWarningMessage.textContent = meta.lastExportedAt
+          ? "Portable backup is outdated"
+          : "No portable backup yet";
       }
     }
 

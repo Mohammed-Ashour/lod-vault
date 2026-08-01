@@ -304,34 +304,33 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 .sync-capacity-fill.is-warning { background: linear-gradient(90deg, var(--warning), #d4a730); }
 .sync-capacity-fill.is-danger  { background: var(--danger); }
 
-/* ── Study card ──────────────────────────────── */
-.study-card {
+/* ── Study row ────────────────────────────────── */
+.study-row {
   margin: 8px 12px 0;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding: 6px 10px;
   background: var(--d1);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  padding: 10px 12px;
 }
-.study-card__copy { flex: 1; min-width: 0; }
+.study-row__label { flex-shrink: 0; }
 .study-summary {
-  font-size: 15px;
-  font-weight: 800;
-  color: #fff;
-  margin-top: 2px;
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--on-bg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.study-summary.is-empty {
-  color: var(--muted);
-  font-weight: 600;
-  font-size: 13px;
-}
-.study-progress { margin-top: 2px; }
+.study-summary.is-empty { color: var(--muted); font-weight: 600; }
 .study-start-btn {
   flex-shrink: 0;
-  padding: 7px 12px;
-  font-size: 12px;
+  padding: 4px 10px;
+  font-size: 11.5px;
   font-weight: 700;
   background: linear-gradient(135deg, var(--accent), #2e8fa8);
   border: 1px solid var(--accent);
@@ -349,7 +348,7 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 10px;
+  padding: 5px 10px;
   border: 1px solid rgba(226,195,103,0.30);
   border-radius: var(--r-sm);
   background: rgba(226,195,103,0.06);
@@ -359,9 +358,15 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
   min-width: 0;
   font-size: 11.5px;
   color: var(--warning);
-  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.backup-warning-action { flex-shrink: 0; }
+.backup-warning .backup-warning-action {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  font-size: 11px;
+}
 
 /* ── Data & settings disclosure ──────────────── */
 .data-settings { margin: 8px 12px 0; }

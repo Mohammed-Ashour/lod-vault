@@ -231,11 +231,8 @@
       const hasFlashcardMetaChange = Boolean(
         store.FLASHCARD_META_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.FLASHCARD_META_KEY)
       );
-      const hasFlashcardSettingsChange = Boolean(
-        Object.prototype.hasOwnProperty.call(changes || {}, "lodVault.flashcardSettings")
-      );
 
-      if (!hasEntriesChange && !hasSettingsChange && !hasPortableBackupChange && !hasHistoryImportStateChange && !hasFlashcardMetaChange && !hasFlashcardSettingsChange) {
+      if (!hasEntriesChange && !hasSettingsChange && !hasPortableBackupChange && !hasHistoryImportStateChange && !hasFlashcardMetaChange) {
         return;
       }
 
@@ -254,7 +251,7 @@
         await ctx.backup.refreshPortableBackupMeta();
       }
 
-      if (hasFlashcardMetaChange || hasFlashcardSettingsChange) {
+      if (hasFlashcardMetaChange) {
         await ctx.study.refreshStudyCard();
       }
 
