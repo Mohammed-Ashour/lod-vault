@@ -93,6 +93,10 @@ function loadLensOverlay({ lookupOverrides = {}, storeOverrides = {} } = {}) {
     buildMeaningCollapsibleMarkup() {
       return "";
     },
+    createAudioController() {
+      return { play() {}, stopAll() {} };
+    },
+    playLodAudio() {},
     async getEntry() {
       return null;
     },
@@ -293,4 +297,39 @@ test("lens overlay keeps the active session when an older sentence candidate res
   assert.equal(root.querySelector(".lodvault-lens-word").textContent, "Haus");
   assert.equal(root.classList.contains("lodvault-sentence-mode"), false);
   assert.equal(root.querySelector(".lodvault-lens-status").textContent, 'Found "Haus".');
+});
+
+test("lens overlay exposes a labelled pronunciation control for the resolved word", async () => {
+  const played = [];
+  const { dom, overlay, getRoot } = loadLensOverlay({
+    lookupOverrides: {
+      async lookup() {
+        return {
+          query: "Haus",
+          status: "resolved",
+          entry: { id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1", translations: { en: "house" } }
+        };
+      }
+    },
+    storeOverrides: {
+      playLodAudio(entry, options) {
+        played.push({ id: entry.id, controller: Boolean(options?.controller) });
+      }
+    }
+  });
+
+  await overlay.openFromSelection("Haus");
+  await wait(dom, 0);
+  await wait(dom, 0);
+
+  const root = getRoot();
+  const audioBtn = root.querySelector(".lodvault-lens-audio");
+  assert.ok(audioBtn, "expected a pronunciation button next to the word");
+  assert.equal(audioBtn.dataset.audioId, "HAUS1");
+  assert.equal(audioBtn.hidden, false, "expected the pronunciation button to be visible");
+  assert.ok(audioBtn.getAttribute("aria-label"), "expected a labelled pronunciation control");
+
+  audioBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+
+  assert.deepEqual(played, [{ id: "HAUS1", controller: true }]);
 });

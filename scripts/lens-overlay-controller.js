@@ -7,6 +7,16 @@
 
     let shell = null;
     let sentenceMode = null;
+    const audioController = typeof store.createAudioController === "function"
+      ? store.createAudioController(document)
+      : null;
+
+    function playCurrentWordAudio() {
+      const session = sessions.getActive();
+      const entry = session?.data.entry;
+      if (!entry || !audioController || typeof store.playLodAudio !== "function") return;
+      store.playLodAudio(entry, { controller: audioController });
+    }
 
     function ensureShell() {
       if (shell) {
@@ -15,6 +25,7 @@
 
       shell = shellNamespace.createShell({
         onClose: close,
+        onAudio: playCurrentWordAudio,
         onSuggestion: openSuggestion,
         onCandidate: resolveEntry,
         onSaveToggle: toggleList,
@@ -85,6 +96,7 @@
     }
 
     function close() {
+      audioController?.stopAll?.();
       sessions.close();
       ensureShell().close();
     }

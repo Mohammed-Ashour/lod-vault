@@ -127,6 +127,63 @@
   padding-bottom: 1px;
 }
 
+#lodvault-lens-overlay-root .lodvault-lens-audio {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin-left: 8px;
+  vertical-align: middle;
+  border: 1px solid var(--lv-border-light);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--lv-muted);
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-audio:hover {
+  background: var(--lv-accent-soft);
+  border-color: rgba(57, 167, 196, 0.4);
+  color: var(--lv-accent-lite);
+  transform: scale(1.08);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-audio:active {
+  transform: scale(0.95);
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-audio[hidden] {
+  display: none;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-audio svg {
+  width: 13px;
+  height: 13px;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-audio.is-playing {
+  background: rgba(57, 167, 196, 0.2);
+  border-color: var(--lv-accent);
+  color: var(--lv-accent);
+  animation: lodvault-lens-audio-pulse 1s ease-in-out infinite;
+}
+
+#lodvault-lens-overlay-root .lodvault-lens-audio.is-error {
+  background: rgba(230, 96, 106, 0.08);
+  border-color: rgba(230, 96, 106, 0.35);
+  color: #e6606a;
+}
+
+@keyframes lodvault-lens-audio-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
 /* ── Saved badge ────────────────────────────────── */
 
 #lodvault-lens-overlay-root .lodvault-lens-saved {
