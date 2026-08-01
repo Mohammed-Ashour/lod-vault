@@ -131,8 +131,24 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return typeof value === "string" ? value.trim() : "";
   }
 
+  const HTML_NAMED_ENTITIES = { amp: "&", apos: "'", gt: ">", lt: "<", nbsp: "\u00a0", quot: '"' };
+
+  // Renderers still escape this decoded dictionary text.
+  function decodeHtmlEntities(value) {
+    if (typeof value !== "string") return "";
+    return value.replace(/&#x([0-9a-f]+);|&#(\d+);|&(amp|apos|gt|lt|nbsp|quot);/gi, (entity, hex, decimal, name) => {
+      if (name) return HTML_NAMED_ENTITIES[name.toLowerCase()];
+      const codePoint = Number.parseInt(hex || decimal, hex ? 16 : 10);
+      return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : entity;
+    });
+  }
+
+  function cleanDictionaryText(value) {
+    return cleanText(decodeHtmlEntities(value));
+  }
+
   function cleanWordLabel(value) {
-    return cleanText(value)
+    return cleanDictionaryText(value)
       .replace(/\s*kopéiert\b.*$/i, "")
       .replace(/\s*Artikel deelen\b.*$/i, "")
       .trim();
@@ -170,7 +186,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   function cleanTranslations(translations = {}) {
     const result = {};
     for (const [lang, value] of Object.entries(translations || {})) {
-      const cleaned = cleanText(value);
+      const cleaned = cleanDictionaryText(value);
       if (cleaned) result[lang] = cleaned;
     }
     return result;
@@ -417,9 +433,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       id,
       word: cleanWordLabel(entry.word),
       url: cleanText(entry.url),
-      pos: cleanText(entry.pos),
-      inflection: cleanText(entry.inflection),
-      example: cleanText(entry.example),
+      pos: cleanDictionaryText(entry.pos),
+      inflection: cleanDictionaryText(entry.inflection),
+      example: cleanDictionaryText(entry.example),
       note: cleanText(entry.note),
       translations: cleanTranslations(entry.translations),
       favorite: Boolean(entry.favorite),
@@ -2046,6 +2062,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     STORE_MUTATION_MESSAGE_TYPE,
     getIdFromUrl,
     cleanText,
+    decodeHtmlEntities,
+    cleanDictionaryText,
     normalizeVisitCount,
     normalizeSyncLanguages,
     normalizeSyncVerificationTimestamp,

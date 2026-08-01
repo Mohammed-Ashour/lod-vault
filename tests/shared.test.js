@@ -38,6 +38,30 @@ test("normalizeEntry trims values and derives id from the url", () => {
   assert.equal(entry.history, false);
 });
 
+test("normalizeEntry decodes dictionary entities and renderers keep decoded markup escaped", () => {
+  const { store } = loadSharedStore();
+
+  const entry = store.normalizeEntry({
+    id: "TEST1",
+    word: "W&amp;W",
+    pos: "Substantiv,&#x20;Neutrum",
+    inflection: "&#x3C;img src=x onerror=alert(1)&#x3E;",
+    example: "D&#xEB;st &quot;Haus&quot;",
+    translations: { en: "home &amp; house" }
+  });
+
+  assert.equal(entry.word, "W&W");
+  assert.equal(entry.pos, "Substantiv, Neutrum");
+  assert.equal(entry.inflection, "<img src=x onerror=alert(1)>");
+  assert.equal(entry.example, 'Dëst "Haus"');
+  assert.deepEqual({ ...entry.translations }, { en: "home & house" });
+
+  const exportText = store.buildAnkiExport([entry]);
+  assert.match(exportText, /W&amp;W/);
+  assert.match(exportText, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.doesNotMatch(exportText, /<img src=x onerror=alert\(1\)>/);
+});
+
 test("settings default to auto mode off with default sync languages and can be updated", async () => {
   const { store, storageData } = loadSharedStore();
 

@@ -4,6 +4,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
+const { loadSharedStore } = require("./helpers/loaders");
+
 const repoRoot = path.join(__dirname, "..");
 const source = fs.readFileSync(path.join(repoRoot, "scripts/lens-lookup.js"), "utf8");
 
@@ -97,6 +99,31 @@ test("lookup resolves a single search result into a vault entry", async () => {
     fr: "maison"
   });
   assert.equal(calls.length, 2);
+});
+
+test("normalizes encoded dictionary strings from the API", () => {
+  const { store } = loadSharedStore();
+  const lensLookup = loadLensLookup(undefined, { LodVaultStoreCore: store });
+
+  const entry = lensLookup.normalizeEntryFromApi({
+    lod_id: "HAUS1",
+    lemma: "Haus",
+    partOfSpeechLabel: "Substantiv,&#x20;Neutrum",
+    microStructures: [{
+      grammaticalUnits: [{
+        meanings: [{
+          inflection: { forms: [{ content: "Haiser &amp; Haisercher" }] },
+          targetLanguages: { en: { parts: [{ content: "house &amp; home" }] } },
+          examples: [{ parts: [{ content: "D&#xEB;st Haus" }] }]
+        }]
+      }]
+    }]
+  });
+
+  assert.equal(entry.pos, "Substantiv, Neutrum");
+  assert.equal(entry.inflection, "Haiser & Haisercher");
+  assert.equal(entry.example, "Dëst Haus");
+  assert.deepEqual({ ...entry.translations }, { en: "house & home" });
 });
 
 test("lookupSentence resolves each word while keeping render tokens", async () => {

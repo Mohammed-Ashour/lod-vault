@@ -7,6 +7,8 @@
     return String(value ?? "").replace(/\s+/g, " ").trim();
   }
 
+  const cleanDictionaryText = globalThis.LodVaultStoreCore?.cleanDictionaryText || cleanText;
+
   function normalizeSelection(value) {
     return cleanText(value)
       .replace(/^[\s'"„“”‚‘’«»()[\]{}<>.,;:!?/\\|]+/, "")
@@ -112,8 +114,8 @@
     return {
       id,
       articleId: id,
-      word: cleanText(result.word_lb || result.lemma),
-      pos: cleanText(result.pos),
+      word: cleanDictionaryText(result.word_lb || result.lemma),
+      pos: cleanDictionaryText(result.pos),
       matches: Array.isArray(result.matches) ? result.matches.slice() : [],
       url: id ? `https://lod.lu/artikel/${encodeURIComponent(id)}` : ""
     };
@@ -192,13 +194,13 @@
 
   function normalizeEntryFromApi(apiEntry = {}) {
     const id = cleanText(apiEntry.lod_id);
-    const word = cleanText(apiEntry.lemma);
+    const word = cleanDictionaryText(apiEntry.lemma);
 
     if (!id || !word) {
       return null;
     }
 
-    return {
+    const entry = {
       id,
       word,
       url: `https://lod.lu/artikel/${encodeURIComponent(id)}`,
@@ -207,6 +209,8 @@
       example: extractExample(apiEntry),
       translations: extractTranslations(apiEntry)
     };
+    const normalizeEntry = globalThis.LodVaultStoreCore?.normalizeEntry;
+    return typeof normalizeEntry === "function" ? normalizeEntry(entry) : entry;
   }
 
   async function search(query, options = {}) {
@@ -240,7 +244,7 @@
       const data = await fetchJson(buildSuggestionUrl(suggestionQuery), options.fetch);
       const items = Array.isArray(data?.items) ? data.items : [];
       for (const item of items) {
-        const word = normalizeSelection(item?.word || item?.lemma || item);
+        const word = normalizeSelection(cleanDictionaryText(item?.word || item?.lemma || item));
         if (!word || suggestions.some((suggestion) => suggestion.word === word)) {
           continue;
         }
