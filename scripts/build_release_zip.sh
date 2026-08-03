@@ -53,7 +53,12 @@ cp \
   scripts/note-autosave.js \
   scripts/page-banner.js \
   scripts/popup-app.js \
+  scripts/popup-backup.js \
+  scripts/popup-current.js \
   scripts/popup.js \
+  scripts/popup-list.js \
+  scripts/popup-study.js \
+  scripts/popup-sync.js \
   scripts/preview.js \
   scripts/shared.js \
   scripts/selection-trigger.js \
