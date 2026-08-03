@@ -301,3 +301,32 @@ test("multiple choice mode maps correct answers to Good and wrong answers to Har
     { entryId: "A2", rating: 1 }
   ]);
 });
+
+test("multiple choice drops a pick when the card changes before the delay elapses", async () => {
+  const reviews = [];
+  const { dom } = await loadFlashcardsScript({
+    entries: [
+      makeEntry({ id: "A1", word: "Haus", translations: { en: "house" } }),
+      makeEntry({ id: "A2", word: "Waasser", translations: { en: "water" } }),
+      makeEntry({ id: "A3", word: "Bam", translations: { en: "tree" } }),
+      makeEntry({ id: "A4", word: "Sonn", translations: { en: "sun" } })
+    ],
+    storeOverrides: {
+      async recordFlashcardReview(entryId, rating) {
+        reviews.push({ entryId, rating });
+      }
+    }
+  });
+
+  const modeSelect = dom.window.document.getElementById("mode-select");
+  modeSelect.value = "mc";
+  modeSelect.dispatchEvent(new dom.window.Event("change"));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  const options = () => [...dom.window.document.querySelectorAll("#mc-options button")];
+  options()[0].click();
+  dom.window.document.getElementById("next-card").click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 900));
+
+  assert.deepEqual(reviews, []);
+});

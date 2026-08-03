@@ -387,6 +387,8 @@ function onKeyDown(event) {
   } else if (event.key === " " || event.key === "Enter") {
     event.preventDefault();
     toggleReveal();
+  } else if (state.mode === "mc" && event.key >= "1" && event.key <= "4") {
+    elements.mcOptions?.querySelectorAll("button")[Number(event.key) - 1]?.click();
   } else if (event.key === "1") {
     rateCard(1);
   } else if (event.key === "2") {
@@ -520,6 +522,7 @@ function renderDeck() {
     elements.cardShell?.classList.add("is-hidden");
     elements.summaryOverlay?.classList.add("is-hidden");
     elements.mcOptions?.classList.add("is-hidden");
+    state.mcKey = null;
     return;
   }
 
@@ -576,10 +579,15 @@ function renderDeck() {
   }
 
   if (elements.mcOptions) {
-    const options = state.mode === "mc" ? buildMcOptions(entry) : [];
-    elements.mcOptions.innerHTML = options.map((option) =>
-      `<button type="button" class="mc-option" data-correct="${option.correct ? "1" : "0"}">${LodVaultStore.escapeHtml(option.text)}</button>`
-    ).join("");
+    const mcKey = state.mode === "mc" ? `${entry.id}:${state.direction}` : "";
+    if (state.mcKey !== mcKey) {
+      state.mcKey = mcKey;
+      state.mcLocked = false;
+      const options = state.mode === "mc" ? buildMcOptions(entry) : [];
+      elements.mcOptions.innerHTML = options.map((option) =>
+        `<button type="button" class="mc-option" data-correct="${option.correct ? "1" : "0"}">${LodVaultStore.escapeHtml(option.text)}</button>`
+      ).join("");
+    }
     elements.mcOptions.classList.toggle("is-hidden", state.mode !== "mc");
   }
   elements.flashcard?.classList.toggle("is-revealed", state.revealed);
@@ -617,10 +625,13 @@ function buildMeaningMarkup(entry) {
 }
 
 function buildMcOptions(entry) {
-  const answerText = state.direction === "rev" ? entry.word : mcAnswerText(entry);
+  const answerText = state.direction === "rev" ? entry.word : mcAnswerText(entry) || entry.word;
   const options = [{ text: answerText, correct: true }];
   const seen = new Set([answerText]);
-  for (const other of shuffle(state.deck.filter((candidate) => candidate.id !== entry.id))) {
+  const pool = state.deck.length >= 4
+    ? state.deck.filter((candidate) => candidate.id !== entry.id)
+    : state.entries.filter((candidate) => candidate.id !== entry.id);
+  for (const other of shuffle(pool)) {
     if (options.length >= 4) break;
     const text = state.direction === "rev" ? other.word : mcAnswerText(other);
     if (!text || seen.has(text)) continue;
@@ -634,7 +645,7 @@ function mcAnswerText(entry) {
   const meaning = typeof LodVaultStore.getPrimaryMeaning === "function"
     ? LodVaultStore.getPrimaryMeaning(entry)
     : null;
-  return (meaning && meaning.value) || entry.word;
+  return (meaning && meaning.value) || null;
 }
 
 function buildAnswerMarkup(entry) {
@@ -700,6 +711,7 @@ function onMcOptionClick(event) {
   elements.mcOptions.querySelectorAll("button").forEach((option) => { option.disabled = true; });
 
   setTimeout(() => {
+    if (currentEntry()?.id !== entry.id) return;
     state.mcLocked = false;
     state.revealed = true;
     void rateCard(correct ? 2 : 1);
