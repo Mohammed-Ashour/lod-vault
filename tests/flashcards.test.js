@@ -162,7 +162,7 @@ test("daily target reports completion and can be turned off", async () => {
   await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
 
   assert.equal(dom.window.document.getElementById("daily-progress").textContent, "Daily target off");
-  assert.deepEqual(storageData["lodVault.flashcardSettings"], { dailyTarget: null });
+  assert.deepEqual(storageData["lodVault.flashcardSettings"], { dailyTarget: null, mode: "self" });
 });
 
 test("keyboard shortcuts trigger rating and direction toggle", async () => {
@@ -264,4 +264,69 @@ test("?deck=due deep link opens the Due today deck even when study cards exist",
   assert.equal(dom.window.document.getElementById("deck-filter").value, "due");
   const word = dom.window.document.getElementById("card-word");
   assert.equal(word.textContent, "Due Word");
+});
+
+test("multiple choice mode maps correct answers to Good and wrong answers to Hard", async () => {
+  const reviews = [];
+  const { dom } = await loadFlashcardsScript({
+    entries: [
+      makeEntry({ id: "A1", word: "Haus", translations: { en: "house" } }),
+      makeEntry({ id: "A2", word: "Waasser", translations: { en: "water" } }),
+      makeEntry({ id: "A3", word: "Bam", translations: { en: "tree" } }),
+      makeEntry({ id: "A4", word: "Sonn", translations: { en: "sun" } })
+    ],
+    storeOverrides: {
+      async recordFlashcardReview(entryId, rating) {
+        reviews.push({ entryId, rating });
+      }
+    }
+  });
+
+  const modeSelect = dom.window.document.getElementById("mode-select");
+  modeSelect.value = "mc";
+  modeSelect.dispatchEvent(new dom.window.Event("change"));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  const options = () => [...dom.window.document.querySelectorAll("#mc-options button")];
+  assert.equal(options().length, 4);
+
+  options().find((button) => button.dataset.correct === "1").click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 900));
+  assert.deepEqual(reviews, [{ entryId: "A1", rating: 2 }]);
+
+  options().find((button) => button.dataset.correct === "0").click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 900));
+  assert.deepEqual(reviews, [
+    { entryId: "A1", rating: 2 },
+    { entryId: "A2", rating: 1 }
+  ]);
+});
+
+test("multiple choice drops a pick when the card changes before the delay elapses", async () => {
+  const reviews = [];
+  const { dom } = await loadFlashcardsScript({
+    entries: [
+      makeEntry({ id: "A1", word: "Haus", translations: { en: "house" } }),
+      makeEntry({ id: "A2", word: "Waasser", translations: { en: "water" } }),
+      makeEntry({ id: "A3", word: "Bam", translations: { en: "tree" } }),
+      makeEntry({ id: "A4", word: "Sonn", translations: { en: "sun" } })
+    ],
+    storeOverrides: {
+      async recordFlashcardReview(entryId, rating) {
+        reviews.push({ entryId, rating });
+      }
+    }
+  });
+
+  const modeSelect = dom.window.document.getElementById("mode-select");
+  modeSelect.value = "mc";
+  modeSelect.dispatchEvent(new dom.window.Event("change"));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  const options = () => [...dom.window.document.querySelectorAll("#mc-options button")];
+  options()[0].click();
+  dom.window.document.getElementById("next-card").click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 900));
+
+  assert.deepEqual(reviews, []);
 });

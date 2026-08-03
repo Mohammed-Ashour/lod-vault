@@ -6,6 +6,7 @@ const state = {
   index: 0,
   orderMode: "smart",
   direction: "fwd",
+  mode: "self",
   sessionSize: "all",
   sessionActive: false,
   sessionCards: [],
@@ -22,6 +23,7 @@ const FLASHCARD_SESSION_KEY = "lodVault.flashcardSession";
 const DAILY_TARGETS = new Set([5, 10, 20]);
 const DECK_FILTERS = new Set(["due", "study", "favorites", "all"]);
 const ORDER_MODES = new Set(["smart", "shuffle", "sequential"]);
+const STUDY_MODES = new Set(["self", "mc"]);
 const elements = {};
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -31,6 +33,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.sessionSize = document.getElementById("session-size");
   elements.dailyTarget = document.getElementById("daily-target");
   elements.directionToggle = document.getElementById("direction-toggle");
+  elements.modeSelect = document.getElementById("mode-select");
+  elements.mcOptions = document.getElementById("mc-options");
+  elements.cardHint = document.getElementById("card-hint");
   elements.emptyState = document.getElementById("empty-state");
   elements.cardShell = document.getElementById("card-shell");
   elements.progress = document.getElementById("progress");
@@ -68,6 +73,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.sessionSize?.addEventListener("change", onSessionSizeChange);
   elements.dailyTarget?.addEventListener("change", onDailyTargetChange);
   elements.directionToggle?.addEventListener("click", toggleDirection);
+  elements.modeSelect?.addEventListener("change", onModeChange);
+  elements.mcOptions?.addEventListener("click", onMcOptionClick);
   elements.resumeSessionButton?.addEventListener("click", resumeSession);
   elements.dismissSessionButton?.addEventListener("click", dismissResumableSession);
   elements.flashcard?.addEventListener("click", onFlashcardClick);
@@ -130,12 +137,14 @@ async function loadFlashcardState() {
   const target = saved[FLASHCARD_SETTINGS_KEY]?.dailyTarget;
   state.dailyTarget = DAILY_TARGETS.has(Number(target)) ? Number(target) : target === null ? 0 : 10;
   state.resumableSession = saved[FLASHCARD_SESSION_KEY] || null;
+  state.mode = STUDY_MODES.has(saved[FLASHCARD_SETTINGS_KEY]?.mode) ? saved[FLASHCARD_SETTINGS_KEY].mode : "self";
   if (elements.dailyTarget) elements.dailyTarget.value = state.dailyTarget ? String(state.dailyTarget) : "off";
+  if (elements.modeSelect) elements.modeSelect.value = state.mode;
 }
 
-async function saveDailyTarget() {
+async function saveSettings() {
   const local = chrome.storage?.local;
-  if (local) await local.set({ [FLASHCARD_SETTINGS_KEY]: { dailyTarget: state.dailyTarget || null } });
+  if (local) await local.set({ [FLASHCARD_SETTINGS_KEY]: { dailyTarget: state.dailyTarget || null, mode: state.mode } });
 }
 
 async function saveSession() {
@@ -146,6 +155,7 @@ async function saveSession() {
       filter: state.filter,
       orderMode: state.orderMode,
       direction: state.direction,
+      mode: state.mode,
       sessionSize: state.sessionSize,
       cardIds: state.sessionCards.map((entry) => entry.id),
       index: state.sessionIndex,
@@ -183,6 +193,7 @@ async function resumeSession() {
   state.filter = DECK_FILTERS.has(saved.filter) ? saved.filter : state.filter;
   state.orderMode = ORDER_MODES.has(saved.orderMode) ? saved.orderMode : state.orderMode;
   state.direction = saved.direction === "rev" ? "rev" : "fwd";
+  state.mode = STUDY_MODES.has(saved.mode) ? saved.mode : "self";
   state.sessionSize = String(saved.sessionSize || cards.length);
   state.sessionCards = cards;
   state.sessionIndex = index;
@@ -200,6 +211,7 @@ async function resumeSession() {
     elements.directionToggle.textContent = state.direction === "fwd" ? "Lux → EN" : "EN → Lux";
     elements.directionToggle.classList.toggle("is-active", state.direction === "rev");
   }
+  if (elements.modeSelect) elements.modeSelect.value = state.mode;
   renderResumeSession();
   renderDeck();
   await saveSession();
@@ -305,8 +317,16 @@ async function onSessionSizeChange(event) {
 
 async function onDailyTargetChange(event) {
   state.dailyTarget = DAILY_TARGETS.has(Number(event.target.value)) ? Number(event.target.value) : 0;
-  await saveDailyTarget();
+  await saveSettings();
   renderStats();
+}
+
+function onModeChange(event) {
+  state.mode = STUDY_MODES.has(event.target.value) ? event.target.value : "self";
+  state.revealed = false;
+  void saveSettings();
+  renderDeck();
+  if (state.sessionActive) void saveSession();
 }
 
 async function handleStorageChange(changes, areaName) {
@@ -367,6 +387,8 @@ function onKeyDown(event) {
   } else if (event.key === " " || event.key === "Enter") {
     event.preventDefault();
     toggleReveal();
+  } else if (state.mode === "mc" && event.key >= "1" && event.key <= "4") {
+    elements.mcOptions?.querySelectorAll("button")[Number(event.key) - 1]?.click();
   } else if (event.key === "1") {
     rateCard(1);
   } else if (event.key === "2") {
@@ -499,6 +521,8 @@ function renderDeck() {
     elements.emptyState?.classList.remove("is-hidden");
     elements.cardShell?.classList.add("is-hidden");
     elements.summaryOverlay?.classList.add("is-hidden");
+    elements.mcOptions?.classList.add("is-hidden");
+    state.mcKey = null;
     return;
   }
 
@@ -553,9 +577,26 @@ function renderDeck() {
   if (elements.cardAnswer) {
     elements.cardAnswer.innerHTML = buildAnswerMarkup(entry);
   }
+
+  if (elements.mcOptions) {
+    const mcKey = state.mode === "mc" ? `${entry.id}:${state.direction}` : "";
+    if (state.mcKey !== mcKey) {
+      state.mcKey = mcKey;
+      state.mcLocked = false;
+      const options = state.mode === "mc" ? buildMcOptions(entry) : [];
+      elements.mcOptions.innerHTML = options.map((option) =>
+        `<button type="button" class="mc-option" data-correct="${option.correct ? "1" : "0"}">${LodVaultStore.escapeHtml(option.text)}</button>`
+      ).join("");
+    }
+    elements.mcOptions.classList.toggle("is-hidden", state.mode !== "mc");
+  }
   elements.flashcard?.classList.toggle("is-revealed", state.revealed);
   if (elements.flipCard) {
     elements.flipCard.textContent = state.revealed ? "Hide" : "Reveal";
+    elements.flipCard.classList.toggle("is-hidden", state.mode === "mc");
+  }
+  if (elements.cardHint) {
+    elements.cardHint.textContent = state.mode === "mc" ? "Choose the correct answer." : "Click Reveal to show the answer.";
   }
 
   if (elements.prevCard) elements.prevCard.disabled = state.sessionActive || count <= 1;
@@ -583,6 +624,30 @@ function buildMeaningMarkup(entry) {
   `;
 }
 
+function buildMcOptions(entry) {
+  const answerText = state.direction === "rev" ? entry.word : mcAnswerText(entry) || entry.word;
+  const options = [{ text: answerText, correct: true }];
+  const seen = new Set([answerText]);
+  const pool = state.deck.length >= 4
+    ? state.deck.filter((candidate) => candidate.id !== entry.id)
+    : state.entries.filter((candidate) => candidate.id !== entry.id);
+  for (const other of shuffle(pool)) {
+    if (options.length >= 4) break;
+    const text = state.direction === "rev" ? other.word : mcAnswerText(other);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    options.push({ text, correct: false });
+  }
+  return shuffle(options);
+}
+
+function mcAnswerText(entry) {
+  const meaning = typeof LodVaultStore.getPrimaryMeaning === "function"
+    ? LodVaultStore.getPrimaryMeaning(entry)
+    : null;
+  return (meaning && meaning.value) || null;
+}
+
 function buildAnswerMarkup(entry) {
   const chips = [];
   if (entry.pos) {
@@ -605,7 +670,7 @@ function buildAnswerMarkup(entry) {
 }
 
 function toggleReveal() {
-  if (!state.deck.length) return;
+  if (state.mode === "mc" || !state.deck.length) return;
   state.revealed = !state.revealed;
   renderDeck();
 }
@@ -629,6 +694,28 @@ function onRatingClick(event) {
   if (!button) return;
   const rating = Number(button.dataset.rating);
   rateCard(rating);
+}
+
+function onMcOptionClick(event) {
+  const button = event.target.closest("[data-correct]");
+  if (!button || state.mode !== "mc" || !state.deck.length || state.mcLocked) return;
+  const entry = currentEntry();
+  if (!entry) return;
+
+  state.mcLocked = true;
+  const correct = button.dataset.correct === "1";
+  button.classList.add(correct ? "is-correct" : "is-wrong");
+  if (!correct) {
+    elements.mcOptions.querySelector('[data-correct="1"]')?.classList.add("is-correct");
+  }
+  elements.mcOptions.querySelectorAll("button").forEach((option) => { option.disabled = true; });
+
+  setTimeout(() => {
+    if (currentEntry()?.id !== entry.id) return;
+    state.mcLocked = false;
+    state.revealed = true;
+    void rateCard(correct ? 2 : 1);
+  }, 700);
 }
 
 async function rateCard(rating) {

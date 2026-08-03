@@ -300,6 +300,25 @@ select:focus { outline: none; border-color: var(--accent); }
 .rating-easy { color: var(--success); border-color: rgba(94,196,138,0.2); }
 .rating-easy:hover { background: var(--success-dim); border-color: var(--success); }
 
+/* ── Multiple choice ────────────────────────────── */
+.mc-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.mc-option {
+  padding: 10px 12px;
+  border: 1px solid var(--border-s);
+  border-radius: var(--r-sm);
+  background: var(--d1);
+  color: var(--accent-lt);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.mc-option:hover:not(:disabled) { background: var(--d3); border-color: var(--accent); }
+.mc-option.is-correct { background: var(--success-dim); border-color: var(--success); color: var(--success); font-weight: 700; }
+.mc-option.is-wrong { background: rgba(230,96,106,0.08); border-color: var(--danger); color: var(--danger); }
+.mc-option:disabled { cursor: default; }
+
 /* ── Summary overlay ─────────────────────────────── */
 .summary-overlay {
   position: fixed;
@@ -363,6 +382,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   .meaning-row { grid-template-columns: 70px 1fr; gap: 6px; }
   .actions { grid-template-columns: 1fr; }
   .rating-bar { grid-template-columns: 1fr; }
+  .mc-options { grid-template-columns: 1fr; }
   .summary-stats { grid-template-columns: repeat(2, 1fr); }
   .stats-bar { gap: 8px; padding: 8px 10px; }
   .resume-session { align-items: flex-start; flex-wrap: wrap; justify-content: flex-start; }

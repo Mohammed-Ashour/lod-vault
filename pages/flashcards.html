@@ -42,6 +42,13 @@
           </select>
         </label>
         <label class="control-group">
+          <span>Mode</span>
+          <select id="mode-select">
+            <option value="self">Self-graded</option>
+            <option value="mc">Multiple choice</option>
+          </select>
+        </label>
+        <label class="control-group">
           <span>Daily target</span>
           <select id="daily-target">
             <option value="5">5 cards</option>
@@ -106,13 +113,15 @@
             <button type="button" id="card-audio" class="audio-btn" title="Play pronunciation" aria-label="Play pronunciation" style="display:none"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></button>
           </div>
           <p id="card-type" class="muted"></p>
-          <p class="hint">Click Reveal to show the answer.</p>
+          <p id="card-hint" class="hint">Click Reveal to show the answer.</p>
         </div>
         <div class="card-face card-back">
           <span class="face-label">Back</span>
           <div id="card-answer" class="answer"></div>
         </div>
       </div>
+
+      <div id="mc-options" class="mc-options is-hidden"></div>
 
       <div class="actions">
         <button id="prev-card" class="nav-button secondary-button secondary-button-light">← Prev</button>
