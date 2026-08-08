@@ -319,7 +319,7 @@
           chips.push(`<span class="history-import-report-item">+${store.escapeHtml(String(imported - addedEntries.length))} more</span>`);
         }
 
-        elements.importHistoryReportList.innerHTML = chips.join("");
+        LodVaultStore.setHtml(elements.importHistoryReportList, chips.join(""));
       }
 
       elements.importHistoryReport.classList.remove("is-hidden");
@@ -527,9 +527,9 @@
       }
 
       if (elements.restorePreviewDetails) {
-        elements.restorePreviewDetails.innerHTML = buildRestoreDetailLines(preview)
+        LodVaultStore.setHtml(elements.restorePreviewDetails, buildRestoreDetailLines(preview)
           .map((line) => `<li>${store.escapeHtml(line)}</li>`)
-          .join("");
+          .join(""));
       }
 
       if (elements.restoreConfirm) {
@@ -583,9 +583,9 @@
           lines.push("Flashcard review progress merged.");
         }
         lines.push("Nothing in your vault was removed.");
-        elements.restorePreviewDetails.innerHTML = lines
+        LodVaultStore.setHtml(elements.restorePreviewDetails, lines
           .map((line) => `<li>${store.escapeHtml(line)}</li>`)
-          .join("");
+          .join(""));
       }
 
       if (elements.restoreConfirm) {

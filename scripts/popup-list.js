@@ -129,13 +129,14 @@
       elements.emptyState.classList.add("is-hidden");
       elements.noResults.classList.add("is-hidden");
       const capped = displayEntries.slice(0, LIST_LIMIT);
-      elements.savedList.innerHTML = capped.map(buildSavedItemMarkup).join("");
+      let listMarkup = capped.map(buildSavedItemMarkup).join("");
 
       if (displayEntries.length > LIST_LIMIT) {
-        elements.savedList.innerHTML += hasQuery
+        listMarkup += hasQuery
           ? `<p class="list-overflow">Showing ${LIST_LIMIT} of ${displayEntries.length} matches. Refine your search to narrow down.</p>`
           : `<p class="list-overflow">Showing ${LIST_LIMIT} recent words. Type to search or open Vault to browse everything.</p>`;
       }
+      LodVaultStore.setHtml(elements.savedList, listMarkup);
     }
 
     function findEntry(id) {

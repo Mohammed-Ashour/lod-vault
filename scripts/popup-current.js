@@ -181,7 +181,7 @@
       elements.currentMeta.textContent = posText || (state.autoMode
         ? "Auto mode is recording this word."
         : "Save this word for later.");
-      elements.currentMeanings.innerHTML = meaningMarkup || "";
+      LodVaultStore.setHtml(elements.currentMeanings, meaningMarkup || "");
       elements.currentFavorite.disabled = false;
       elements.currentStudy.disabled = false;
       elements.currentDelete.disabled = !savedEntry;

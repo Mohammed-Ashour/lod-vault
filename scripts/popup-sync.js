@@ -546,9 +546,9 @@
       const maxSelected = store.MAX_SYNC_LANGUAGES || 3;
       const languageOrder = store.TRANSLATION_LANGUAGE_ORDER || Object.keys(store.TRANSLATION_LANGUAGE_LABELS || {});
 
-      elements.syncLanguageChips.innerHTML = languageOrder
+      LodVaultStore.setHtml(elements.syncLanguageChips, languageOrder
         .map((language) => buildSyncLanguageChipMarkup(language, selectedLanguages, maxSelected))
-        .join("");
+        .join(""));
       elements.syncLanguageCount.textContent = `${selectedLanguages.length} of ${maxSelected} selected`;
       elements.syncLanguageCapacity.classList.toggle("sync-language-capacity", true);
       renderSyncCapacity();

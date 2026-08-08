@@ -292,7 +292,7 @@
         audioButton.classList.remove("is-playing", "is-error");
       }
       root.querySelector(".lodvault-lens-meta").textContent = [entry.pos, entry.inflection].filter(Boolean).join(" · ");
-      root.querySelector(".lodvault-lens-meanings").innerHTML = store.buildMeaningCollapsibleMarkup(entry) || "";
+      LodVaultStore.setHtml(root.querySelector(".lodvault-lens-meanings"), store.buildMeaningCollapsibleMarkup(entry) || "");
       root.querySelector(".lodvault-lens-open").href = entry.url || "https://lod.lu";
 
       const example = root.querySelector(".lodvault-lens-example");
@@ -317,7 +317,7 @@
       const list = root.querySelector(".lodvault-lens-candidate-list");
       candidatesSection.classList.remove("is-hidden");
       root.querySelector(".lodvault-lens-label").textContent = "Choose a match";
-      list.innerHTML = renderers.renderCandidatesMarkup(candidates, store);
+      LodVaultStore.setHtml(list, renderers.renderCandidatesMarkup(candidates, store));
       setStatus(`Found ${candidates.length} matches for "${query}".`);
       positionPanel();
     }
@@ -331,7 +331,7 @@
       const list = root.querySelector(".lodvault-lens-candidate-list");
       candidatesSection.classList.remove("is-hidden");
       root.querySelector(".lodvault-lens-label").textContent = `Did you mean… (${query})`;
-      list.innerHTML = renderers.renderSuggestionsMarkup(suggestions, store);
+      LodVaultStore.setHtml(list, renderers.renderSuggestionsMarkup(suggestions, store));
       setStatus(`No exact LOD match found for "${query}".`);
       positionPanel();
     }
@@ -347,19 +347,19 @@
 
     function renderSentenceLoading(wordCount) {
       const root = ensureRoot();
-      root.querySelector(".lodvault-lens-sentence").innerHTML = `<p class="lodvault-lens-sentence-loading">Looking up ${wordCount} words…</p>`;
+      LodVaultStore.setHtml(root.querySelector(".lodvault-lens-sentence"), `<p class="lodvault-lens-sentence-loading">Looking up ${wordCount} words…</p>`);
       showSentenceMode();
     }
 
     function renderSentenceError(message) {
       const root = ensureRoot();
-      root.querySelector(".lodvault-lens-sentence").innerHTML = `<p class="lodvault-lens-accordion-hint">${message}</p>`;
+      LodVaultStore.setHtml(root.querySelector(".lodvault-lens-sentence"), `<p class="lodvault-lens-accordion-hint">${message}</p>`);
       showSentenceMode();
     }
 
     function renderSentence(markup) {
       const root = ensureRoot();
-      root.querySelector(".lodvault-lens-sentence").innerHTML = markup;
+      LodVaultStore.setHtml(root.querySelector(".lodvault-lens-sentence"), markup);
       showSentenceMode();
       renderBulkAccordionToggleState();
     }
@@ -386,7 +386,7 @@
       const icon = allExpanded
         ? '<svg viewBox="0 0 10 10"><line x1="1" y1="5" x2="9" y2="5"/></svg>'
         : '<svg viewBox="0 0 10 10"><line x1="5" y1="1" x2="5" y2="9"/><line x1="1" y1="5" x2="9" y2="5"/></svg>';
-      button.querySelector(".toggle-pill-icon").innerHTML = icon;
+      LodVaultStore.setHtml(button.querySelector(".toggle-pill-icon"), icon);
       button.querySelector(".toggle-pill-label").textContent = allExpanded ? "Collapse all" : "Expand all";
     }
 

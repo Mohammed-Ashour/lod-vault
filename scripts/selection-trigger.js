@@ -131,7 +131,11 @@
     button.type = "button";
     button.className = "lodvault-selection-trigger is-hidden";
     button.setAttribute("aria-label", "Translate with LODVault");
-    button.innerHTML = `<img class="lodvault-selection-trigger-logo" src="${LOGO_URL}" alt="LODVault">`;
+    const img = document.createElement("img");
+    img.className = "lodvault-selection-trigger-logo";
+    img.src = LOGO_URL;
+    img.alt = "LODVault";
+    button.appendChild(img);
 
     button.addEventListener("mousedown", (event) => {
       event.preventDefault();

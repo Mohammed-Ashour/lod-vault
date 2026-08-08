@@ -1,5 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const { JSDOM } = require("jsdom");
 
 const { loadSharedStore } = require("./helpers/loaders");
 
@@ -9,6 +12,56 @@ test("getIdFromUrl extracts and decodes article ids", () => {
   assert.equal(store.getIdFromUrl("https://lod.lu/artikel/HAUS1"), "HAUS1");
   assert.equal(store.getIdFromUrl("https://lod.lu/artikel/M%C3%84NNCHEN1?x=1#y"), "MÄNNCHEN1");
   assert.equal(store.getIdFromUrl("https://lod.lu/"), "");
+});
+
+test("setHtml replaces content with parsed markup", () => {
+  const { store } = loadSharedStore();
+  const dom = new JSDOM('<div id="target"><p>old</p></div>');
+  const target = dom.window.document.getElementById("target");
+
+  store.setHtml(target, "<p>one</p><p>two</p>");
+  assert.equal(target.children.length, 2);
+  assert.equal(target.querySelector("p").textContent, "one");
+
+  store.setHtml(target, "");
+  assert.equal(target.children.length, 0);
+
+  // Script nodes are parsed like innerHTML would (and never executed in any
+  // DOMParser output); execution cannot be asserted here because jsdom runs
+  // with scripts disabled. The injection boundary is the escape-first
+  // contract, enforced by the scan test below.
+  store.setHtml(target, '<img src="x" onerror="window.__pwned = 1"><script>window.__pwned = 1</script>');
+  assert.equal(target.querySelectorAll("script").length, 1);
+});
+
+test("no dynamic innerHTML assignments outside setHtml", () => {
+  const scriptsDir = path.join(__dirname, "..", "scripts");
+  const offenders = [];
+  for (const name of fs.readdirSync(scriptsDir).filter((file) => file.endsWith(".js"))) {
+    const lines = fs.readFileSync(path.join(scriptsDir, name), "utf8").split("\n");
+    for (let index = 0; index < lines.length; index += 1) {
+      const match = lines[index].match(/\.innerHTML\s*\+?=/);
+      if (!match) continue;
+      const rhs = lines[index].slice(match.index + match[0].length).trim();
+      if (/^("|')/.test(rhs)) continue; // plain string literal: no interpolation
+      if (/^`/.test(rhs)) {
+        // template literal: dynamic if it interpolates ${...} before the closing backtick
+        let body = rhs;
+        let scan = index;
+        while (scan + 1 < lines.length && body.indexOf("`", 1) === -1) {
+          scan += 1;
+          body += "\n" + lines[scan];
+        }
+        const close = body.indexOf("`", 1);
+        if (close === -1 || body.slice(1, close).includes("${")) {
+          offenders.push(`${name}:${index + 1}`);
+        }
+        continue;
+      }
+      offenders.push(`${name}:${index + 1}`);
+    }
+  }
+  assert.deepEqual(offenders, [], "route dynamic markup through LodVaultStore.setHtml");
 });
 
 test("normalizeEntry trims values and derives id from the url", () => {

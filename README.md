@@ -177,6 +177,14 @@ npm install
 npm test
 ```
 
+### Lint the Firefox package
+
+```bash
+npm run lint
+```
+
+Builds the release zips and runs `web-ext lint` on the Firefox artifact (`dist/lodvault-firefox.zip`). Expected result: zero errors and zero warnings. Chrome cannot load a manifest that contains `background.scripts` (MV2-only in Chrome), so the Chrome zip (`dist/lodvault.zip`) keeps the plain `service_worker` manifest, and the release build emits a Firefox-only manifest with `background.scripts` for the Firefox zip — both from the same `manifest.json` source.
+
 ### What is covered
 - shared storage and migration logic
 - save / remove / note flows
