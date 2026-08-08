@@ -62,3 +62,13 @@ test("manifest exposes the floating trigger logo as a web-accessible resource", 
     "https://*/*"
   ]);
 });
+
+test("manifest declares Firefox data-collection and background compatibility", () => {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const gecko = manifest.browser_specific_settings?.gecko;
+
+  assert.ok(gecko?.id, "gecko id is required for Firefox MV3");
+  assert.deepEqual(gecko?.data_collection_permissions?.required, ["none"], "local-first policy: no data is collected");
+  assert.deepEqual(gecko?.data_collection_permissions?.optional, []);
+  assert.deepEqual(manifest.background?.scripts, ["scripts/background-bundle.js"], "Firefox background fallback");
+});

@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { JSDOM } = require("jsdom");
 
 const { loadSharedStore } = require("./helpers/loaders");
 
@@ -9,6 +10,23 @@ test("getIdFromUrl extracts and decodes article ids", () => {
   assert.equal(store.getIdFromUrl("https://lod.lu/artikel/HAUS1"), "HAUS1");
   assert.equal(store.getIdFromUrl("https://lod.lu/artikel/M%C3%84NNCHEN1?x=1#y"), "MÄNNCHEN1");
   assert.equal(store.getIdFromUrl("https://lod.lu/"), "");
+});
+
+test("setHtml replaces content with parsed markup and keeps it inert", () => {
+  const { store } = loadSharedStore();
+  const dom = new JSDOM('<div id="target"><p>old</p></div>');
+  const target = dom.window.document.getElementById("target");
+
+  store.setHtml(target, "<p>one</p><p>two</p>");
+  assert.equal(target.children.length, 2);
+  assert.equal(target.querySelector("p").textContent, "one");
+
+  store.setHtml(target, "");
+  assert.equal(target.children.length, 0);
+
+  store.setHtml(target, '<img src="x" onerror="window.__pwned = 1"><script>window.__pwned = 1</script>');
+  assert.equal(target.querySelectorAll("script").length, 1, "script node is parsed but never executed");
+  assert.equal(dom.window.__pwned, undefined, "inline handlers and scripts stay inert");
 });
 
 test("normalizeEntry trims values and derives id from the url", () => {

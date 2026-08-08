@@ -90,6 +90,11 @@ function loadLensOverlay({ lookupOverrides = {}, storeOverrides = {}, buildStore
         .replace(/\"/g, "&quot;")
         .replace(/'/g, "&#39;");
     },
+    setHtml(el, markup) {
+      const doc = el.ownerDocument || document;
+      const parsed = new doc.defaultView.DOMParser().parseFromString(markup || "", "text/html");
+      el.replaceChildren(...parsed.body.childNodes);
+    },
     buildMeaningCollapsibleMarkup() {
       return "";
     },
