@@ -575,7 +575,7 @@ function renderDeck() {
   }
 
   if (elements.cardAnswer) {
-    elements.cardAnswer.innerHTML = buildAnswerMarkup(entry);
+    LodVaultStore.setHtml(elements.cardAnswer, buildAnswerMarkup(entry));
   }
 
   if (elements.mcOptions) {
@@ -584,9 +584,9 @@ function renderDeck() {
       state.mcKey = mcKey;
       state.mcLocked = false;
       const options = state.mode === "mc" ? buildMcOptions(entry) : [];
-      elements.mcOptions.innerHTML = options.map((option) =>
+      LodVaultStore.setHtml(elements.mcOptions, options.map((option) =>
         `<button type="button" class="mc-option" data-correct="${option.correct ? "1" : "0"}">${LodVaultStore.escapeHtml(option.text)}</button>`
-      ).join("");
+      ).join(""));
     }
     elements.mcOptions.classList.toggle("is-hidden", state.mode !== "mc");
   }

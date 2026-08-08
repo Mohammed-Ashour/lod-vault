@@ -405,6 +405,7 @@ async function loadPopupScript({
     normalizePortableBackupMeta: shared.store.normalizePortableBackupMeta,
     createNoteAutosaveController: shared.store.createNoteAutosaveController,
     escapeHtml: shared.store.escapeHtml,
+    setHtml: shared.store.setHtml,
     formatWhen: (value) => value || "",
     buildSearchText: shared.store.buildSearchText,
     buildMeaningText: shared.store.buildMeaningText,
@@ -627,6 +628,7 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localSt
     normalizeFlashcardMeta: shared.store.normalizeFlashcardMeta,
     computeFlashcardStreak: shared.store.computeFlashcardStreak,
     escapeHtml: shared.store.escapeHtml,
+    setHtml: shared.store.setHtml,
     buildMeaningRowsMarkup: shared.store.buildMeaningRowsMarkup,
     getPrimaryMeaning: shared.store.getPrimaryMeaning,
     async getEntries() {

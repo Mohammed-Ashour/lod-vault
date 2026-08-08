@@ -41,6 +41,15 @@
   "background": {
     "service_worker": "scripts/background-bundle.js"
   },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "lodvault@mohammed-ashour.github.io",
+      "data_collection_permissions": {
+        "required": ["none"],
+        "optional": []
+      }
+    }
+  },
   "web_accessible_resources": [
     {
       "resources": [

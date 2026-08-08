@@ -538,7 +538,7 @@ function attachRemoveButtons(doc) {
     favBtn.type = "button";
     favBtn.className = "preview-toggle-pill" + (isFav ? " is-fav" : "");
     favBtn.title = isFav ? "Remove from favorites" : "Add to favorites";
-    favBtn.innerHTML = '<span class="preview-toggle-pill-icon">' + (isFav ? "★" : "☆") + '</span><span class="preview-toggle-pill-label">Fav</span>';
+    LodVaultStore.setHtml(favBtn, '<span class="preview-toggle-pill-icon">' + (isFav ? "★" : "☆") + '</span><span class="preview-toggle-pill-label">Fav</span>');
     favBtn.addEventListener("click", async () => {
       favBtn.disabled = true;
       try {
@@ -556,7 +556,7 @@ function attachRemoveButtons(doc) {
     studyBtn.type = "button";
     studyBtn.className = "preview-toggle-pill" + (isStudy ? " is-study" : "");
     studyBtn.title = isStudy ? "Remove from study list" : "Add to study list";
-    studyBtn.innerHTML = '<span class="preview-toggle-pill-icon">' + (isStudy ? "●" : "○") + '</span><span class="preview-toggle-pill-label">Study</span>';
+    LodVaultStore.setHtml(studyBtn, '<span class="preview-toggle-pill-icon">' + (isStudy ? "●" : "○") + '</span><span class="preview-toggle-pill-label">Study</span>');
     studyBtn.addEventListener("click", async () => {
       studyBtn.disabled = true;
       try {

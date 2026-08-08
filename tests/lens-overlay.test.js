@@ -6,6 +6,7 @@ const vm = require("node:vm");
 const { JSDOM } = require("jsdom");
 
 const repoRoot = path.join(__dirname, "..");
+const { loadSharedStore } = require("./helpers/loaders");
 const overlayScriptPaths = [
   "scripts/lens-session.js",
   "scripts/lens-render.js",
@@ -90,6 +91,7 @@ function loadLensOverlay({ lookupOverrides = {}, storeOverrides = {}, buildStore
         .replace(/\"/g, "&quot;")
         .replace(/'/g, "&#39;");
     },
+    setHtml: loadSharedStore().store.setHtml,
     buildMeaningCollapsibleMarkup() {
       return "";
     },
