@@ -8,7 +8,7 @@
     "test": "node --test",
     "build:background": "node scripts/build-background.mjs",
     "package:release": "npm run build:background && bash scripts/build_release_zip.sh",
-    "lint": "npm run package:release && web-ext lint --source-dir dist/lodvault.zip"
+    "lint": "npm run package:release && web-ext lint --source-dir dist/lodvault-firefox.zip"
   },
   "devDependencies": {
     "jsdom": "^26.0.0",

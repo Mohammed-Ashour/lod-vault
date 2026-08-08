@@ -14,6 +14,8 @@ OUT_DIR="$ROOT_DIR/dist"
 STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/lodvault-release.XXXXXX")"
 OUT_ZIP_VERSIONED="$OUT_DIR/lodvault-v${VERSION}.zip"
 OUT_ZIP_LATEST="$OUT_DIR/lodvault.zip"
+FIREFOX_OUT_ZIP_VERSIONED="$OUT_DIR/lodvault-firefox-v${VERSION}.zip"
+FIREFOX_OUT_ZIP_LATEST="$OUT_DIR/lodvault-firefox.zip"
 
 cleanup() {
   python3 - "$STAGE_DIR" <<'PY'
@@ -74,5 +76,25 @@ cp \
 
 cp "$OUT_ZIP_VERSIONED" "$OUT_ZIP_LATEST"
 
+# Firefox artifact: Chrome rejects background.scripts in MV3, Firefox
+# requires it — emit a Firefox-only manifest and rebuild the zip.
+(
+  cd "$STAGE_DIR"
+  python3 - <<'PY'
+import json
+with open("manifest.json") as f:
+    manifest = json.load(f)
+manifest["background"] = {"scripts": ["scripts/background-bundle.js"]}
+with open("manifest.json", "w") as f:
+    json.dump(manifest, f, indent=2)
+    f.write("\n")
+PY
+  zip -qr "$FIREFOX_OUT_ZIP_VERSIONED" .
+)
+
+cp "$FIREFOX_OUT_ZIP_VERSIONED" "$FIREFOX_OUT_ZIP_LATEST"
+
 echo "Built release zip: $OUT_ZIP_VERSIONED"
 echo "Updated latest zip: $OUT_ZIP_LATEST"
+echo "Built Firefox zip: $FIREFOX_OUT_ZIP_VERSIONED"
+echo "Updated latest Firefox zip: $FIREFOX_OUT_ZIP_LATEST"
