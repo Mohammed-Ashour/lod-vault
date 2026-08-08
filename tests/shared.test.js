@@ -39,14 +39,27 @@ test("no dynamic innerHTML assignments outside setHtml", () => {
   const offenders = [];
   for (const name of fs.readdirSync(scriptsDir).filter((file) => file.endsWith(".js"))) {
     const lines = fs.readFileSync(path.join(scriptsDir, name), "utf8").split("\n");
-    lines.forEach((line, index) => {
-      const match = line.match(/\.innerHTML\s*\+?=/);
-      if (!match) return;
-      const rhs = line.slice(match.index + match[0].length).trim();
-      if (!/^("|'|`)/.test(rhs)) {
-        offenders.push(`${name}:${index + 1}`);
+    for (let index = 0; index < lines.length; index += 1) {
+      const match = lines[index].match(/\.innerHTML\s*\+?=/);
+      if (!match) continue;
+      const rhs = lines[index].slice(match.index + match[0].length).trim();
+      if (/^("|')/.test(rhs)) continue; // plain string literal: no interpolation
+      if (/^`/.test(rhs)) {
+        // template literal: dynamic if it interpolates ${...} before the closing backtick
+        let body = rhs;
+        let scan = index;
+        while (scan + 1 < lines.length && body.indexOf("`", 1) === -1) {
+          scan += 1;
+          body += "\n" + lines[scan];
+        }
+        const close = body.indexOf("`", 1);
+        if (close === -1 || body.slice(1, close).includes("${")) {
+          offenders.push(`${name}:${index + 1}`);
+        }
+        continue;
       }
-    });
+      offenders.push(`${name}:${index + 1}`);
+    }
   }
   assert.deepEqual(offenders, [], "route dynamic markup through LodVaultStore.setHtml");
 });
