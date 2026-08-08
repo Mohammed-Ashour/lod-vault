@@ -11,6 +11,7 @@
     "lint": "npm run package:release && web-ext lint --source-dir dist/lodvault.zip"
   },
   "devDependencies": {
-    "jsdom": "^26.0.0"
+    "jsdom": "^26.0.0",
+    "web-ext": "^10.4.0"
   }
 }

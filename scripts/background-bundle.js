@@ -3064,8 +3064,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   const presenter = globalThis.LodVaultEntryPresenter || {};
 
   // Single HTML injection boundary. `markup` must have every dynamic value
-  // escaped with LodVaultStore.escapeHtml first. DOMParser keeps the parsed
-  // markup inert (no script execution) and keeps web-ext lint warning-free.
+  // escaped with LodVaultStore.escapeHtml first. Parsing via DOMParser means
+  // script elements never execute and web-ext lint stays warning-free, but
+  // event-handler attributes behave as with innerHTML once inserted.
   function setHtml(el, markup) {
     const doc = el.ownerDocument || document;
     const parsed = new doc.defaultView.DOMParser().parseFromString(markup || "", "text/html");

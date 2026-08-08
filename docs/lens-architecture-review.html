@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LOD Lens Architecture Review</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #111a2b;
+      --panel-2: #162338;
+      --ink: #e7eefc;
+      --muted: #aab8d1;
+      --accent: #66d9ef;
+      --accent-2: #8ef0c4;
+      --warn: #ffb86b;
+      --danger: #ff7b8b;
+      --line: #29415f;
+      --good: #89f0a5;
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+      --radius: 18px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: linear-gradient(180deg, #09111d 0%, #0d1626 100%); color: var(--ink); font-family: var(--sans); }
+    body { line-height: 1.6; }
+
+    .page {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 40px 0 80px;
+    }
+
+    .hero {
+      background: radial-gradient(circle at top left, rgba(102, 217, 239, 0.16), transparent 35%), var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 32px;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+    }
+
+    h1, h2, h3 { line-height: 1.2; margin: 0 0 12px; }
+    h1 { font-size: clamp(2rem, 3vw, 3rem); }
+    h2 { font-size: 1.6rem; margin-top: 8px; }
+    h3 { font-size: 1.1rem; }
+    p { margin: 0 0 14px; color: var(--ink); }
+    .muted { color: var(--muted); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    .card {
+      grid-column: span 12;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .half { grid-column: span 6; }
+    .third { grid-column: span 4; }
+
+    @media (max-width: 900px) {
+      .half, .third { grid-column: span 12; }
+    }
+
+    .pill-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 0; }
+    .pill {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+      color: var(--ink);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.95rem;
+    }
+
+    .finding {
+      border-left: 4px solid var(--danger);
+      background: linear-gradient(180deg, rgba(255,123,139,0.08), rgba(255,123,139,0.03));
+      padding: 16px 18px;
+      border-radius: 12px;
+      margin: 14px 0;
+    }
+
+    .recommendation {
+      border-left: 4px solid var(--accent-2);
+      background: linear-gradient(180deg, rgba(142,240,196,0.08), rgba(142,240,196,0.03));
+      padding: 16px 18px;
+      border-radius: 12px;
+      margin: 14px 0;
+    }
+
+    ul, ol { margin: 0 0 14px 22px; color: var(--ink); }
+    li { margin: 6px 0; }
+    strong { color: #fff; }
+    code {
+      font-family: var(--mono);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 0.14rem 0.38rem;
+      border-radius: 7px;
+      color: #d8f7ff;
+    }
+
+    .diagram-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    svg.diagram {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 10px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(255,255,255,0.02);
+    }
+
+    th, td {
+      text-align: left;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th { color: #fff; background: rgba(255,255,255,0.03); }
+    tr:last-child td { border-bottom: none; }
+
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+    }
+
+    .module {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .footer-note {
+      margin-top: 26px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <h1>LOD Lens Architecture Review</h1>
+      <p class="muted">A structural review of the Lens implementation on <code>feature/lod-lens-selection-lookup</code>, focused on maintainability, ownership boundaries, and simplification opportunities.</p>
+      <div class="pill-row">
+        <span class="pill">Primary theme: simplify ownership</span>
+        <span class="pill">Preferred move: one injection model</span>
+        <span class="pill">Key fix: session-bound async state</span>
+        <span class="pill">Goal: smaller, boring, durable code</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card half">
+        <h2>Executive summary</h2>
+        <p>The branch adds useful behavior, but the implementation currently spreads responsibility across too many layers.</p>
+        <div class="finding">
+          <strong>Current issue:</strong> the codebase is supporting both eager manifest injection and background-owned lazy injection for the same runtime.
+        </div>
+        <div class="recommendation">
+          <strong>Preferred direction:</strong> inject only a tiny trigger everywhere, then let the background inject the heavy Lens runtime on demand.
+        </div>
+        <p>That one decision removes a large amount of incidental complexity and gives the feature a cleaner architecture to evolve from.</p>
+      </article>
+
+      <article class="card half">
+        <h2>Top recommendations</h2>
+        <ol>
+          <li>Keep only a <strong>lightweight trigger script</strong> on arbitrary websites.</li>
+          <li>Make the <strong>background worker the canonical owner</strong> of heavy Lens runtime injection.</li>
+          <li>Add a <strong>session controller</strong> so sentence-mode async work cannot repaint stale UI.</li>
+          <li>Split the overlay into <strong>word mode, sentence mode, render, and shell</strong>.</li>
+          <li>Treat <code>background-bundle.js</code> as a <strong>build artifact</strong>, not hand-reviewed source.</li>
+        </ol>
+      </article>
+
+      <article class="card">
+        <div class="diagram-title">
+          <h2>Diagram 1 — Current architecture</h2>
+          <span class="muted">Why the branch feels heavier than it needs to</span>
+        </div>
+        <svg class="diagram" viewBox="0 0 1100 500" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Current architecture diagram showing dual injection paths">
+          <defs>
+            <marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#66d9ef" />
+            </marker>
+          </defs>
+          <rect x="36" y="38" width="190" height="72" rx="14" fill="#162338" stroke="#66d9ef" />
+          <text x="131" y="67" fill="#e7eefc" text-anchor="middle" font-size="18" font-family="Arial">User selects text</text>
+          <text x="131" y="90" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">arbitrary website</text>
+
+          <rect x="292" y="24" width="330" height="106" rx="14" fill="#1c2740" stroke="#ffb86b" />
+          <text x="457" y="55" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">Manifest eager injection</text>
+          <text x="457" y="80" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">selection-trigger.js + store-core.js + entry-presenter.js</text>
+          <text x="457" y="101" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">shared.js + lens-lookup.js + lens-overlay.js + CSS</text>
+
+          <rect x="292" y="190" width="330" height="112" rx="14" fill="#1c2740" stroke="#ff7b8b" />
+          <text x="457" y="224" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">Background lazy injection</text>
+          <text x="457" y="247" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">background-impl.js checks if runtime exists</text>
+          <text x="457" y="268" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">and injects the heavy runtime on demand</text>
+
+          <rect x="706" y="108" width="324" height="108" rx="14" fill="#162338" stroke="#66d9ef" />
+          <text x="868" y="141" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">Lens overlay runtime</text>
+          <text x="868" y="165" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">word mode + sentence mode + rendering</text>
+          <text x="868" y="186" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">save actions + candidate resolution + bulk study</text>
+
+          <rect x="706" y="292" width="324" height="106" rx="14" fill="#1c2740" stroke="#ff7b8b" />
+          <text x="868" y="325" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">Architectural smell</text>
+          <text x="868" y="349" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">two answers to “how runtime arrives on page?”</text>
+          <text x="868" y="370" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">overlapping ownership + duplicated responsibility</text>
+
+          <line x1="226" y1="74" x2="292" y2="74" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowA)" />
+          <line x1="226" y1="92" x2="292" y2="236" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowA)" />
+          <line x1="622" y1="77" x2="706" y2="155" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowA)" />
+          <line x1="622" y1="246" x2="706" y2="182" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowA)" />
+          <line x1="868" y1="216" x2="868" y2="292" stroke="#ff7b8b" stroke-width="3" marker-end="url(#arrowA)" />
+        </svg>
+        <p class="footer-note">Core problem: the feature currently supports both <strong>global heavy injection</strong> and <strong>background-owned on-demand injection</strong>. That overlap should be deleted, not maintained.</p>
+      </article>
+
+      <article class="card">
+        <div class="diagram-title">
+          <h2>Diagram 2 — Proposed target architecture</h2>
+          <span class="muted">The cleaner “code-judo” version</span>
+        </div>
+        <svg class="diagram" viewBox="0 0 1100 470" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Target architecture with lightweight trigger and background-owned injection">
+          <defs>
+            <marker id="arrowB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#8ef0c4" />
+            </marker>
+          </defs>
+          <rect x="40" y="52" width="220" height="82" rx="14" fill="#162338" stroke="#8ef0c4" />
+          <text x="150" y="84" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">selection-trigger-lite.js</text>
+          <text x="150" y="108" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">heuristics + button only</text>
+
+          <rect x="334" y="52" width="210" height="82" rx="14" fill="#162338" stroke="#8ef0c4" />
+          <text x="439" y="84" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">background-lens.js</text>
+          <text x="439" y="108" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">canonical injection owner</text>
+
+          <rect x="624" y="52" width="202" height="82" rx="14" fill="#162338" stroke="#8ef0c4" />
+          <text x="725" y="84" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">lens-runtime.js</text>
+          <text x="725" y="108" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">bootstraps overlay session</text>
+
+          <rect x="894" y="52" width="170" height="82" rx="14" fill="#162338" stroke="#8ef0c4" />
+          <text x="979" y="84" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">lens-session.js</text>
+          <text x="979" y="108" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">stale async guard</text>
+
+          <rect x="250" y="232" width="210" height="82" rx="14" fill="#1c2740" stroke="#66d9ef" />
+          <text x="355" y="264" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">lens-word-mode.js</text>
+          <text x="355" y="288" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">single-word flow</text>
+
+          <rect x="470" y="232" width="220" height="82" rx="14" fill="#1c2740" stroke="#66d9ef" />
+          <text x="580" y="264" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">lens-sentence-mode.js</text>
+          <text x="580" y="288" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">tokens + per-word actions</text>
+
+          <rect x="700" y="232" width="180" height="82" rx="14" fill="#1c2740" stroke="#66d9ef" />
+          <text x="790" y="264" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">lens-render.js</text>
+          <text x="790" y="288" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">pure DOM / templates</text>
+
+          <rect x="890" y="232" width="170" height="82" rx="14" fill="#1c2740" stroke="#66d9ef" />
+          <text x="975" y="264" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">LodVaultStore</text>
+          <text x="975" y="288" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">persistence</text>
+
+          <line x1="260" y1="93" x2="334" y2="93" stroke="#8ef0c4" stroke-width="3" marker-end="url(#arrowB)" />
+          <line x1="544" y1="93" x2="624" y2="93" stroke="#8ef0c4" stroke-width="3" marker-end="url(#arrowB)" />
+          <line x1="826" y1="93" x2="894" y2="93" stroke="#8ef0c4" stroke-width="3" marker-end="url(#arrowB)" />
+          <line x1="725" y1="134" x2="725" y2="208" stroke="#8ef0c4" stroke-width="3" marker-end="url(#arrowB)" />
+          <line x1="725" y1="208" x2="355" y2="232" stroke="#8ef0c4" stroke-width="3" marker-end="url(#arrowB)" />
+          <line x1="725" y1="208" x2="580" y2="232" stroke="#8ef0c4" stroke-width="3" marker-end="url(#arrowB)" />
+          <line x1="725" y1="208" x2="790" y2="232" stroke="#8ef0c4" stroke-width="3" marker-end="url(#arrowB)" />
+          <line x1="355" y1="314" x2="700" y2="314" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowB)" />
+          <line x1="580" y1="314" x2="700" y2="314" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowB)" />
+          <line x1="880" y1="273" x2="890" y2="273" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowB)" />
+        </svg>
+        <p class="footer-note">One injection model, one session model, one persistence boundary. That is the version most likely to stay small and comprehensible.</p>
+      </article>
+
+      <article class="card half">
+        <h2>Why the current branch feels tangled</h2>
+        <div class="finding">
+          <strong>Finding 1:</strong> heavy scripts are globally injected even though the background already knows how to inject them on demand.
+        </div>
+        <div class="finding">
+          <strong>Finding 2:</strong> sentence-mode actions perform async work against mutable shared state without a strong session boundary.
+        </div>
+        <div class="finding">
+          <strong>Finding 3:</strong> <code>lens-overlay.js</code> has become shell + renderer + controller + state manager + persistence orchestrator.
+        </div>
+        <div class="finding">
+          <strong>Finding 4:</strong> a generated <code>background-bundle.js</code> is now checked in and normalized into the review surface.
+        </div>
+      </article>
+
+      <article class="card half">
+        <h2>Concrete simplification moves</h2>
+        <div class="recommendation">
+          <strong>Move 1:</strong> keep only <code>selection-trigger-lite.js</code> on arbitrary sites.
+        </div>
+        <div class="recommendation">
+          <strong>Move 2:</strong> let <code>background-lens.js</code> own all heavy runtime injection.
+        </div>
+        <div class="recommendation">
+          <strong>Move 3:</strong> create <code>lens-session.js</code> so async completions can be ignored when stale.
+        </div>
+        <div class="recommendation">
+          <strong>Move 4:</strong> split sentence mode and rendering out of the overlay shell.
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="diagram-title">
+          <h2>Diagram 3 — Session-safe async flow</h2>
+          <span class="muted">How stale async work should be contained</span>
+        </div>
+        <svg class="diagram" viewBox="0 0 1100 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Session-safe async flow diagram">
+          <defs>
+            <marker id="arrowC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#66d9ef" />
+            </marker>
+          </defs>
+          <rect x="46" y="74" width="190" height="72" rx="14" fill="#162338" stroke="#66d9ef" />
+          <text x="141" y="103" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">Open overlay</text>
+          <text x="141" y="126" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">selection arrives</text>
+
+          <rect x="296" y="74" width="204" height="72" rx="14" fill="#162338" stroke="#66d9ef" />
+          <text x="398" y="103" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">Create session #42</text>
+          <text x="398" y="126" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">capture token / state</text>
+
+          <rect x="566" y="74" width="220" height="72" rx="14" fill="#162338" stroke="#66d9ef" />
+          <text x="676" y="103" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">Start async work</text>
+          <text x="676" y="126" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">lookup / save / bulk action</text>
+
+          <rect x="858" y="58" width="192" height="104" rx="14" fill="#1c2740" stroke="#ffb86b" />
+          <text x="954" y="92" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">User opens new lookup</text>
+          <text x="954" y="116" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">session becomes #43</text>
+          <text x="954" y="137" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">#42 is now stale</text>
+
+          <rect x="320" y="246" width="250" height="82" rx="14" fill="#1c2740" stroke="#ff7b8b" />
+          <text x="445" y="276" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">Async callback completes</text>
+          <text x="445" y="299" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">old request wants to repaint UI</text>
+
+          <rect x="640" y="230" width="186" height="114" rx="14" fill="#162338" stroke="#8ef0c4" />
+          <text x="733" y="264" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">Session guard</text>
+          <text x="733" y="288" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">if active: render</text>
+          <text x="733" y="309" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">if stale: bail out</text>
+
+          <rect x="882" y="246" width="168" height="82" rx="14" fill="#162338" stroke="#8ef0c4" />
+          <text x="966" y="276" fill="#fff" text-anchor="middle" font-size="18" font-family="Arial">No stale repaint</text>
+          <text x="966" y="299" fill="#aab8d1" text-anchor="middle" font-size="14" font-family="Arial">newer UI stays correct</text>
+
+          <line x1="236" y1="110" x2="296" y2="110" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowC)" />
+          <line x1="500" y1="110" x2="566" y2="110" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowC)" />
+          <line x1="786" y1="110" x2="858" y2="110" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowC)" />
+          <line x1="676" y1="146" x2="445" y2="246" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowC)" />
+          <line x1="570" y1="287" x2="640" y2="287" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowC)" />
+          <line x1="826" y1="287" x2="882" y2="287" stroke="#66d9ef" stroke-width="3" marker-end="url(#arrowC)" />
+        </svg>
+        <p class="footer-note">A session token is the missing boundary that keeps old async work from mutating newer overlay state.</p>
+      </article>
+
+      <article class="card half">
+        <h2>Suggested ownership model</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Concern</th>
+                <th>Canonical owner</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Should Lens be offered on this page?</td>
+                <td><code>selection-trigger-lite.js</code></td>
+              </tr>
+              <tr>
+                <td>How does the heavy runtime get onto the page?</td>
+                <td><code>background-lens.js</code></td>
+              </tr>
+              <tr>
+                <td>What lookup is active right now?</td>
+                <td><code>lens-session.js</code></td>
+              </tr>
+              <tr>
+                <td>Word-mode orchestration</td>
+                <td><code>lens-word-mode.js</code></td>
+              </tr>
+              <tr>
+                <td>Sentence-mode orchestration</td>
+                <td><code>lens-sentence-mode.js</code></td>
+              </tr>
+              <tr>
+                <td>Persistence and list membership</td>
+                <td><code>LodVaultStore</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card half">
+        <h2>Suggested module boundaries</h2>
+        <div class="module-grid">
+          <div class="module">
+            <h3>selection-trigger-lite.js</h3>
+            <p>Selection heuristics, Luxembourgish page hints, floating button, background message dispatch.</p>
+          </div>
+          <div class="module">
+            <h3>background-lens.js</h3>
+            <p>Command handling, context menu, on-demand injection, approved API proxying.</p>
+          </div>
+          <div class="module">
+            <h3>lens-runtime.js</h3>
+            <p>Entry point for opening the overlay and creating a session.</p>
+          </div>
+          <div class="module">
+            <h3>lens-word-mode.js</h3>
+            <p>Single-word lookup, candidates, suggestions, save-state synchronization.</p>
+          </div>
+          <div class="module">
+            <h3>lens-sentence-mode.js</h3>
+            <p>Tokenized lookup, candidate resolution, per-word save toggles, bulk actions.</p>
+          </div>
+          <div class="module">
+            <h3>lens-render.js</h3>
+            <p>Pure rendering helpers or DOM patch functions. No fetches. No store writes.</p>
+          </div>
+          <div class="module">
+            <h3>lens-session.js</h3>
+            <p>Session ids, stale async invalidation, active session checks, guard helpers.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Migration plan</h2>
+        <ol>
+          <li><strong>Simplify injection first.</strong> Remove the heavy Lens runtime from all-sites manifest injection. Keep only the trigger globally injected.</li>
+          <li><strong>Add a session boundary.</strong> Convert sentence-mode async actions to require an active session before they mutate state or repaint.</li>
+          <li><strong>Split the overlay.</strong> Extract sentence mode first, then extract rendering, then reduce the shell to a thin coordinator.</li>
+          <li><strong>Clean up bundle ownership.</strong> Treat <code>background-bundle.js</code> as a generated build artifact rather than authored source.</li>
+        </ol>
+        <div class="recommendation">
+          The most important structural simplification is step 1. It removes the architectural overlap that currently makes the feature harder to reason about.
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

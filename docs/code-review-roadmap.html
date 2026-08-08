@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LODVault — Code Review: Issues, Gaps &amp; Top-10 Quick Wins</title>
+  <style>
+    :root {
+      --bg: #0b1520;
+      --surface: #111d2e;
+      --surface2: #192d44;
+      --surface3: #1f3a56;
+      --accent: #39a7c4;
+      --accent-dim: rgba(57,167,196,0.10);
+      --accent-lt: #a8dadc;
+      --danger: #e6606a;
+      --success: #5ec48a;
+      --warning: #e2c367;
+      --purple: #b48ce6;
+      --text: #e4eef4;
+      --text2: #b8cedb;
+      --muted: #6a8da6;
+      --border: #213858;
+      --border-a: rgba(57,167,196,0.24);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container { max-width: 980px; margin: 0 auto; padding: 40px 24px 80px; }
+
+    h1 { font-size: 28px; font-weight: 800; color: #fff; margin-bottom: 8px; }
+    h2 { font-size: 20px; font-weight: 700; color: #fff; margin: 40px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    h3 { font-size: 16px; font-weight: 700; color: var(--accent-lt); margin: 20px 0 8px; }
+
+    .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+
+    p, li { color: var(--text2); margin-bottom: 8px; }
+    li { margin-left: 20px; }
+    code { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 12px; color: var(--accent-lt); font-family: "SF Mono", Menlo, monospace; }
+
+    .intro { margin: 16px 0 24px; max-width: 720px; }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0 24px; font-size: 12px; color: var(--muted); }
+
+    /* --- Summary banner --- */
+    .verdict {
+      background: linear-gradient(135deg, var(--accent-dim), rgba(180,140,230,0.06));
+      border: 1px solid var(--border-a);
+      border-radius: 12px;
+      padding: 18px 22px;
+      margin: 20px 0 8px;
+    }
+    .verdict strong { color: #fff; }
+
+    /* --- Stat grid --- */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 16px 0 8px; }
+    .stat-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .stat-box .num { font-size: 24px; font-weight: 800; color: #fff; display: block; }
+    .stat-box .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+    /* --- Issue cards --- */
+    .issue {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 12px;
+    }
+    .issue.severity-high { border-left: 3px solid var(--danger); }
+    .issue.severity-med  { border-left: 3px solid var(--warning); }
+    .issue.severity-low  { border-left: 3px solid var(--accent); }
+    .issue h4 { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .issue p { margin-bottom: 4px; }
+    .issue .refs { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+    .badge {
+      display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+      padding: 2px 8px; border-radius: 99px; border: 1px solid transparent; vertical-align: middle;
+    }
+    .badge-high { color: var(--danger); border-color: rgba(230,96,106,0.4); background: rgba(230,96,106,0.08); }
+    .badge-med  { color: var(--warning); border-color: rgba(226,195,103,0.4); background: rgba(226,195,103,0.08); }
+    .badge-low  { color: var(--accent); border-color: var(--border-a); background: var(--accent-dim); }
+    .badge-effort-s { color: var(--success); border-color: rgba(94,196,138,0.4); background: rgba(94,196,138,0.08); }
+    .badge-effort-m { color: var(--warning); border-color: rgba(226,195,103,0.4); background: rgba(226,195,103,0.08); }
+    .badge-effort-l { color: var(--danger); border-color: rgba(230,96,106,0.4); background: rgba(230,96,106,0.08); }
+    .badge-impact { color: var(--purple); border-color: rgba(180,140,230,0.4); background: rgba(180,140,230,0.08); }
+
+    /* --- Gap table --- */
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 13px; }
+    th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: top; }
+    td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
+    .status-missing { color: var(--danger); font-weight: 700; }
+    .status-partial { color: var(--warning); font-weight: 700; }
+    .status-present { color: var(--success); font-weight: 700; }
+
+    /* --- Top 10 cards --- */
+    .win {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 22px;
+      margin-bottom: 14px;
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 4px 16px;
+    }
+    .win .rank {
+      grid-row: span 3;
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--accent-dim); border: 1px solid var(--border-a);
+      color: var(--accent-lt); font-size: 16px; font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .win.gold .rank { background: rgba(226,195,103,0.12); border-color: rgba(226,195,103,0.4); color: var(--warning); }
+    .win h4 { font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .win .why { color: var(--text2); }
+    .win .how { font-size: 13px; color: var(--muted); }
+    .win .how code { font-size: 11.5px; }
+
+    /* --- Matrix --- */
+    .matrix { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    @media (max-width: 700px) { .matrix { grid-template-columns: 1fr; } }
+    .quadrant {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px;
+    }
+    .quadrant h5 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+    .quadrant.q-do-first h5 { color: var(--success); }
+    .quadrant.q-plan h5 { color: var(--accent); }
+    .quadrant.q-fill h5 { color: var(--warning); }
+    .quadrant.q-avoid h5 { color: var(--muted); }
+    .quadrant li { font-size: 13px; margin-bottom: 4px; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); margin: 8px 0 20px; }
+
+    footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <p class="eyebrow">LODVault · Internal review · July 2026</p>
+    <h1>Code Review: Issues, Gaps &amp; Top-10 Quick Wins</h1>
+    <div class="meta-row">
+      <span>Scope: full extension source (<code>scripts/</code>, <code>pages/</code>, <code>styles/</code>, <code>manifest.json</code>)</span>
+      <span>Version reviewed: <code>2.0.0</code></span>
+    </div>
+
+    <div class="verdict">
+      <p><strong>Overall verdict: solid engineering core, unfinished product surface.</strong>
+      The storage, sync, and SPA-integration layers are carefully built (tombstone deletes, quota sharding, race-guarded async, verified sync).
+      The main risks are <strong>data-safety gaps</strong> (SRS progress and deletes are one misclick or one uninstall away from loss)
+      and a layer of <strong>UX polish that never shipped</strong>: the spaced-repetition plumbing exists but has no user-facing queue,
+      the UI is dark-only with weak keyboard affordances, and destructive actions have no safety net.
+      The good news: the ten highest-value improvements are all small, because the hard infrastructure is already done.</p>
+    </div>
+
+    <h2>Project snapshot</h2>
+    <div class="stat-grid">
+      <div class="stat-box"><span class="num">16.9k</span><span class="lbl">lines of JS</span></div>
+      <div class="stat-box"><span class="num">30</span><span class="lbl">source scripts</span></div>
+      <div class="stat-box"><span class="num">2.1k</span><span class="lbl">lines of CSS</span></div>
+      <div class="stat-box"><span class="num">4.5k</span><span class="lbl">lines of tests</span></div>
+      <div class="stat-box"><span class="num">4</span><span class="lbl">UI surfaces</span></div>
+      <div class="stat-box"><span class="num">MV3</span><span class="lbl">manifest</span></div>
+    </div>
+    <p>Four UI surfaces: <strong>popup</strong> (word management), <strong>page banner</strong> (injected into lod.lu articles),
+    <strong>Vault preview</strong> (full list + export), <strong>flashcards</strong> (study) — plus the <strong>LOD Lens</strong>
+    overlay for selected-text lookup on any site. Largest files: <code>store-core.js</code> (1,976 lines),
+    <code>popup-app.js</code> (1,753), <code>sync.js</code> (1,441).</p>
+
+    <!-- ============================== ISSUES ============================== -->
+    <h2>A · Issues found</h2>
+    <p class="intro">Grouped by category, ordered by severity within each group. File references point at the reviewed source.</p>
+
+    <h3>A1 · Data safety <span class="badge badge-high">most urgent</span></h3>
+
+    <div class="issue severity-high">
+      <h4>SRS progress is not backed up and not synced <span class="badge badge-high">high</span></h4>
+      <p>Flashcard review history lives in a separate <code>lodVault.flashcardMeta</code> key. The JSON backup exports only
+      <code>settings</code> + <code>entries</code>, and <code>sync.js</code> has no reference to flashcard data at all.
+      Uninstalling, switching devices, or restoring a backup silently wipes every review, streak, and interval the user has earned.</p>
+      <p class="refs">refs: <code>store-core.js:1746–1838</code> (meta + due logic), <code>popup-app.js:1137–1150</code> (backup builder), <code>sync.js</code> (no flashcard refs)</p>
+    </div>
+
+    <div class="issue severity-high">
+      <h4>Deletes are instant, with no confirmation and no undo — everywhere <span class="badge badge-high">high</span></h4>
+      <p>Deleting a word (and its note) is a single click in the popup, the current-word card, the preview page, and the lens.
+      Tombstone sync then faithfully propagates the mistake to every device. The codebase even has a toast/status system that could carry an "Undo" action.</p>
+      <p class="refs">refs: <code>popup-app.js:985–999, 1257–1270</code>, <code>preview.js:499–509</code></p>
+    </div>
+
+    <div class="issue severity-med">
+      <h4>Typing a note on an unsaved word silently force-saves it to Study <span class="badge badge-med">medium</span></h4>
+      <p>The note handler catches "Entry not found" and quietly toggles the word into the Study list as a side effect —
+      surprising behavior that is only hinted at in placeholder text.</p>
+      <p class="refs">refs: <code>popup-app.js:67–79</code></p>
+    </div>
+
+    <h3>A2 · UX &amp; usability</h3>
+
+    <div class="issue severity-high">
+      <h4>The SRS has no user-facing review queue <span class="badge badge-high">high</span></h4>
+      <p><code>dueAt</code> and <code>interval</code> are computed per word (hard → 1 day, good → ×2, easy → ×2.5), but the only consumer is a
+      priority boost inside "Smart" order. There is no "Due today" deck, no due-count badge, no daily target — the core loop of every
+      vocabulary tool is plumbed but never surfaced.</p>
+      <p class="refs">refs: <code>store-core.js:1798–1815</code>, sole consumer <code>flashcards.js:254–275</code></p>
+    </div>
+
+    <div class="issue severity-med">
+      <h4>Popup list is capped at 10 items with no filters and no pagination <span class="badge badge-med">medium</span></h4>
+      <p><code>LIST_LIMIT = 10</code>, sorted newest-first, with search as the only narrowing tool. You cannot view "only Favorites" or
+      "only Study", and there is no "show all" escape hatch other than opening the Vault page.</p>
+      <p class="refs">refs: <code>popup-app.js:1018–1023, 1231</code></p>
+    </div>
+
+    <div class="issue severity-med">
+      <h4>Preview rebuilds the entire iframe on every toggle <span class="badge badge-med">medium</span></h4>
+      <p>Every favorite/study toggle, delete, or note edit triggers a full <code>renderPreview()</code> — scroll position and
+      collapsed/expanded state are lost each time. Exports also ignore the active search/language filter: "Download HTML" refetches
+      <em>all</em> entries instead of exporting what you see.</p>
+      <p class="refs">refs: <code>preview.js:437–441, 546–583</code></p>
+    </div>
+
+    <div class="issue severity-med">
+      <h4>Missing micro-states: loading, empty CTAs, shortcut help <span class="badge badge-med">medium</span></h4>
+      <p>The popup shows "0 saved words" while storage is still loading (no skeleton). Empty states are one plain line of text with no call
+      to action. Flashcards supports ←/→, Space, 1/2/3, R — but the UI never tells anyone.</p>
+      <p class="refs">refs: <code>popup.html:153–155</code>, <code>flashcards.js:208–227</code> (undocumented shortcuts)</p>
+    </div>
+
+    <div class="issue severity-low">
+      <h4>Pronunciation is missing exactly where you read the word <span class="badge badge-low">low</span></h4>
+      <p>Audio playback exists in the popup, preview, and flashcards — but not in the <strong>page banner on lod.lu itself</strong> and not in the
+      <strong>LOD Lens overlay</strong>. The two surfaces where a learner encounters the word in context have no 🔊 button.</p>
+      <p class="refs">refs: <code>page-banner.js</code> (no audio), <code>lens-overlay-shell.js:283–320</code> (no audio)</p>
+    </div>
+
+    <h3>A3 · Accessibility &amp; theming</h3>
+
+    <div class="issue severity-med">
+      <h4>Dark-only UI, no reduced-motion support, zero <code>:focus-visible</code> styles <span class="badge badge-med">medium</span></h4>
+      <p>All five stylesheets hard-code a dark palette; the only <code>prefers-color-scheme</code> rule in the repo is in
+      <code>pages/import.html</code>. There is no <code>prefers-reduced-motion</code> handling (audio-pulse and dot-pulse animations run
+      unconditionally) and not a single <code>:focus-visible</code> rule — keyboard focus is effectively invisible, including on the
+      flashcard itself which is a <code>tabindex="0"</code> button.</p>
+      <p class="refs">refs: <code>styles/*.css</code>, <code>flashcards.html:80</code>, <code>content.css:78–79</code></p>
+    </div>
+
+    <div class="issue severity-med">
+      <h4>Keyboard &amp; screen-reader gaps in Lens and flashcards <span class="badge badge-med">medium</span></h4>
+      <p>The flashcard global <code>keydown</code> handler has no <code>event.target</code> guard — pressing Space/1/2/3 while a
+      <code>&lt;select&gt;</code> is focused hijacks the dropdown. In the Lens, sentence word-chips are <code>&lt;span&gt;</code>s and
+      accordion headers are <code>&lt;div&gt;</code>s (not focusable, no <code>aria-expanded</code>), the dialog has no focus trap or
+      <code>aria-modal</code>, and lookup status is not <code>aria-live</code>. Banner Fav/Study buttons lack <code>aria-pressed</code>.
+      Muted text <code>#5a7d96</code> on <code>#111d2e</code> is ≈3.8:1 — below WCAG AA 4.5:1 for small text.</p>
+      <p class="refs">refs: <code>flashcards.js:208</code>, <code>lens-render.js:68, 148–157</code>, <code>lens-overlay-shell.js:33</code>, <code>page-banner.js:317–323</code></p>
+    </div>
+
+    <h3>A4 · Code health</h3>
+
+    <div class="issue severity-med">
+      <h4>Triplicated core logic across storage, sync, and the background bundle <span class="badge badge-med">medium</span></h4>
+      <p><code>normalizeEntry</code>, <code>normalizeSettings</code>, <code>normalizeDeletedMap</code>, and the "max of
+      updatedAt/lastVisitedAt/createdAt" timestamp merge exist in three copies (store-core, sync fallbacks, background bundle).
+      Sync key strings (<code>"lodVault.m"</code> etc.) are hard-coded in popup-app instead of imported. Drift between copies is a
+      silent-corruption risk.</p>
+      <p class="refs">refs: <code>store-core.js:241–248, 389–407</code>, <code>sync.js:38–97</code>, <code>popup-app.js:137–141, 1056–1062</code></p>
+    </div>
+
+    <div class="issue severity-low">
+      <h4>Giant single-closure files; list rendering via innerHTML strings <span class="badge badge-low">low</span></h4>
+      <p><code>popup-app.js</code> mixes sync health, backup status, history import, notes, and list rendering in one 1,753-line IIFE.
+      The saved list is rendered as one escaped innerHTML template — currently safe, but fragile to extend. Four near-identical
+      status-tone helpers repeat the same class add/remove dance.</p>
+      <p class="refs">refs: <code>popup-app.js:461–512, 1174–1202</code></p>
+    </div>
+
+    <!-- ============================== GAPS ============================== -->
+    <h2>B · Feature gaps vs. a complete vocabulary tool</h2>
+    <table>
+      <thead>
+        <tr><th>Capability</th><th>Status</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Spaced repetition</td><td class="status-partial">Partial</td><td>dueAt/interval/streak computed, but no due queue, no ease factor, no interval cap, no lapse handling</td></tr>
+        <tr><td>Review-queue UX</td><td class="status-missing">Missing</td><td>No "Due today" deck, no due counts, no daily goal, no reminders/notifications</td></tr>
+        <tr><td>Progress portability</td><td class="status-missing">Missing</td><td>SRS meta excluded from JSON backup and from sync</td></tr>
+        <tr><td>Tags / categories</td><td class="status-missing">Missing</td><td>Schema has only three boolean flags (favorite / study / history)</td></tr>
+        <tr><td>Undo / delete safety</td><td class="status-missing">Missing</td><td>No confirmation, no undo on any surface</td></tr>
+        <tr><td>List filtering</td><td class="status-partial">Partial</td><td>Vault page has language filter + 4 sort modes; popup has search only; no list/POS/note filters anywhere</td></tr>
+        <tr><td>Quiz modes</td><td class="status-missing">Missing</td><td>Only self-graded flip cards — no multiple choice, typed answer, or listening mode</td></tr>
+        <tr><td>Bulk actions</td><td class="status-partial">Partial</td><td>Lens sentence mode has "Study all"; popup/preview have no multi-select, bulk delete, or bulk export</td></tr>
+        <tr><td>Filtered export</td><td class="status-missing">Missing</td><td>HTML/Anki downloads always export everything, ignoring active filters</td></tr>
+        <tr><td>Theming</td><td class="status-missing">Missing</td><td>Dark-only; no light theme, no reduced-motion, no OS-theme response</td></tr>
+        <tr><td>Onboarding</td><td class="status-missing">Missing</td><td>No first-run tour of auto mode / lens / flashcards; one-line empty state</td></tr>
+        <tr><td>Stats &amp; motivation</td><td class="status-partial">Partial</td><td>Streak/today/mastery exist on the flashcards page only; popup shows 4 plain counters</td></tr>
+        <tr><td>Deck-from-filter</td><td class="status-missing">Missing</td><td>Can't study "the words I just searched/filtered"; decks are list-based only</td></tr>
+        <tr><td>Card management mid-session</td><td class="status-missing">Missing</td><td>Can't edit, delete, bury, or suspend a card from the study view</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ============================== TOP 10 ============================== -->
+    <h2>C · Top 10 functionalities — minimal effort, maximum user value</h2>
+    <p class="intro">Ranked by value-per-effort. Every item reuses infrastructure that already exists; none requires new permissions,
+    backend work, or schema migrations beyond a tolerant additive change.</p>
+    <div class="legend">
+      <span><span class="badge badge-effort-s">S · hours</span> single-digit hour change</span>
+      <span><span class="badge badge-effort-m">M · 1–2 days</span> contained feature</span>
+      <span><span class="badge badge-impact">impact</span> user-visible value</span>
+    </div>
+
+    <div class="win gold">
+      <div class="rank">1</div>
+      <h4>"Due today" flashcard deck + due-count badge <span class="badge badge-effort-s">S · hours</span> <span class="badge badge-impact">impact ★★★★★</span></h4>
+      <p class="why">Turns the hidden SRS into the product's core habit loop: open flashcards → see "12 due today" → clear the queue.
+      The <code>dueAt</code> field and <code>computeFlashcardDueAt</code> already exist and are already written on every review —
+      this is purely surfacing data that is already there.</p>
+      <p class="how">How: add a "Due today" option to the existing deck filter in <code>flashcards.js:230–243</code> (filter entries where
+      <code>meta.dueAt &lt;= now</code>, same check as <code>flashcards.js:259–261</code>), plus a due count in the stats strip next to the
+      existing streak/today numbers (<code>flashcards.js:103–152</code>). Optionally show the count in the popup stats row.</p>
+    </div>
+
+    <div class="win gold">
+      <div class="rank">2</div>
+      <h4>Include SRS progress in JSON backup (and compact sync) <span class="badge badge-effort-s">S · hours</span> <span class="badge badge-impact">impact ★★★★★</span></h4>
+      <p class="why">Fixes the single worst data-loss hole: today, an uninstall or device switch silently destroys all review history,
+      streaks, and intervals. Users are actively told to "backup before uninstalling" — and the backup doesn't contain their progress.</p>
+      <p class="how">How: add <code>flashcardMeta</code> to <code>buildJsonExport</code> (<code>popup-app.js:1137–1150</code>) and merge it on restore
+      (max-<code>totalReviews</code> wins per word, same pattern as entries). Sync inclusion can follow later; the backup path alone closes the urgent hole.</p>
+    </div>
+
+    <div class="win gold">
+      <div class="rank">3</div>
+      <h4>Undo toast for deletes (or a confirm step) <span class="badge badge-effort-s">S · hours</span> <span class="badge badge-impact">impact ★★★★☆</span></h4>
+      <p class="why">One misclick currently deletes a word <em>and its personal note</em>, then syncs the deletion everywhere.
+      An "Undo" window converts a catastrophic action into a harmless one. The status/toast styling and the tombstone infrastructure
+      already exist — undo is just re-adding the cached entry object within a few seconds.</p>
+      <p class="how">How: in the popup list and preview delete handlers (<code>popup-app.js:1257–1270</code>, <code>preview.js:499–509</code>),
+      snapshot the entry, call <code>removeEntry</code>, show "Deleted <em>word</em> — Undo" in the existing status line; on undo, re-save the snapshot.</p>
+    </div>
+
+    <div class="win">
+      <div class="rank">4</div>
+      <h4>Popup list filters: All / Favorites / Study chips <span class="badge badge-effort-s">S · hours</span> <span class="badge badge-impact">impact ★★★★☆</span></h4>
+      <p class="why">The popup is the daily-driver surface, yet you can't answer "what's in my Study list?" without search gymnastics.
+      Entries already carry <code>favorite</code>/<code>study</code> boolean flags — filtering is a one-line predicate on data already in memory.
+      Pairs naturally with raising or paginating the hard 10-item cap.</p>
+      <p class="how">How: add a chip row above <code>#saved-list</code> (reuse the sync-language chip styling in <code>popup.html:43</code>),
+      filter <code>displayEntries</code> before the <code>LIST_LIMIT</code> slice (<code>popup-app.js:1231</code>), persist the choice in settings.</p>
+    </div>
+
+    <div class="win">
+      <div class="rank">5</div>
+      <h4>Pronunciation button in the page banner &amp; LOD Lens <span class="badge badge-effort-s">S · hours</span> <span class="badge badge-impact">impact ★★★★☆</span></h4>
+      <p class="why">Hearing the word is one of the most-used features, and it's absent exactly where learners encounter words in context:
+      the lod.lu article banner and the Lens overlay. <code>playLodAudio</code>/<code>createAudioController</code> already handle LOD's OGG
+      URLs and playing-state visuals — this is component reuse, not new work.</p>
+      <p class="how">How: add the existing audio button markup + controller to the banner row (<code>page-banner.js</code>) and to the Lens
+      word header (<code>lens-overlay-shell.js:283–320</code>), guarded by the same "has audio URL" check used in <code>flashcards.js:376–381</code>.</p>
+    </div>
+
+    <div class="win">
+      <div class="rank">6</div>
+      <h4>Accessibility quick pass: focus rings, aria states, keydown guard <span class="badge badge-effort-s">S · hours</span> <span class="badge badge-impact">impact ★★★★☆</span></h4>
+      <p class="why">A handful of one-line fixes that make the whole app keyboard-usable and screen-reader coherent — and fix the real bug
+      where pressing Space/1/2/3 with a deck <code>&lt;select&gt;</code> focused both rates the card and fights the dropdown.</p>
+      <p class="how">How: (a) add <code>:focus-visible</code> outlines to the four stylesheets; (b) guard <code>onKeyDown</code> in
+      <code>flashcards.js:208</code> with an <code>event.target</code> check; (c) add <code>aria-pressed</code> to banner + preview pills;
+      (d) make the Lens status <code>aria-live</code> and give chips/accordion headers <code>role="button" tabindex="0"</code>;
+      (e) bump <code>--muted</code> contrast toward AA.</p>
+    </div>
+
+    <div class="win">
+      <div class="rank">7</div>
+      <h4>Light theme via <code>prefers-color-scheme</code> + reduced-motion support <span class="badge badge-effort-m">M · 1–2 days</span> <span class="badge badge-impact">impact ★★★★☆</span></h4>
+      <p class="why">The UI is permanently dark. Many users read in daylight, and all colors already flow through CSS custom properties —
+      a light theme is a variable re-declaration per surface, not a redesign. <code>prefers-reduced-motion</code> is a two-rule addition
+      for the pulse animations.</p>
+      <p class="how">How: add a <code>@media (prefers-color-scheme: light)</code> block overriding the <code>:root</code> variables in each of
+      <code>styles/popup.css, flashcards.css, preview.css, content.css, lens-overlay.css</code> (start with popup + flashcards),
+      plus a <code>prefers-reduced-motion</code> block disabling the animations in <code>content.css:78–79</code>.</p>
+    </div>
+
+    <div class="win">
+      <div class="rank">8</div>
+      <h4>"Export what you see" — filtered HTML/Anki export from the Vault <span class="badge badge-effort-s">S · hours</span> <span class="badge badge-impact">impact ★★★☆☆</span></h4>
+      <p class="why">Users filter to their French-translation words or a search result, hit Download, and get <em>everything</em> instead.
+      Exporting the current view makes the feature predictable and enables curated exports (e.g. an Anki deck of exactly one topic).</p>
+      <p class="how">How: <code>downloadHtml</code>/<code>downloadAnki</code> (<code>preview.js:568–583</code>) currently refetch all entries;
+      pass the already-filtered entry list from the active search/language state instead. One optional checkbox: "Export all words".</p>
+    </div>
+
+    <div class="win">
+      <div class="rank">9</div>
+      <h4>Streak + today stats in the popup; shortcut legend in flashcards <span class="badge badge-effort-s">S · hours</span> <span class="badge badge-impact">impact ★★★☆☆</span></h4>
+      <p class="why">The motivation loop (🔥 streak, reviewed-today count) is already computed by <code>computeFlashcardStreak</code> but only
+      visible on the flashcards page. Putting it in the popup — the surface users actually open — plus a one-line "Space reveal · 1/2/3 rate ·
+      R flip" hint makes two existing features discoverable.</p>
+      <p class="how">How: extend the popup stats row (<code>popup.html:85–104</code>) with two counters fed by the existing streak/today
+      computation; add a static hint line under the flashcard controls (<code>flashcards.html:107–111</code>).</p>
+    </div>
+
+    <div class="win">
+      <div class="rank">10</div>
+      <h4>Real empty states + 3-step first-run onboarding <span class="badge badge-effort-s">S · hours</span> <span class="badge badge-impact">impact ★★★☆☆</span></h4>
+      <p class="why">Today the empty popup says one sentence; the flashcards empty state has no call to action; nothing tells new users that
+      Auto mode, history import, or the Lens selection trigger exist. Better empty states are the cheapest retention feature there is —
+      pure HTML/CSS against states that already exist.</p>
+      <p class="how">How: replace the one-liners in <code>popup.html:153–155</code> and <code>flashcards.html:72–74</code> with a 3-step mini-guide
+      ("1. Open a word on lod.lu · 2. Save to Study · 3. Review here daily") plus a primary button that deep-links to lod.lu or the Vault.</p>
+    </div>
+
+    <!-- ============================== MATRIX ============================== -->
+    <h2>D · Effort / impact matrix</h2>
+    <div class="matrix">
+      <div class="quadrant q-do-first">
+        <h5>Do first — low effort, high impact</h5>
+        <ul>
+          <li>#1 Due-today deck &amp; badge</li>
+          <li>#2 SRS data in backup</li>
+          <li>#3 Delete undo</li>
+          <li>#4 Popup list filters</li>
+          <li>#5 Audio in banner &amp; lens</li>
+        </ul>
+      </div>
+      <div class="quadrant q-plan">
+        <h5>Plan — higher effort, high impact</h5>
+        <ul>
+          <li>Tags / custom lists (schema change)</li>
+          <li>Quiz modes: multiple choice, typed answer</li>
+          <li>Due-card reminders (alarms + notifications permission)</li>
+          <li>Split <code>popup-app.js</code> / dedupe store helpers</li>
+        </ul>
+      </div>
+      <div class="quadrant q-fill">
+        <h5>Fill in — low effort, moderate impact</h5>
+        <ul>
+          <li>#6 Accessibility quick pass</li>
+          <li>#8 Filtered export</li>
+          <li>#9 Popup streak + shortcut legend</li>
+          <li>#10 Empty states / onboarding</li>
+        </ul>
+      </div>
+      <div class="quadrant q-avoid">
+        <h5>Not yet — defer</h5>
+        <ul>
+          <li>Full SM-2/Anki-grade scheduler (ease factors, lapses) — current ×2/×2.5 is fine until the queue exists</li>
+          <li>Accounts / cloud backend — contradicts the local-first mission</li>
+          <li>Firefox port — explicitly out of scope per MISSION.md</li>
+        </ul>
+      </div>
+    </div>
+
+    <footer>
+      <p>Generated from a full source review of LODVault v2.0.0 · All line references verified against the working tree at review time.
+      Related docs: <code>docs/ux-button-audit.html</code>, <code>docs/lens-architecture-review.html</code>.</p>
+    </footer>
+
+  </div>
+</body>
+</html>

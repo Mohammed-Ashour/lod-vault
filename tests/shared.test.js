@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { JSDOM } = require("jsdom");
 
 const { loadSharedStore } = require("./helpers/loaders");
@@ -12,7 +14,7 @@ test("getIdFromUrl extracts and decodes article ids", () => {
   assert.equal(store.getIdFromUrl("https://lod.lu/"), "");
 });
 
-test("setHtml replaces content with parsed markup and keeps it inert", () => {
+test("setHtml replaces content with parsed markup", () => {
   const { store } = loadSharedStore();
   const dom = new JSDOM('<div id="target"><p>old</p></div>');
   const target = dom.window.document.getElementById("target");
@@ -24,9 +26,29 @@ test("setHtml replaces content with parsed markup and keeps it inert", () => {
   store.setHtml(target, "");
   assert.equal(target.children.length, 0);
 
+  // Script nodes are parsed like innerHTML would (and never executed in any
+  // DOMParser output); execution cannot be asserted here because jsdom runs
+  // with scripts disabled. The injection boundary is the escape-first
+  // contract, enforced by the scan test below.
   store.setHtml(target, '<img src="x" onerror="window.__pwned = 1"><script>window.__pwned = 1</script>');
-  assert.equal(target.querySelectorAll("script").length, 1, "script node is parsed but never executed");
-  assert.equal(dom.window.__pwned, undefined, "inline handlers and scripts stay inert");
+  assert.equal(target.querySelectorAll("script").length, 1);
+});
+
+test("no dynamic innerHTML assignments outside setHtml", () => {
+  const scriptsDir = path.join(__dirname, "..", "scripts");
+  const offenders = [];
+  for (const name of fs.readdirSync(scriptsDir).filter((file) => file.endsWith(".js"))) {
+    const lines = fs.readFileSync(path.join(scriptsDir, name), "utf8").split("\n");
+    lines.forEach((line, index) => {
+      const match = line.match(/\.innerHTML\s*\+?=/);
+      if (!match) return;
+      const rhs = line.slice(match.index + match[0].length).trim();
+      if (!/^("|'|`)/.test(rhs)) {
+        offenders.push(`${name}:${index + 1}`);
+      }
+    });
+  }
+  assert.deepEqual(offenders, [], "route dynamic markup through LodVaultStore.setHtml");
 });
 
 test("normalizeEntry trims values and derives id from the url", () => {

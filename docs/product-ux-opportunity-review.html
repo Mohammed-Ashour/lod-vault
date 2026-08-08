@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LODVault product and UX review</title>
+  <style>
+    :root {
+      --ink: #10202e;
+      --muted: #607586;
+      --line: #d9e3e8;
+      --paper: #f4f7f6;
+      --white: #ffffff;
+      --navy: #102a3d;
+      --navy-2: #163c52;
+      --teal: #087d83;
+      --teal-soft: #e3f4f1;
+      --gold: #b77d12;
+      --gold-soft: #fff5db;
+      --red: #bf4d47;
+      --red-soft: #fff0ef;
+      --blue: #286f9d;
+      --blue-soft: #eaf4fb;
+      --shadow: 0 12px 36px rgba(16, 42, 61, .08);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    a { color: inherit; }
+    .wrap { width: min(1180px, calc(100% - 40px)); margin: 0 auto; }
+    .hero { background: var(--navy); color: #f8fcfd; padding: 64px 0 0; overflow: hidden; }
+    .hero-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 56px; align-items: end; }
+    .eyebrow, .section-kicker { margin: 0 0 12px; color: #76d7d1; font-size: 11px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { max-width: 760px; margin-bottom: 18px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(42px, 6vw, 76px); font-weight: 500; letter-spacing: -.055em; line-height: .96; }
+    .hero-copy { max-width: 650px; margin-bottom: 38px; color: #c0d1db; font-size: 18px; }
+    .hero-copy strong { color: #fff; font-weight: 650; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 34px; }
+    .pill { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border: 1px solid rgba(173, 224, 220, .24); border-radius: 999px; color: #cde8e5; font-size: 12px; font-weight: 700; }
+    .hero-aside { position: relative; min-height: 310px; padding: 26px; background: linear-gradient(145deg, #1b5166, #0f2b3f 72%); border: 1px solid rgba(180, 231, 227, .17); border-radius: 18px 18px 0 0; }
+    .hero-aside:after { content: ""; position: absolute; right: -40px; bottom: -55px; width: 230px; height: 230px; border: 44px solid rgba(118, 215, 209, .14); border-radius: 50%; }
+    .aside-title { position: relative; z-index: 1; margin-bottom: 28px; color: #d7f4f0; font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .finding { position: relative; z-index: 1; display: grid; grid-template-columns: 46px 1fr; gap: 12px; align-items: center; padding: 13px 0; border-top: 1px solid rgba(218, 245, 242, .16); }
+    .finding b { color: #fff; font-size: 24px; line-height: 1; }
+    .finding span { color: #c5d9e1; font-size: 13px; line-height: 1.3; }
+    nav { position: sticky; top: 0; z-index: 10; background: rgba(255,255,255,.94); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+    nav .wrap { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 54px; }
+    .brand { color: var(--teal); font-size: 12px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+    .links { display: flex; gap: 19px; overflow-x: auto; }
+    .links a { color: var(--muted); font-size: 13px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+    .links a:hover { color: var(--teal); }
+    main { padding: 72px 0 90px; }
+    section { scroll-margin-top: 70px; }
+    .section-head { display: grid; grid-template-columns: .64fr 1.36fr; gap: 28px; margin-bottom: 28px; }
+    .section-head h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(30px, 3vw, 45px); font-weight: 500; letter-spacing: -.04em; line-height: 1; }
+    .section-head > p { max-width: 670px; margin: 2px 0 0; color: var(--muted); font-size: 16px; }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .metric { padding: 21px 20px 20px 0; border-right: 1px solid var(--line); }
+    .metric + .metric { padding-left: 20px; }
+    .metric:last-child { border-right: 0; }
+    .metric strong { display: block; color: var(--teal); font-family: Georgia, "Times New Roman", serif; font-size: 36px; font-weight: 500; letter-spacing: -.04em; line-height: 1; }
+    .metric span { display: block; margin-top: 7px; color: var(--muted); font-size: 12px; font-weight: 700; line-height: 1.3; }
+    .callout { margin: 45px 0 78px; padding: 22px 26px; background: var(--teal-soft); border-left: 4px solid var(--teal); color: #245561; font-size: 16px; }
+    .callout strong { color: #0f4f55; }
+    .map { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+    .map-cell { min-height: 168px; padding: 18px; background: var(--white); }
+    .map-step { display: block; margin-bottom: 28px; color: var(--teal); font-size: 11px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+    .map-cell h3 { margin-bottom: 7px; font-size: 16px; }
+    .map-cell p { margin: 0; color: var(--muted); font-size: 13px; }
+    .map-cell small { display: inline-block; margin-top: 13px; padding: 3px 7px; background: #edf6f8; border-radius: 99px; color: var(--blue); font-size: 11px; font-weight: 750; }
+    .issues { display: grid; gap: 10px; }
+    .issue { display: grid; grid-template-columns: 105px minmax(180px, .66fr) minmax(280px, 1.35fr) minmax(205px, .85fr); gap: 18px; align-items: start; padding: 20px 0; border-top: 1px solid var(--line); }
+    .issue:last-child { border-bottom: 1px solid var(--line); }
+    .severity { display: inline-flex; width: max-content; padding: 4px 8px; border-radius: 99px; font-size: 11px; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
+    .p0 { background: var(--red-soft); color: var(--red); }
+    .p1 { background: var(--gold-soft); color: #936000; }
+    .p2 { background: var(--blue-soft); color: var(--blue); }
+    .issue h3 { margin: 7px 0 0; font-size: 16px; line-height: 1.25; }
+    .issue p { margin: 0; color: #3f5869; font-size: 14px; }
+    .evidence { padding: 10px 12px; background: #edf3f5; border-radius: 5px; color: #526b7b; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.5; }
+    .evidence b { color: #31596d; font-family: inherit; }
+    .gap-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .gap { padding: 24px; background: var(--white); border-top: 3px solid var(--teal); box-shadow: var(--shadow); }
+    .gap:nth-child(2) { border-color: var(--gold); }
+    .gap:nth-child(3) { border-color: var(--blue); }
+    .gap h3 { margin-bottom: 9px; font-size: 18px; }
+    .gap p { margin: 0; color: var(--muted); }
+    .priority-intro { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-bottom: 20px; }
+    .priority-intro p { max-width: 670px; margin: 0; color: var(--muted); }
+    .legend { display: flex; gap: 8px; flex-wrap: wrap; justify-content: end; }
+    .legend span, .effort { padding: 4px 8px; border-radius: 99px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .effort-s { background: var(--teal-soft); color: #096b70; }
+    .effort-m { background: var(--gold-soft); color: #946300; }
+    .table-wrap { overflow-x: auto; background: var(--white); box-shadow: var(--shadow); }
+    table { width: 100%; border-collapse: collapse; min-width: 920px; }
+    th { padding: 13px 16px; background: #e8f0f1; color: #587181; font-size: 11px; font-weight: 850; letter-spacing: .08em; text-align: left; text-transform: uppercase; }
+    td { padding: 17px 16px; vertical-align: top; border-top: 1px solid var(--line); font-size: 13px; }
+    td.rank { color: var(--teal); font-family: Georgia, serif; font-size: 25px; line-height: 1; }
+    td.feature strong { display: block; margin-bottom: 4px; font-size: 15px; }
+    td.feature span, td.note { color: var(--muted); }
+    td.value { color: #315768; }
+    .plan { margin-top: 76px; padding: 36px; background: var(--navy); color: #e7f4f6; }
+    .plan .section-kicker { color: #76d7d1; }
+    .plan h2 { max-width: 600px; font-family: Georgia, serif; font-size: 38px; font-weight: 500; letter-spacing: -.04em; line-height: 1.04; }
+    .plan-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 28px; }
+    .plan-step { padding-top: 16px; border-top: 1px solid rgba(214,242,240,.25); }
+    .plan-step b { display: block; margin-bottom: 8px; color: #76d7d1; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
+    .plan-step h3 { margin-bottom: 8px; color: #fff; font-size: 18px; }
+    .plan-step p { margin: 0; color: #bcd0d9; font-size: 14px; }
+    .method { margin-top: 72px; padding-top: 24px; border-top: 1px solid var(--line); display: grid; grid-template-columns: .7fr 1.3fr; gap: 28px; }
+    .method h2 { margin: 0; font-size: 18px; }
+    .method p, .method li { color: var(--muted); font-size: 13px; }
+    .method ul { margin: 0; padding-left: 18px; }
+    footer { padding: 30px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media (max-width: 900px) {
+      .hero-grid, .section-head, .method { grid-template-columns: 1fr; gap: 18px; }
+      .hero-aside { min-height: auto; }
+      .summary, .map, .gap-grid, .plan-grid { grid-template-columns: repeat(2, 1fr); }
+      .issue { grid-template-columns: 90px 1fr; }
+      .issue > :nth-child(3), .issue > :nth-child(4) { grid-column: 2; }
+    }
+    @media (max-width: 580px) {
+      .wrap { width: min(100% - 28px, 1180px); }
+      .hero { padding-top: 42px; }
+      .hero-meta { padding-bottom: 20px; }
+      main { padding-top: 48px; }
+      .summary, .map, .gap-grid, .plan-grid { grid-template-columns: 1fr; }
+      .metric, .metric + .metric { padding: 17px 0; border-right: 0; border-bottom: 1px solid var(--line); }
+      .metric:last-child { border-bottom: 0; }
+      .issue { grid-template-columns: 1fr; gap: 9px; }
+      .issue > :nth-child(3), .issue > :nth-child(4) { grid-column: auto; }
+      .priority-intro { align-items: start; flex-direction: column; }
+      .legend { justify-content: start; }
+      .plan { margin-inline: -14px; padding: 28px 14px; }
+      .links { gap: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow">Independent product & UX review · 23 February 2026</p>
+        <h1>A solid vocabulary vault that needs a clearer study routine.</h1>
+        <p class="hero-copy">LODVault makes it easy to save Luxembourgish words while reading, keep them locally, and review them as cards. The next step is not more ways to capture words. Learners need a clear next study action and confidence that their saved work is safe.</p>
+        <div class="hero-meta">
+          <span class="pill">Extension v2.0.0</span>
+          <span class="pill">Chrome + Firefox build</span>
+          <span class="pill">144 automated tests passing</span>
+          <span class="pill">Review based on source + shipped UI</span>
+        </div>
+      </div>
+      <aside class="hero-aside" aria-label="Top findings">
+        <p class="aside-title">Executive read</p>
+        <div class="finding"><b>01</b><span>The 420px popup tries to handle saving, sync, backup, import, search, and navigation all at once.</span></div>
+        <div class="finding"><b>02</b><span>The app stores due dates, but it never tells the learner what to study next.</span></div>
+        <div class="finding"><b>03</b><span>One setting can remove translations saved locally, which makes the vault harder to trust.</span></div>
+      </aside>
+    </div>
+  </header>
+
+  <nav aria-label="Review navigation">
+    <div class="wrap">
+      <span class="brand">LODVault review</span>
+      <div class="links">
+        <a href="#read">Readout</a>
+        <a href="#tracker">Tracker</a>
+        <a href="#journey">Journey</a>
+        <a href="#issues">Issues</a>
+        <a href="#gaps">Gaps</a>
+        <a href="#top-10">Top 10</a>
+        <a href="#plan">Plan</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <section id="read">
+      <div class="section-head">
+        <div><p class="section-kicker">The readout</p><h2>Strong foundation. Uneven prioritisation.</h2></div>
+        <p>The extension already supports page capture, Lens and sentence lookup, notes, backup and restore, history import, browser sync, export, and flashcards. That is a lot for a small local-first tool. Its main screens, however, put data-management controls ahead of the learner's next task.</p>
+      </div>
+      <div class="summary" aria-label="Review summary metrics">
+        <div class="metric"><strong>8</strong><span>primary user capabilities already shipped</span></div>
+        <div class="metric"><strong>3</strong><span>high-priority trust or usability issues</span></div>
+        <div class="metric"><strong>10</strong><span>small, value-led additions ranked below</span></div>
+        <div class="metric"><strong>2</strong><span>release-quality warnings to resolve before AMO submission</span></div>
+      </div>
+      <div class="callout"><strong>Product direction:</strong> make the vault support a simple daily study habit instead of presenting a long list of controls. Put "What should I study?" and "Is my work safe?" ahead of sync details, export formats, and raw totals.</div>
+    </section>
+
+    <section id="tracker" style="margin-top:78px">
+      <div class="section-head">
+        <div><p class="section-kicker">Tracker reconciliation</p><h2>Reviewed, deduplicated, and labelled.</h2></div>
+        <p>After writing this report, the live GitHub tracker was checked against the current source. Issues whose main claim still holds were kept. Others were narrowed where they described the current behavior too broadly, then linked to the findings below.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Disposition</th><th>Issues</th><th>Labels / context</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Closed as invalid</strong></td><td><a href="https://github.com/Mohammed-Ashour/lod-vault/issues/6">#6</a>: unsaved-word note flow</td><td class="note">The current placeholder and status explicitly say that adding a note saves the word to Study; it is not a silent side effect. Label: <code>invalid</code>.</td></tr>
+            <tr><td><strong>Corrected</strong></td><td><a href="https://github.com/Mohammed-Ashour/lod-vault/issues/10">#10</a> Lens pronunciation; <a href="https://github.com/Mohammed-Ashour/lod-vault/issues/15">#15</a> Preview rerender</td><td class="note">#10 no longer claims the LOD page banner needs duplicate audio, because the LOD article has a native player. #15 is scoped to toggle/delete rebuilds; note saves do not rebuild the iframe.</td></tr>
+            <tr><td><strong>Existing matches</strong></td><td><a href="https://github.com/Mohammed-Ashour/lod-vault/issues/4">#4</a>, <a href="https://github.com/Mohammed-Ashour/lod-vault/issues/5">#5</a>, <a href="https://github.com/Mohammed-Ashour/lod-vault/issues/7">#7</a> to <a href="https://github.com/Mohammed-Ashour/lod-vault/issues/9">#9</a>, <a href="https://github.com/Mohammed-Ashour/lod-vault/issues/11">#11</a> to <a href="https://github.com/Mohammed-Ashour/lod-vault/issues/21">#21</a></td><td class="note">Covers SRS backup, delete undo, keyboard/accessibility, due deck, popup filters, themes, filtered export, onboarding, tags, quiz modes, reminders, and maintainability. Existing labels were retained.</td></tr>
+            <tr><td><strong>New from this review</strong></td><td><a href="https://github.com/Mohammed-Ashour/lod-vault/issues/23">#23</a>, <a href="https://github.com/Mohammed-Ashour/lod-vault/issues/24">#24</a>, <a href="https://github.com/Mohammed-Ashour/lod-vault/issues/25">#25</a>, <a href="https://github.com/Mohammed-Ashour/lod-vault/issues/26">#26</a>, <a href="https://github.com/Mohammed-Ashour/lod-vault/issues/27">#27</a>, <a href="https://github.com/Mohammed-Ashour/lod-vault/issues/28">#28</a></td><td class="note">Labels applied: <code>bug</code>, <code>enhancement</code>, <code>data-safety</code>, <code>ux</code>, <code>roadmap</code>, and <code>code-quality</code>, as appropriate.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="journey" style="margin-top:78px">
+      <div class="section-head">
+        <div><p class="section-kicker">Current journey</p><h2>Capture is excellent; return use is less directed.</h2></div>
+        <p>The extension offers several well-built ways to start. What is missing is a clear path from saving a word to coming back and studying it regularly.</p>
+      </div>
+      <div class="map">
+        <article class="map-cell"><span class="map-step">01 · Discover</span><h3>Read or select text</h3><p>LOD article banner saves a word in place. Lens can translate a selected word or sentence on other sites.</p><small>Strong capability</small></article>
+        <article class="map-cell"><span class="map-step">02 · Capture</span><h3>Choose Favorite / Study</h3><p>Notes, pronunciation, translations and article metadata travel with the entry.</p><small>Fast, contextual action</small></article>
+        <article class="map-cell"><span class="map-step">03 · Organise</span><h3>Search the vault</h3><p>Users can search, sort, inspect history and edit notes, but only have three fixed lists.</p><small>Limited retrieval structure</small></article>
+        <article class="map-cell"><span class="map-step">04 · Learn</span><h3>Open flashcards</h3><p>Cards support ratings and store due dates, yet the starting choice is a large deck rather than a focused review task.</p><small>Learning loop incomplete</small></article>
+      </div>
+    </section>
+
+    <section id="issues" style="margin-top:78px">
+      <div class="section-head">
+        <div><p class="section-kicker">Issues found</p><h2>Fix trust and focus before adding breadth.</h2></div>
+        <p>These findings come from the product and code, rather than from earlier repository reviews. Severity reflects the likely effect on learners and their confidence in the app, not how hard each change is to build.</p>
+      </div>
+      <div class="issues">
+        <article class="issue">
+          <div><span class="severity p0">P0 · trust</span><h3>Language selection is destructive</h3></div>
+          <p>"Saved languages" sounds like a sync preference. Instead, changing it rewrites every saved entry and removes translations that were not selected from local storage. A learner trying to reduce sync size can lose useful French, German, or English context.</p>
+          <div class="evidence"><b>Evidence</b><br><code>scripts/store-core.js</code><br><code>setSyncLanguagesDirect()</code> filters the full entry map before persistence.<br><br><code>pages/popup.html</code> calls this "Saved languages."</div>
+          <p><b>Recommendation:</b> retain all local translations; filter only the compact sync payload. If removal remains intentional, require an explicit destructive confirmation and a restore path.</p>
+        </article>
+        <article class="issue">
+          <div><span class="severity p1">P1 · UX</span><h3>The popup has no primary job</h3></div>
+          <p>The first screen shows Auto mode, language settings, sync capacity, pull and push, the current word, counts, search, backup, restore, and history import. Maintenance controls compete with the task the learner came to do.</p>
+          <div class="evidence"><b>Evidence</b><br><code>pages/popup.html</code> contains all control groups in one vertical flow.<br><br><code>styles/popup.css</code> fixes the popup at <code>420px</code> wide.</div>
+          <p><b>Recommendation:</b> default to Current word + Study now + recent words. Move sync, history import, and backup behind a compact "Data & settings" disclosure or dedicated settings page.</p>
+        </article>
+        <article class="issue">
+          <div><span class="severity p1">P1 · learning</span><h3>Due-state is computed, not productised</h3></div>
+          <p>Ratings calculate <code>dueAt</code> and a simple interval, and "Smart" sorting considers due cards. But there is no due count, daily target, or "Start due review" button. Opening a vault of 406 entries as a 406-card deck makes it hard to know where to start.</p>
+          <div class="evidence"><b>Evidence</b><br><code>scripts/store-core.js</code> stores <code>dueAt</code> and <code>interval</code>.<br><br><code>pages/flashcards.html</code> offers Study / Favorites / All; no Due deck.</div>
+          <p><b>Recommendation:</b> surface a Due deck as the default, with "12 due · 5 new" and a small daily target. This reuses existing review metadata.</p>
+        </article>
+        <article class="issue">
+          <div><span class="severity p1">P1 · safety</span><h3>Destructive actions lack recovery</h3></div>
+          <p>Remove actions delete an entry immediately in the popup and Vault. Tombstones keep sync consistent, but the learner gets no confirmation, undo option, or recycle bin. One accidental click can remove a note and review history.</p>
+          <div class="evidence"><b>Evidence</b><br><code>scripts/popup-app.js</code> and <code>scripts/preview.js</code> call <code>removeEntry()</code> directly.<br><br><code>removeEntryDirect()</code> deletes from the entry map.</div>
+          <p><b>Recommendation:</b> show an Undo toast for 6 to 10 seconds with the complete entry in memory. It is faster and less disruptive than modal confirmation.</p>
+        </article>
+        <article class="issue">
+          <div><span class="severity p2">P2 · adoption</span><h3>Lens is powerful but intentionally hidden</h3></div>
+          <p>The floating trigger appears only after a context-menu or keyboard action loads the runtime. That respects privacy, but first-time users are not told about the shortcut or the two-step activation.</p>
+          <div class="evidence"><b>Evidence</b><br><code>scripts/selection-trigger.js</code> hides the trigger until <code>LodVaultLensRuntime</code> exists.<br><br>Shortcut: <code>Alt+Shift+L</code>.</div>
+          <p><b>Recommendation:</b> add a one-time "Translate selections with Lens" hint in the empty vault and popup, including the shortcut and context-menu route.</p>
+        </article>
+        <article class="issue">
+          <div><span class="severity p2">P2 · retrieval</span><h3>Three fixed lists do not scale</h3></div>
+          <p>Favorite, Study, and History describe status, not why a learner saved a word. There is no way to group "work vocabulary," "A2 verbs," or "words from today's article" and then review or export that group.</p>
+          <div class="evidence"><b>Evidence</b><br><code>scripts/store-core.js</code> normalises only <code>favorite</code>, <code>study</code>, and <code>history</code> memberships.<br><br>Vault filtering is language + search + sort.</div>
+          <p><b>Recommendation:</b> start with optional freeform tags, not full deck management. Tags unlock filtering, review selection, and purposeful exports.</p>
+        </article>
+        <article class="issue">
+          <div><span class="severity p2">P2 · clarity</span><h3>Backup and restore do not show consequences first</h3></div>
+          <p>Backup status is visible, but restore merges a file as soon as the user chooses it. There is no chance to see how many entries are new, changed, or conflicting before the import.</p>
+          <div class="evidence"><b>Evidence</b><br><code>pages/import.html</code> describes a merge and has one file input.<br><br><code>importJsonDirect()</code> merges while parsing the selected file.</div>
+          <p><b>Recommendation:</b> parse first, show a compact "will add / merge / skip" summary, then let the user confirm. Keep the present merge default.</p>
+        </article>
+        <article class="issue">
+          <div><span class="severity p2">P2 · quality</span><h3>Firefox release lint is not clean</h3></div>
+          <p>The build succeeds, but Firefox lint reports 17 warnings: there is no explicit data-collection declaration and dynamic <code>innerHTML</code> assignments are flagged. Much of the dynamic text is escaped, so the warnings do not prove an exploit. They still make release checks noisier than they should be.</p>
+          <div class="evidence"><b>Evidence</b><br><code>npm run lint</code> completed with 0 errors and 17 warnings.<br><br>Warnings include <code>MISSING_DATA_COLLECTION_PERMISSIONS</code> and <code>UNSAFE_VAR_ASSIGNMENT</code>.</div>
+          <p><b>Recommendation:</b> add Firefox's no-data declaration and reduce/suppress documented safe markup construction. Treat any unsanitised boundary as a security review item.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="gaps" style="margin-top:78px">
+      <div class="section-head">
+        <div><p class="section-kicker">Product gaps</p><h2>What the learner cannot yet do.</h2></div>
+        <p>The extension covers a lot for a local-first browser tool. It is missing a few connecting pieces that help people stay motivated, find the right words, trust their data, and return to study with little effort.</p>
+      </div>
+      <div class="gap-grid">
+        <article class="gap"><h3>Habit formation</h3><p>No daily goal, due count, reminder, "continue yesterday's session," or visible progress toward a manageable practice. The app records streak data but does not use it to shape behaviour.</p></article>
+        <article class="gap"><h3>Meaningful grouping</h3><p>No custom tags or learner-defined groups. The vocabulary collection cannot mirror the learner's course, job, reading source, grammar topic, or confidence level.</p></article>
+        <article class="gap"><h3>Safe data operations</h3><p>No preview before restore, undo after deletion, or clear distinction between local preservation and sync payload reduction. The data model is stronger than the reassurance around it.</p></article>
+        <article class="gap"><h3>First-run guidance</h3><p>The empty state is one sentence. It does not explain the page banner, auto mode trade-off, Lens, or the next action that produces a useful first flashcard session.</p></article>
+        <article class="gap"><h3>Focused vault browsing</h3><p>The full Vault has search, language filter, and sort, but lacks quick views for Study, Favorites, History, no-note, no-translation, and due words. Those are common ways to decide what to clean up or study.</p></article>
+        <article class="gap"><h3>Feedback after actions</h3><p>Most mutations rerender silently. Save/remove/import/sync flows would feel safer with concise outcomes, retry affordances, and a visible last-successful-sync timestamp.</p></article>
+      </div>
+    </section>
+
+    <section id="top-10" style="margin-top:78px">
+      <div class="priority-intro">
+        <div>
+          <p class="section-kicker">Ranked opportunities</p>
+          <h2 style="margin:0 0 10px;font-family:Georgia,serif;font-size:clamp(30px,3vw,45px);font-weight:500;letter-spacing:-.04em;line-height:1">Top 10 additions with the best effort-to-value ratio.</h2>
+          <p>"Small" means an additive change that builds on the current storage, screens, or review metadata. These items still need design and tests. The order favors learner value and lower risk.</p>
+        </div>
+        <div class="legend"><span class="effort effort-s">S · 0.5 to 2 days</span><span class="effort effort-m">M · 2 to 5 days</span></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Functionality</th><th>Why it adds value</th><th>Smallest useful version</th><th>Effort</th></tr></thead>
+          <tbody>
+            <tr><td class="rank">01</td><td class="feature"><strong>Start due review</strong><span>Make flashcards answer "what now?"</span></td><td class="value">Turns a 406-card collection into a finite, daily action and makes existing <code>dueAt</code> data visible.</td><td class="note">Add a <em>Due</em> deck default, a due/new count, and a "Start 10 cards" button. Keep the current scheduling logic initially.</td><td><span class="effort effort-s">S</span></td></tr>
+            <tr><td class="rank">02</td><td class="feature"><strong>Undo deletion</strong><span>Recover from accidental removal</span></td><td class="value">Protects notes and review history without adding a confirmation interruption to common actions.</td><td class="note">Cache the removed entry in the page context; show a toast with Undo for 8 seconds in popup and Vault.</td><td><span class="effort effort-s">S</span></td></tr>
+            <tr><td class="rank">03</td><td class="feature"><strong>First-vault checklist</strong><span>Teach capture, Lens, and review once</span></td><td class="value">Converts an empty state into a successful first session and makes Lens discoverable without weakening its permission model.</td><td class="note">Show three dismissible steps only when there are no entries: save an LOD word, try Lens with Alt+Shift+L, study the first card.</td><td><span class="effort effort-s">S</span></td></tr>
+            <tr><td class="rank">04</td><td class="feature"><strong>Quick vault views</strong><span>Study · Favorites · History · Needs notes</span></td><td class="value">Lets a growing collection become actionable without requiring a new data model.</td><td class="note">Add filter chips in Preview and persist the selected view per tab. Derive "Needs notes" from existing fields.</td><td><span class="effort effort-s">S</span></td></tr>
+            <tr><td class="rank">05</td><td class="feature"><strong>Non-destructive language retention</strong><span>Separate local content from sync size</span></td><td class="value">Removes the highest trust risk while retaining the compact sync advantage.</td><td class="note">Stop filtering local entries in <code>setSyncLanguages</code>; apply the language filter only in sync serialization. Update labels to "Sync languages."</td><td><span class="effort effort-m">M</span></td></tr>
+            <tr><td class="rank">06</td><td class="feature"><strong>Custom tags</strong><span>Organise by learner intent</span></td><td class="value">One lightweight field unlocks personal groups, focused review, better search, and richer exports.</td><td class="note">Add a comma-separated <code>tags</code> array, chips on entry edit, tag search, and a single tag filter in Vault.</td><td><span class="effort effort-m">M</span></td></tr>
+            <tr><td class="rank">07</td><td class="feature"><strong>Daily target + progress</strong><span>Make streaks meaningful</span></td><td class="value">Uses existing review/streak data to create a motivation loop without notifications or a backend.</td><td class="note">Allow 5/10/20-card target; show "7 of 10 today" in Flashcards and the popup. Default off or to 10.</td><td><span class="effort effort-m">M</span></td></tr>
+            <tr><td class="rank">08</td><td class="feature"><strong>Restore preview</strong><span>Confirm data changes before merge</span></td><td class="value">Makes backup restore safer and easier to trust, especially when changing devices.</td><td class="note">Parse the JSON before mutation and display entry count, new IDs, existing IDs, and imported settings; then show Merge.</td><td><span class="effort effort-m">M</span></td></tr>
+            <tr><td class="rank">09</td><td class="feature"><strong>Resume last session</strong><span>Return to a manageable task</span></td><td class="value">Avoids restarting from card one after closing a tab and gives "Study now" continuity.</td><td class="note">Persist deck/filter/index/direction in local settings; offer "Resume 6 cards remaining" on Flashcards.</td><td><span class="effort effort-s">S</span></td></tr>
+            <tr><td class="rank">10</td><td class="feature"><strong>Action feedback + sync timestamp</strong><span>Show that work succeeded</span></td><td class="value">Makes opaque local-first operations feel reliable without adding accounts or telemetry.</td><td class="note">Standardise a compact toast/status component for save, undo, import and sync; show "Synced 2 min ago" after verified push/pull.</td><td><span class="effort effort-s">S</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="plan" class="plan">
+      <p class="section-kicker">Suggested sequence</p>
+      <h2>Build a clearer study routine in three small releases.</h2>
+      <div class="plan-grid">
+        <article class="plan-step"><b>Release 1 · trust</b><h3>Protect the vault</h3><p>Make sync-language selection non-destructive, add undo for deletion, show the last successful sync, and resolve Firefox lint warnings. Fix these trust problems before adding engagement features.</p></article>
+        <article class="plan-step"><b>Release 2 · focus</b><h3>Give each screen a clear purpose</h3><p>Default flashcards to Due, add quick Vault views, and hide maintenance controls behind a compact popup section. A learner should immediately see what they can do next.</p></article>
+        <article class="plan-step"><b>Release 3 · habit</b><h3>Make it easier to come back</h3><p>Add a daily target, session resume, and a one-time getting-started guide. Test the first save and first review with a small usability study.</p></article>
+      </div>
+    </section>
+
+    <section class="method">
+      <div><p class="section-kicker">Scope & method</p><h2>How this review was made</h2></div>
+      <div>
+        <p>This review did not rely on the existing analysis files in <code>docs/</code>. It came from a fresh look at the current README, manifest, pages, styles, source scripts, tests, CI workflows, generated UI screenshots, and local build results. The tracker reconciliation above was added later after checking the live GitHub issues.</p>
+        <ul>
+          <li>Verified: <code>npm test</code> completed with 144 passing tests.</li>
+          <li>Verified: <code>npm run lint</code> builds successfully; Firefox lint reports 0 errors and 17 warnings.</li>
+          <li>Reviewed key flows: LOD page banner, Lens and sentence lookup, popup, full Vault, flashcards, backup/restore, history import, sync, export, and release automation.</li>
+          <li>Not performed: live user interviews, accessibility audit with assistive technology, or production telemetry analysis. Priorities are therefore evidence-led hypotheses to validate with learners.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+  <footer><div class="wrap">LODVault product and UX review · Standalone HTML report based on the current codebase</div></footer>
+</body>
+</html>

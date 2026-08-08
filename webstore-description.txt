@@ -1,0 +1,33 @@
+LODVault is a browser extension for learners who use the official Luxembourgish dictionary at lod.lu. It adds a personal vocabulary layer directly on top of dictionary articles, so you can save words, organize them, and review them while you browse.
+
+Features
+
+- Save words to Favorites or Study
+- Turn on Auto mode to record visited words into Study and History
+- Add your own notes to each saved word
+- Search your saved vocabulary from the popup
+- Review words with a built-in Flashcards view
+  - Due today deck and a daily review target to keep your reviews on track
+  - Resumable review sessions with Smart, Shuffle, or Sequential ordering, in Lux → EN or EN → Lux direction
+  - Multiple choice quiz mode for active recall: pick the right answer from four options, and your results feed the spaced-repetition schedule
+- Open a live Preview page of your saved words
+- Export your saved list as HTML or JSON
+- Import a previous JSON backup, with a preview of the changes before merging
+- Optional browser sync with compact saved data (syncs with your Google profile with max of 700 words — if it fails, it falls back to your local storage only mode)
+- Everything is stored locally with no external servers
+- Anki export support
+- Import words from the browser history (optional)
+- LOD Lens: select any word or sentence on any page and look it up on lod.lu instantly
+  - Right-click a selection and choose "Translate with LODVault"
+  - Press Alt(Option for mac)+Shift+L to look up the current selection
+  - Sentence mode highlights each word in a phrase and looks them up individually
+  - Pronunciation playback for looked-up words
+  - Opt-in floating trigger button for non-lod.lu sites
+
+Important
+
+Before uninstalling LODVault or switching between unpacked and published builds, use Backup JSON. In Chrome, uninstalling the extension may remove both its local data and its extension sync data, even when the extension ID stays the same.
+
+Privacy
+
+LODVault does not collect analytics, send your saved words to external servers, or require an account. Your data stays in your browser.
