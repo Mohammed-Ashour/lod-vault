@@ -1,0 +1,13 @@
+Chrome Web Store upload set — LODVault v2.1.0
+
+Screenshots (upload in this order; Chrome accepts up to five):
+- 01-popup-1280x800.png
+- 02-lod-banner-1280x800.png
+- 03-vault-1280x800.png
+- 04-flashcards-1280x800.png
+- 05-lod-lens-1280x800.png
+
+Listing graphics:
+- promo-small-440x280.png
+- promo-marquee-1400x560.png
+- icon-128x128.png
