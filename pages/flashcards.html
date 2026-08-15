@@ -4,135 +4,135 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LODVault Flashcards</title>
+  <script>try { if (localStorage.getItem("blueNightTheme") === "light") document.documentElement.classList.add("light"); } catch (e) {}</script>
+  <link rel="stylesheet" href="../styles/blue-night.css">
   <link rel="stylesheet" href="../styles/flashcards.css">
 </head>
 <body>
   <main class="app">
-    <header class="header">
-      <div>
-        <p class="eyebrow">LODVault</p>
-        <h1>Flashcards</h1>
-        <p id="deck-status" class="muted" aria-live="polite">Loading deck…</p>
+
+    <header class="appbar flashbar">
+      <div class="title-lockup">
+        <div class="wordmark"><b>LOD</b>Vault</div>
+        <h1 class="page-title">Flashcards</h1>
       </div>
-      <div class="controls">
-        <button id="open-preview" class="secondary-button" title="Open Export Vault">Vault</button>
-        <label class="control-group">
-          <span>Deck</span>
-          <select id="deck-filter">
-            <option value="due">Due today</option>
-            <option value="study">Study list</option>
-            <option value="favorites">Favorites</option>
-            <option value="all">All saved</option>
-          </select>
-        </label>
-        <label class="control-group">
-          <span>Order</span>
-          <select id="order-mode">
-            <option value="smart">Smart</option>
-            <option value="shuffle">Shuffle</option>
-            <option value="sequential">Sequential</option>
-          </select>
-        </label>
-        <label class="control-group">
-          <span>Session</span>
-          <select id="session-size">
-            <option value="all">All</option>
-            <option value="10">10 cards</option>
-            <option value="20">20 cards</option>
-          </select>
-        </label>
-        <label class="control-group">
-          <span>Mode</span>
-          <select id="mode-select">
-            <option value="self">Self-graded</option>
-            <option value="mc">Multiple choice</option>
-          </select>
-        </label>
-        <label class="control-group">
-          <span>Daily target</span>
-          <select id="daily-target">
-            <option value="5">5 cards</option>
-            <option value="10">10 cards</option>
-            <option value="20">20 cards</option>
-            <option value="off">Off</option>
-          </select>
-        </label>
-        <button id="direction-toggle" class="secondary-button" title="Toggle reverse cards (R)">Lux → EN</button>
+      <span id="deck-status" class="status" aria-live="polite">Loading deck…</span>
+      <div class="toolbar">
+        <button id="open-preview" class="text-link" title="Open Export Vault">Vault</button>
+        <span id="session-chip" class="summary-chip" aria-live="polite">Due today · Smart · 10</span>
+        <button id="direction-toggle" class="icon-btn direction" title="Toggle reverse cards (R)">⇄ Lux ⇄ EN</button>
+        <button type="button" class="icon-btn theme-btn" onclick="toggleTheme()" aria-label="Switch to light">☀</button>
+        <div class="menu-wrap">
+          <button id="session-trigger" class="btn-ghost" type="button">Session ▾</button>
+          <div id="session-menu" class="menu session-menu">
+            <div class="field">
+              <label for="deck-filter">Deck</label>
+              <select id="deck-filter" class="select">
+                <option value="due">Due today</option>
+                <option value="study">Study list</option>
+                <option value="favorites">Favorites</option>
+                <option value="all">All saved</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="order-mode">Order</label>
+              <select id="order-mode" class="select">
+                <option value="smart">Smart</option>
+                <option value="shuffle">Shuffle</option>
+                <option value="sequential">Sequential</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="session-size">Session</label>
+              <select id="session-size" class="select">
+                <option value="all">All</option>
+                <option value="10">10 cards</option>
+                <option value="20">20 cards</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="mode-select">Mode</label>
+              <select id="mode-select" class="select">
+                <option value="self">Self-graded</option>
+                <option value="mc">Multiple choice</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="daily-target">Daily target</label>
+              <select id="daily-target" class="select">
+                <option value="5">5 cards</option>
+                <option value="10">10 cards</option>
+                <option value="20">20 cards</option>
+                <option value="off">Off</option>
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
     </header>
 
-    <div class="stats-bar">
-      <div class="stat">
-        <span class="stat-icon">🔥</span>
-        <span class="stat-value" id="stat-streak">0</span>
-        <span class="stat-label">day streak</span>
-      </div>
-      <div class="stat">
-        <span class="stat-icon">📚</span>
-        <span class="stat-value" id="stat-today">0</span>
-        <span class="stat-label">today</span>
-      </div>
-      <div id="daily-progress" class="daily-progress" aria-live="polite"></div>
-      <div class="stat">
-        <span class="stat-icon">⏰</span>
-        <span class="stat-value" id="stat-due">0</span>
-        <span class="stat-label">due</span>
-      </div>
-      <div class="stat">
-        <span class="stat-value" id="stat-new">0</span>
-        <span class="stat-label">new</span>
-      </div>
-      <div class="stat">
-        <span class="stat-value" id="stat-learning">0</span>
-        <span class="stat-label">learning</span>
-      </div>
-      <div class="stat">
-        <span class="stat-value" id="stat-mastered">0</span>
-        <span class="stat-label">mastered</span>
-      </div>
-    </div>
+    <section class="statline" aria-label="Study statistics">
+      <div class="stat"><b id="stat-streak">0</b><span>day streak</span></div>
+      <div class="stat"><b id="stat-today">0</b><span>today</span></div>
+      <div class="stat"><b id="stat-due">0</b><span>due</span></div>
+      <div class="stat"><b id="stat-new">0</b><span>new</span></div>
+      <div class="stat"><b id="stat-learning">0</b><span>learning</span></div>
+      <div class="stat"><b id="stat-mastered">0</b><span>mastered</span></div>
+      <p id="daily-progress" class="daily-progress" aria-live="polite"></p>
+    </section>
 
     <section id="resume-session" class="resume-session is-hidden" aria-live="polite">
-      <span id="resume-session-label">Resume session</span>
-      <button id="resume-session-button" class="secondary-button">Resume</button>
-      <button id="dismiss-session-button" class="text-button">Start new</button>
+      <div class="resume-copy">
+        <b id="resume-session-label">Resume session</b>
+        <small>Continue where you left off</small>
+      </div>
+      <button id="resume-session-button" class="btn-ghost">Resume</button>
+      <button id="dismiss-session-button" class="text-link">Start new</button>
     </section>
 
     <section id="empty-state" class="empty-state is-hidden">
-      No words available for this flashcard deck yet.
+      <h2>Nothing due here.</h2>
+      <p>No words available for this flashcard deck yet.</p>
     </section>
 
     <section id="card-shell" class="card-shell is-hidden">
-      <div id="progress" class="progress" aria-live="polite">1 / 1</div>
-      <div id="session-progress" class="session-progress is-hidden" aria-live="polite">Session: 0 / 0</div>
+      <div class="card-meta">
+        <div id="progress" class="progress" aria-live="polite">1 / 1</div>
+        <div id="session-progress" class="session-progress is-hidden" aria-live="polite">Session: 0 / 0</div>
+      </div>
+
       <div id="flashcard" class="flashcard" role="button" tabindex="0" aria-label="Flashcard — click to reveal answer">
-        <div class="card-face card-front">
-          <span class="face-label">Front</span>
-          <div class="card-word-row">
-            <h2 id="card-word">Word</h2>
-            <button type="button" id="card-audio" class="audio-btn" title="Play pronunciation" aria-label="Play pronunciation" style="display:none"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></button>
+        <div class="card-inner">
+          <div class="card-face card-front">
+            <span class="face-label">Front</span>
+            <div class="card-word-row">
+              <h2 id="card-word">Word</h2>
+              <button type="button" id="card-audio" class="audio-btn" title="Play pronunciation" aria-label="Play pronunciation" style="display:none">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+              </button>
+            </div>
+            <p id="card-type" class="muted"></p>
+            <p id="card-hint" class="hint">Click Reveal to show the answer.</p>
           </div>
-          <p id="card-type" class="muted"></p>
-          <p id="card-hint" class="hint">Click Reveal to show the answer.</p>
-        </div>
-        <div class="card-face card-back">
-          <span class="face-label">Back</span>
-          <div id="card-answer" class="answer"></div>
+          <div class="card-face card-back">
+            <span class="face-label">Back</span>
+            <div id="card-answer" class="answer"></div>
+          </div>
         </div>
       </div>
 
       <div id="mc-options" class="mc-options is-hidden"></div>
 
       <div class="actions">
-        <button id="prev-card" class="nav-button secondary-button secondary-button-light">← Prev</button>
-        <button id="flip-card" class="nav-button secondary-button">Reveal</button>
-        <button id="next-card" class="nav-button secondary-button secondary-button-light">Next →</button>
+        <button id="prev-card" class="btn-ghost nav-btn">← Prev</button>
+        <button id="flip-card" class="btn-primary nav-btn">Reveal</button>
+        <button id="next-card" class="btn-ghost nav-btn">Next →</button>
       </div>
 
       <div id="rating-bar" class="rating-bar is-hidden">
-        <button class="rating-button rating-hard" data-rating="1" title="Hard (1)">Hard</button>
-        <button class="rating-button rating-good" data-rating="2" title="Good (2)">Good</button>
-        <button class="rating-button rating-easy" data-rating="3" title="Easy (3)">Easy</button>
+        <button class="btn-ghost rating-button rating-hard" data-rating="1" title="Hard (1)">Hard <small>1</small></button>
+        <button class="btn-ghost rating-button rating-good" data-rating="2" title="Good (2)">Good <small>2</small></button>
+        <button class="btn-ghost rating-button rating-easy" data-rating="3" title="Easy (3)">Easy <small>3</small></button>
       </div>
     </section>
 
@@ -157,7 +157,7 @@
             <span class="summary-label">easy</span>
           </div>
         </div>
-        <button id="close-summary" class="secondary-button">Continue Studying</button>
+        <button id="close-summary" class="btn-primary">Continue Studying</button>
       </div>
     </section>
   </main>
@@ -165,6 +165,40 @@
   <script src="../scripts/store-core.js"></script>
   <script src="../scripts/entry-presenter.js"></script>
   <script src="../scripts/shared.js"></script>
+  <script src="../scripts/theme.js"></script>
   <script src="../scripts/flashcards.js"></script>
+  <script>
+    // Session summary chip — mirrors the grouped Session menu choices
+    (function () {
+      const chip = document.getElementById("session-chip");
+      const menu = document.getElementById("session-menu");
+      const trigger = document.getElementById("session-trigger");
+
+      function closeMenu() { menu.classList.remove("is-open"); }
+      trigger.addEventListener("click", (event) => {
+        event.stopPropagation();
+        menu.classList.toggle("is-open");
+      });
+      document.addEventListener("click", (event) => {
+        if (!event.target.closest(".menu-wrap")) closeMenu();
+      });
+
+      const labels = {
+        "deck-filter": { due: "Due today", study: "Study list", favorites: "Favorites", all: "All saved" },
+        "order-mode": { smart: "Smart", shuffle: "Shuffle", sequential: "Sequential" },
+        "session-size": { all: "All", "10": "10", "20": "20" }
+      };
+      function updateChip() {
+        const deck = labels["deck-filter"][document.getElementById("deck-filter").value] || "";
+        const order = labels["order-mode"][document.getElementById("order-mode").value] || "";
+        const size = labels["session-size"][document.getElementById("session-size").value] || "";
+        chip.textContent = [deck, order, size].filter(Boolean).join(" · ");
+      }
+      ["deck-filter", "order-mode", "session-size"].forEach((id) => {
+        document.getElementById(id).addEventListener("change", updateChip);
+      });
+      updateChip();
+    })();
+  </script>
 </body>
 </html>

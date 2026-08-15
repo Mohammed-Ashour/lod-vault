@@ -20,9 +20,9 @@
 
 ### Popup
 
-<img src="docs/screenshots/popup.png" width="380" alt="LODVault popup showing auto mode, sync language selector, and current word" />
+<img src="docs/screenshots/popup-blue-night.png" width="380" alt="LODVault popup — Blue Night redesign" /> <img src="docs/screenshots/popup-blue-night-light.png" width="380" alt="LODVault popup — Blue Night light mode" />
 
-The popup shows your saved word count, lets you toggle **Auto mode**, pick **sync languages**, run **Sync now**, import from browser history with a date range, create a portable JSON backup, and manage the word you are currently reading.
+The popup opens on a single **Today** panel (due words, Start review, vault pulse, Auto mode), a contextual **capture card** for the word you are reading on lod.lu, and the saved-word list as the working surface. Sync, backup, restore, import and export live behind **Data & settings** — one deliberate step away. The ☀/☾ button in the header flips the whole product between navy night and cool paper day.
 
 ---
 
@@ -34,19 +34,19 @@ A banner is injected directly under the article heading on every `lod.lu/artikel
 
 ---
 
-### Preview page
+### Vault
 
-<img src="docs/screenshots/preview-page.png" width="780" alt="LODVault preview page listing saved words with translations, tags, and note actions" />
+<img src="docs/screenshots/vault-blue-night.png" width="780" alt="LODVault vault — Blue Night redesign" /> <img src="docs/screenshots/vault-blue-night-light.png" width="780" alt="LODVault vault — Blue Night light mode" />
 
-The preview page lists all your saved words with their translations, POS tags, list membership, and editable notes. Filter by language, search, or download as a standalone HTML file.
+The vault renders your saved words as an editorial document — serif entries, hairlines, translations and examples — with search, language filter and sort. Exports are grouped behind a single **Export ▾** menu (HTML / Anki), and the page theme follows the same ☀/☾ toggle.
 
 ---
 
 ### Flashcards
 
-<img src="docs/screenshots/flashcards.png" width="780" alt="LODVault flashcards page showing the current deck and study controls" />
+<img src="docs/screenshots/flashcards-blue-night.png" width="780" alt="LODVault flashcards — Blue Night redesign" /> <img src="docs/screenshots/flashcards-blue-night-light.png" width="780" alt="LODVault flashcards — Blue Night light mode" />
 
-The flashcards page lets you review your saved words in a focused study view, with deck filters, session controls, and built-in pronunciation playback.
+All session setup (deck, order, size, mode, daily target) is grouped behind one **Session ▾** menu with the active choices echoed on the toolbar. A quiet serif stat line replaces the old emoji tiles, and the flip card keeps Reveal / Hard / Good / Easy one tap away.
 
 ---
 

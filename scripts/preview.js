@@ -157,13 +157,13 @@ function injectPreviewStyles(doc) {
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      padding: 5px 11px;
-      font-size: 12.5px;
+      padding: 4px 10px;
+      font-size: 11.5px;
       font-weight: 700;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.12);
+      background: transparent;
+      border: 1px solid rgba(168,218,220,0.16);
       border-radius: 999px;
-      color: #5f8fa8;
+      color: #6a8da6;
       cursor: pointer;
       transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
@@ -172,12 +172,11 @@ function injectPreviewStyles(doc) {
       cursor: wait;
     }
     .preview-toggle-pill:hover:enabled {
-      background: rgba(255,255,255,0.1);
-      border-color: rgba(255,255,255,0.22);
-      color: #ddeef5;
+      border-color: rgba(79,185,212,0.5);
+      color: #b8cedb;
     }
     .preview-toggle-pill-icon {
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1;
     }
     .preview-toggle-pill-label {
@@ -185,47 +184,46 @@ function injectPreviewStyles(doc) {
       letter-spacing: 0;
     }
     .preview-toggle-pill.is-fav {
-      background: rgba(230,197,96,0.15);
-      border-color: rgba(230,197,96,0.4);
-      color: #e6c560;
+      background: rgba(226,195,103,0.08);
+      border-color: rgba(226,195,103,0.3);
+      color: #e2c367;
     }
     .preview-toggle-pill.is-fav:hover:enabled {
-      background: rgba(230,197,96,0.25);
-      border-color: rgba(230,197,96,0.55);
+      background: rgba(226,195,103,0.14);
+      border-color: rgba(226,195,103,0.5);
       color: #f0d56e;
     }
     .preview-toggle-pill.is-study {
-      background: rgba(57,167,196,0.15);
-      border-color: rgba(57,167,196,0.4);
+      background: rgba(57,167,196,0.1);
+      border-color: rgba(57,167,196,0.3);
       color: #a8dadc;
     }
     .preview-toggle-pill.is-study:hover:enabled {
-      background: rgba(57,167,196,0.25);
-      border-color: rgba(57,167,196,0.55);
+      background: rgba(57,167,196,0.16);
+      border-color: rgba(57,167,196,0.5);
       color: #a8dadc;
     }
     .preview-delete-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 28px;
-      height: 28px;
+      width: 26px;
+      height: 26px;
       padding: 0;
       margin-left: auto;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: transparent;
+      border: 0;
       border-radius: 7px;
-      color: #5f8fa8;
+      color: #6a8da6;
       font-size: 16px;
-      font-weight: 300;
+      font-weight: 400;
       line-height: 1;
       cursor: pointer;
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      transition: background 0.15s, color 0.15s;
     }
     .preview-delete-btn:hover {
-      background: rgba(230,57,70,0.1);
-      border-color: rgba(230,57,70,0.3);
-      color: #e63946;
+      background: rgba(230,96,106,0.08);
+      color: #e6606a;
     }
     .preview-delete-btn:disabled {
       opacity: 0.5;
@@ -233,11 +231,13 @@ function injectPreviewStyles(doc) {
     }
     .preview-note-section {
       margin-top: 10px;
+      border-top: 1px dashed rgba(168,218,220,0.12);
+      padding-top: 8px;
     }
     .preview-note-status {
       margin-top: 4px;
       font-size: 11px;
-      color: #5f8fa8;
+      color: #6a8da6;
       line-height: 1.4;
     }
     .preview-note-status[data-tone="saving"],
@@ -254,11 +254,11 @@ function injectPreviewStyles(doc) {
       padding: 0;
       border: none;
       background: transparent;
-      color: #5f8fa8;
+      color: #6a8da6;
       font-size: 11px;
       font-weight: 600;
       cursor: pointer;
-      opacity: 0.55;
+      opacity: 0.6;
       transition: color 0.15s, opacity 0.15s;
     }
     .note-toggle:hover {
@@ -276,31 +276,30 @@ function injectPreviewStyles(doc) {
       font-weight: 700;
       letter-spacing: 0.07em;
       text-transform: uppercase;
-      color: #5f8fa8;
+      color: #6a8da6;
     }
     .note-input {
       display: block;
       width: 100%;
       min-height: 62px;
       padding: 8px 10px;
-      border: 1px solid #213858;
-      border-radius: 6px;
-      background: #192d44;
+      border: 1px solid rgba(168,218,220,0.16);
+      border-radius: 8px;
+      background: #111d2e;
       color: #e4eef4;
       font: inherit;
       font-size: 12.5px;
       line-height: 1.45;
       resize: vertical;
-      box-shadow: inset 0 1px 3px rgba(0,0,0,0.15);
     }
     .note-input::placeholder {
-      color: #5f8fa8;
+      color: #6a8da6;
       opacity: 1;
     }
     .note-input:focus {
       outline: none;
       border-color: #39a7c4;
-      box-shadow: inset 0 1px 3px rgba(0,0,0,0.15), 0 0 0 3px rgba(57,167,196,0.2);
+      box-shadow: 0 0 0 3px rgba(57,167,196,0.18);
     }
     .audio-btn {
       display: inline-flex;
@@ -309,33 +308,33 @@ function injectPreviewStyles(doc) {
       width: 26px;
       height: 26px;
       padding: 0;
-      border: 1px solid rgba(255,255,255,0.12);
+      border: 1px solid rgba(168,218,220,0.16);
       border-radius: 50%;
-      background: rgba(255,255,255,0.05);
-      color: #5f8fa8;
+      background: #111d2e;
+      color: #6a8da6;
       cursor: pointer;
       transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
       flex-shrink: 0;
       line-height: 1;
     }
     .audio-btn:hover {
-      background: rgba(57,167,196,0.15);
-      border-color: rgba(57,167,196,0.4);
+      background: rgba(57,167,196,0.12);
+      border-color: rgba(57,167,196,0.35);
       color: #a8dadc;
       transform: scale(1.08);
     }
     .audio-btn:active { transform: scale(0.95); }
     .audio-btn svg { width: 14px; height: 14px; }
     .audio-btn.is-playing {
-      background: rgba(57,167,196,0.2);
-      border-color: rgba(57,167,196,0.5);
+      background: rgba(57,167,196,0.15);
+      border-color: rgba(57,167,196,0.45);
       color: #39a7c4;
       animation: audio-pulse 1s ease-in-out infinite;
     }
     .audio-btn.is-error {
-      background: rgba(230,57,70,0.1);
-      border-color: rgba(230,57,70,0.3);
-      color: #e63946;
+      background: rgba(230,96,106,0.08);
+      border-color: rgba(230,96,106,0.3);
+      color: #e6606a;
     }
     @keyframes audio-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
   `;

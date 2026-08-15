@@ -1065,8 +1065,11 @@ test("popup keeps data controls behind the Data & settings disclosure", async ()
   }
   assert.ok(details.contains(syncRow));
 
-  // The header only carries study/navigation actions now.
-  assert.equal(document.querySelector(".header-actions").children.length, 2);
+  // The header only carries quiet status + theme + settings now; page
+  // navigation (Flashcards / Vault) moved into the disclosure (redesign).
+  assert.ok(document.querySelector(".popup-head .theme-btn"), "theme button lives in the header");
+  assert.ok(document.getElementById("open-settings"), "settings gear lives in the header");
+  assert.equal(document.querySelector(".header-actions"), null);
   assert.equal(document.querySelector(".header-sep"), null);
 
   // Learner actions come before data management in the tab order.
