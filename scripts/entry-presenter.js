@@ -318,6 +318,7 @@
     const translationLanguages = getMeaningItems(normalized).map((item) => item.lang);
 
     const audioBtn = buildAudioBtnMarkup(normalized);
+    const visitMeta = buildVisitMeta(normalized);
 
     return `
       <article class="entry" data-id="${escapeHtml(normalized.id)}" data-lists="${escapeHtml(activeLists.join(","))}" data-langs="${escapeHtml(translationLanguages.join(","))}" data-search="${escapeHtml(buildSearchText(normalized))}">
@@ -327,7 +328,7 @@
         </div>
         ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
         ${translationsMarkup}
-        ${buildVisitMeta(normalized) ? `<p class="visit-meta">${escapeHtml(buildVisitMeta(normalized))}</p>` : ""}
+        ${visitMeta ? `<p class="visit-meta">${escapeHtml(visitMeta)}</p>` : ""}
         ${normalized.inflection ? `<p class="detail"><strong>Inflection:</strong> ${escapeHtml(normalized.inflection)}</p>` : ""}
         ${normalized.example ? `<blockquote>${escapeHtml(normalized.example)}</blockquote>` : ""}
         ${normalized.note ? `<p class="note"><strong>Note:</strong> ${escapeHtml(normalized.note)}</p>` : ""}

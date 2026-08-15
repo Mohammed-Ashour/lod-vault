@@ -144,16 +144,17 @@
       const historyCount = state.savedEntries.filter((entry) => entry.history).length;
 
       elements.autoModeMeta.textContent = state.autoMode
-        ? `Saving visited words to Study & History · ${historyCount} in history`
-        : "Saves every visited word to Study and History.";
+        ? `${historyCount} word${historyCount === 1 ? "" : "s"} recorded automatically`
+        : "Save visited words to Study & History.";
       elements.autoModeToggle.textContent = state.autoMode ? "Turn off" : "Turn on";
       elements.autoModeToggle.classList.toggle("is-active", state.autoMode);
       elements.autoModeTitle.textContent = state.autoMode ? "On" : "Off";
-      elements.autoModeBadge.classList.toggle("is-hidden", !state.autoMode);
       elements.autoModeCard.classList.toggle("is-auto-on", state.autoMode);
     }
 
     function renderCurrentPageCard(savedEntry) {
+      elements.currentPageCard.classList.toggle("is-empty", !state.currentEntry);
+
       if (!state.currentEntry) {
         elements.currentWord.textContent = "—";
         elements.currentAudio.style.display = "none";

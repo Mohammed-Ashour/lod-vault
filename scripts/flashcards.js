@@ -24,6 +24,7 @@ const DAILY_TARGETS = new Set([5, 10, 20]);
 const DECK_FILTERS = new Set(["due", "study", "favorites", "all"]);
 const ORDER_MODES = new Set(["smart", "shuffle", "sequential"]);
 const STUDY_MODES = new Set(["self", "mc"]);
+const DECK_LABELS = { due: "Due today", study: "Study list", favorites: "Favorites", all: "All saved" };
 const elements = {};
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -512,9 +513,10 @@ function renderDeck() {
   const count = state.deck.length;
 
   if (elements.deckStatus) {
+    const deckLabel = DECK_LABELS[state.filter] || "Deck";
     elements.deckStatus.textContent = count
-      ? `${count} card${count === 1 ? "" : "s"} in this deck`
-      : "No cards in this deck yet.";
+      ? `${deckLabel} · ${count} card${count === 1 ? "" : "s"} in this deck`
+      : `${deckLabel} · No cards in this deck yet.`;
   }
 
   if (!entry) {
@@ -776,36 +778,17 @@ function endSession() {
   void clearSavedSession();
 }
 
-// Blue Night — Session menu (grouped setup) and the toolbar summary chip.
-// External script wiring: extension pages run under MV3 CSP (script-src 'self').
+// Session setup stays behind one menu; extension CSP forbids inline wiring.
 (() => {
-  const chip = document.getElementById("session-chip");
   const menu = document.getElementById("session-menu");
   const trigger = document.getElementById("session-trigger");
-  if (!chip || !menu || !trigger) return;
+  if (!menu || !trigger) return;
 
-  function closeMenu() { menu.classList.remove("is-open"); }
   trigger.addEventListener("click", (event) => {
     event.stopPropagation();
     menu.classList.toggle("is-open");
   });
   document.addEventListener("click", (event) => {
-    if (!event.target.closest(".menu-wrap")) closeMenu();
+    if (!event.target.closest(".menu-wrap")) menu.classList.remove("is-open");
   });
-
-  const labels = {
-    "deck-filter": { due: "Due today", study: "Study list", favorites: "Favorites", all: "All saved" },
-    "order-mode": { smart: "Smart", shuffle: "Shuffle", sequential: "Sequential" },
-    "session-size": { all: "All", "10": "10", "20": "20" }
-  };
-  function updateChip() {
-    const deck = labels["deck-filter"][document.getElementById("deck-filter").value] || "";
-    const order = labels["order-mode"][document.getElementById("order-mode").value] || "";
-    const size = labels["session-size"][document.getElementById("session-size").value] || "";
-    chip.textContent = [deck, order, size].filter(Boolean).join(" · ");
-  }
-  ["deck-filter", "order-mode", "session-size"].forEach((id) => {
-    document.getElementById(id).addEventListener("change", updateChip);
-  });
-  updateChip();
 })();

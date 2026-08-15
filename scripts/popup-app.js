@@ -32,6 +32,7 @@
         lastExportedAt: "",
         entryCount: 0
       },
+      portableBackupReady: false,
       browserHistoryImporting: false,
       syncNowInProgress: false,
       syncPullInProgress: false,
@@ -172,7 +173,6 @@
 
     async function handleActiveTabChange() {
       await ctx.current.refreshCurrentPage();
-      await ctx.list.renderSavedList();
     }
 
     async function handleTabUpdated(tabId, changeInfo, tab) {
@@ -181,7 +181,6 @@
       if (state.currentTabId && tabId !== state.currentTabId && !changeInfo.url) return;
 
       await ctx.current.refreshCurrentPage();
-      await ctx.list.renderSavedList();
     }
 
     async function handlePageStateMessage(message, sender) {
@@ -209,7 +208,7 @@
           || key.startsWith("lodVault.e.")
         ));
         if (hasSyncVaultChange) {
-          await ctx.sync.refreshSyncHealth();
+          await ctx.sync.refreshDataStatus();
         }
         return;
       }
@@ -260,6 +259,7 @@
 
       if (hasEntriesChange || hasSettingsChange) {
         await ctx.list.renderSavedList();
+        if (hasEntriesChange) void ctx.sync.refreshDataStatus();
       }
     }
 
@@ -277,7 +277,6 @@
       elements.currentDelete = document.getElementById("current-delete");
       elements.currentNoteInput = document.getElementById("current-note");
       elements.currentNoteStatus = document.getElementById("current-note-status");
-      elements.autoModeBadge = document.getElementById("auto-mode-badge");
       elements.autoModeCard = document.querySelector(".auto-mode-card");
       elements.autoModeTitle = document.getElementById("auto-mode-title");
       elements.autoModeMeta = document.getElementById("auto-mode-meta");
@@ -380,16 +379,25 @@
       chromeApi.runtime.onMessage.addListener(handlePageStateMessage);
       chromeApi.storage?.onChanged?.addListener(handleStorageChange);
 
-      await ctx.sync.refreshSettingsState();
-      await ctx.backup.refreshPortableBackupMeta();
-      ctx.current.renderAutoMode();
-      ctx.sync.renderSyncLanguages();
-      ctx.sync.renderVerifiedSyncStatus();
       ctx.backup.renderBrowserHistoryImportAction();
-      await ctx.backup.refreshHistoryImportState();
       ctx.backup.renderHistoryImportReport();
-      await ctx.current.refreshCurrentPage();
-      await ctx.list.renderSavedList();
+
+      // Local words are the popup's primary content. Render them first; active
+      // tab, backup, history and remote sync status can settle independently.
+      const listReady = ctx.list.renderSavedList();
+      const settingsReady = listReady.catch(() => {}).then(async () => {
+        await ctx.sync.refreshSettingsState();
+        ctx.current.renderAutoMode();
+        ctx.sync.renderSyncLanguages();
+        ctx.sync.renderVerifiedSyncStatus();
+      });
+      await Promise.allSettled([
+        listReady,
+        settingsReady,
+        ctx.backup.refreshPortableBackupMeta(),
+        ctx.backup.refreshHistoryImportState(),
+        ctx.current.refreshCurrentPage()
+      ]);
     }
 
     function destroy() {
@@ -413,6 +421,7 @@
       renderList: ctx.list.renderList,
       renderSavedList: ctx.list.renderSavedList,
       refreshCurrentPage: ctx.current.refreshCurrentPage,
+      refreshDataStatus: ctx.sync.refreshDataStatus,
       formatSearchStatus: ctx.list.formatSearchStatus
     };
   }

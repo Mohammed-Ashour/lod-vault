@@ -36,9 +36,7 @@
 
     function formatSearchStatus(filteredCount, totalCount) {
       if (!state.searchQuery) {
-        if (!totalCount) return "0 saved words";
-        const visibleCount = Math.min(totalCount, LIST_LIMIT);
-        return `${totalCount} saved word${totalCount === 1 ? "" : "s"} · showing ${visibleCount} recent`;
+        return `${totalCount} word${totalCount === 1 ? "" : "s"}`;
       }
       return `${filteredCount} match${filteredCount === 1 ? "" : "es"} · ${totalCount} total`;
     }
@@ -64,6 +62,8 @@
         ? `<p class="item-meta">Last visited ${store.escapeHtml(store.formatWhen(entry.lastVisitedAt))}</p>`
         : "";
       const hasNote = Boolean(entry.note);
+      const subline = entrySubline(entry);
+      const meanings = store.buildMeaningCollapsibleMarkup(entry);
 
       return `
         <article class="saved-item" data-id="${store.escapeHtml(entry.id)}">
@@ -75,9 +75,9 @@
               <button type="button" class="control-btn control-delete" data-action="remove" data-id="${store.escapeHtml(entry.id)}" aria-label="Delete saved word" title="Delete saved word">×</button>
             </div>
           </div>
-          ${entrySubline(entry) ? `<p class="item-meta">${entrySubline(entry)}</p>` : ""}
+          ${subline ? `<p class="item-meta">${subline}</p>` : ""}
           ${lastVisitedText}
-          ${(() => { const mk = store.buildMeaningCollapsibleMarkup(entry); return mk ? `<div class="item-meanings">${mk}</div>` : ""; })()}
+          ${meanings ? `<div class="item-meanings">${meanings}</div>` : ""}
           ${entry.example ? `<p class="item-example">${store.escapeHtml(entry.example)}</p>` : ""}
           <div class="note-section">
             <button type="button" class="note-toggle${hasNote ? " is-hidden" : ""}" data-action="toggle-note" data-id="${store.escapeHtml(entry.id)}" aria-label="Add a note">+ Note</button>
@@ -94,14 +94,18 @@
       const entries = await store.getEntries();
       state.savedEntries = entries;
       renderSummary(entries);
+      renderList();
+
       ctx.current.renderAutoMode();
       ctx.sync.renderSyncLanguages();
       ctx.sync.renderVerifiedSyncStatus();
-      await ctx.sync.refreshSyncHealth();
-      renderList();
-      ctx.backup.renderPortableBackupStatus();
-      if (ctx.study) await ctx.study.refreshStudyCard();
-      await ctx.current.syncCurrentCardState();
+      if (state.portableBackupReady) ctx.backup.renderPortableBackupStatus();
+
+      // These sections are useful but must never hold the word list hostage.
+      void Promise.allSettled([
+        ctx.study?.refreshStudyCard(),
+        ctx.current.syncCurrentCardState()
+      ]);
     }
 
     function renderList() {

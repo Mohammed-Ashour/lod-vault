@@ -57,10 +57,6 @@ function getJSON(url, method = "GET") {
   });
 }
 
-const now = () => new Date().toISOString();
-const daysAgo = (n) => new Date(Date.now() - n * 864e5).toISOString();
-const hoursFromNow = (h) => new Date(Date.now() + h * 36e5).toISOString();
-
 import { stubSource } from "./screenshot-stub.mjs";
 
 // ── CDP plumbing ────────────────────────────────────────────────
@@ -80,7 +76,7 @@ function makeSender(ws) {
   });
 }
 
-async function shoot(send, file, viewport) {
+async function shoot(send, file) {
   const shot = await send("Page.captureScreenshot", { format: "png", fromSurface: true });
   writeFileSync(path.join(outDir, file), Buffer.from(shot.data, "base64"));
   console.log("  saved", file);
@@ -92,14 +88,17 @@ async function capturePage(tab, pageUrl, shots) {
   const send = makeSender(ws);
   await send("Page.enable");
   await send("Runtime.enable");
+  await send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `try { localStorage.setItem("blueNightTheme", "dark"); } catch {}`
+  });
   await send("Page.addScriptToEvaluateOnNewDocument", { source: stubSource });
   await send("Emulation.setDeviceMetricsOverride", {
     width: shots.width, height: shots.height, deviceScaleFactor: 2, mobile: false
   });
   await send("Page.navigate", { url: pageUrl });
   await sleep(2600);
-  for (const [name, theme] of [["dark", "dark"], ["light", "light"]]) {
-    if (theme === "light") {
+  for (const name of ["dark", "light"]) {
+    if (name === "light") {
       await send("Runtime.evaluate", { expression: `document.querySelector(".theme-btn")?.click()` });
       await sleep(600);
     }
@@ -107,12 +106,12 @@ async function capturePage(tab, pageUrl, shots) {
       await send("Runtime.evaluate", { expression: `if (!document.getElementById('flashcard')?.classList.contains('is-revealed')) document.getElementById('flip-card')?.click()` });
       await sleep(600);
     }
-    await shoot(send, shots[name], shots);
+    await shoot(send, shots[name]);
     // popup also captures the Stats & data tab (dark + light)
     if (shots.stats) {
       await send("Runtime.evaluate", { expression: `document.querySelector('.popup-tab[data-pane="stats"]')?.click()` });
       await sleep(400);
-      await shoot(send, shots.stats[name], shots);
+      await shoot(send, shots.stats[name]);
       await send("Runtime.evaluate", { expression: `document.querySelector('.popup-tab[data-pane="words"]')?.click()` });
       await sleep(300);
     }

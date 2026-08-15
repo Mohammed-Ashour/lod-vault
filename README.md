@@ -48,7 +48,7 @@ The vault renders your saved words as an editorial document — serif entries, h
 
 <img src="docs/screenshots/flashcards-blue-night.png" width="780" alt="LODVault flashcards — Blue Night redesign" /> <img src="docs/screenshots/flashcards-blue-night-light.png" width="780" alt="LODVault flashcards — Blue Night light mode" />
 
-All session setup (deck, order, size, mode, daily target) is grouped behind one **Session ▾** menu with the active choices echoed on the toolbar. A quiet serif stat line replaces the old emoji tiles, and the flip card keeps Reveal / Hard / Good / Easy one tap away.
+All session setup (deck, order, size, mode, daily target) is grouped behind one **Session ▾** menu; the active deck and card count sit quietly beside the title. A serif stat line replaces the old emoji tiles, and the flip card keeps Reveal / Hard / Good / Easy one tap away.
 
 ---
 

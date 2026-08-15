@@ -12,15 +12,6 @@ body {
 }
 
 .flashbar { position: sticky; top: 0; z-index: 30; }
-.summary-chip {
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-full);
-  color: var(--text-2);
-  padding: 6px 11px;
-  font-size: 11.5px;
-  font-weight: 600;
-  white-space: nowrap;
-}
 .direction { width: auto; padding: 0 10px; font-size: 12.5px; font-weight: 600; }
 .direction.is-active { color: var(--accent); background: var(--tint); }
 
@@ -136,19 +127,96 @@ body {
 }
 #card-type { margin-top: 10px; font-size: 12px; }
 .answer {
-  font-family: var(--serif);
-  font-weight: 500;
-  font-size: 30px;
-  line-height: 1.25;
-  color: var(--text);
-  max-width: 90%;
+  width: 100%;
+  max-width: 620px;
   max-height: 100%;
+  padding-right: 4px;
   overflow-y: auto;
+  text-align: left;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.answer h3 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  font-family: var(--serif);
+  font-size: 34px;
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--text);
+}
+.answer .chip-row {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 7px;
+}
+.answer .chip {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+}
+.meaning-panel {
+  margin-top: 14px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+}
+.meaning-panel h4 {
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.meaning-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 10px;
+  padding: 3px 0;
+}
+.meaning-label {
+  padding-top: 2px;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.meaning-value {
+  color: var(--text);
+  font-family: var(--serif);
+  font-size: 15px;
+}
+.answer > p,
+.answer blockquote,
+.answer .note { margin-top: 10px; }
+.answer blockquote {
+  padding-left: 12px;
+  border-left: 2px solid var(--accent);
+  color: var(--text-2);
+  font-family: var(--serif);
+  font-size: 14px;
+  font-style: italic;
+}
+.answer .note {
+  padding: 8px 10px;
+  background: var(--tint);
+  border-radius: var(--r-sm);
+  font-size: 12px;
 }
 
-/* open-on-LOD link — quiet pill in the design language */
 .card-open-row {
-  margin-top: 16px;
+  margin-top: 12px;
   text-align: right;
 }
 .card-open-link {

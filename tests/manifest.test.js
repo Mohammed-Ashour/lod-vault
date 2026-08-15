@@ -15,6 +15,8 @@ test("manifest points to the generated background bundle artifact", () => {
   assert.match(bundleSource, /DO NOT EDIT/);
   assert.match(bundleSource, /generated packaging artifact/);
   assert.match(bundleSource, /Source of truth/);
+  assert.doesNotMatch(bundleSource, /\/\/   entry-presenter\.js/);
+  assert.doesNotMatch(bundleSource, /\/\/   note-autosave\.js/);
 });
 
 test("manifest injects content scripts on all lod.lu pages for SPA navigation", () => {
@@ -26,6 +28,7 @@ test("manifest injects content scripts on all lod.lu pages for SPA navigation", 
     "https://lod.lu/*",
     "https://www.lod.lu/*"
   ]);
+  assert.equal(contentScript.js.includes("scripts/entry-presenter.js"), false);
 });
 
 test("manifest exposes permissions needed for LOD Lens MVP", () => {

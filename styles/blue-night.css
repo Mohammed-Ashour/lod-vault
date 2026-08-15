@@ -77,10 +77,7 @@ html, body {
   color: var(--text);
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
-  transition: background 0.18s ease, color 0.18s ease;
 }
-html, body { transition: none; }
-html.light, html.light body { transition: background 0.18s ease, color 0.18s ease; }
 
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }

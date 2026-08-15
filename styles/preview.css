@@ -13,23 +13,16 @@ body {
 
 .appbar { position: sticky; top: 0; z-index: 30; }
 
-.preview-shell {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 26px 24px 60px;
-}
+.preview-shell { min-height: calc(100vh - 64px); }
 #preview-frame {
   display: block;
   width: 100%;
-  height: calc(100vh - 130px);
+  height: calc(100vh - 64px);
   min-height: 480px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg, 16px);
+  border: 0;
   background: var(--page);
-  box-shadow: 0 24px 70px var(--shadow-soft);
 }
 
 @media (max-width: 720px) {
-  .preview-shell { padding: 16px 12px 40px; }
-  #preview-frame { height: calc(100vh - 190px); border-radius: var(--r-md); }
+  #preview-frame { height: calc(100vh - 116px); }
 }

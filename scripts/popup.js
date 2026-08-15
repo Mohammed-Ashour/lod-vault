@@ -1,32 +1,27 @@
 const popupApp = LodVaultPopupApp.createApp({ store: LodVaultStore, chrome });
 
 document.addEventListener("DOMContentLoaded", () => {
-  popupApp.init();
-});
+  void popupApp.init();
 
-window.addEventListener("unload", () => {
-  popupApp.destroy();
-});
+  const tabs = document.querySelector(".popup-tabs");
+  const showPane = (name) => {
+    document.querySelectorAll(".popup-tab").forEach((tab) => {
+      const active = tab.dataset.pane === name;
+      tab.classList.toggle("is-active", active);
+      tab.setAttribute("aria-selected", String(active));
+    });
+    document.querySelectorAll(".popup-pane").forEach((pane) => {
+      pane.classList.toggle("is-active", pane.dataset.pane === name);
+    });
+    if (name === "stats") void popupApp.refreshDataStatus();
+  };
 
-// Blue Night — popup tabs (Words / Stats & data) and the settings gear.
-// Wired here as an external script: extension pages run under MV3 CSP
-// (script-src 'self'), so inline event handlers are not allowed.
-document.addEventListener("DOMContentLoaded", () => {
-  const tabs = Array.from(document.querySelectorAll(".popup-tab"));
-  const panes = Array.from(document.querySelectorAll(".popup-pane"));
-
-  function showPane(name) {
-    tabs.forEach((tab) => tab.classList.toggle("is-active", tab.dataset.pane === name));
-    panes.forEach((pane) => pane.classList.toggle("is-active", pane.dataset.pane === name));
-  }
-
-  tabs.forEach((tab) => {
-    tab.addEventListener("click", () => showPane(tab.dataset.pane));
+  tabs?.addEventListener("click", (event) => {
+    const tab = event.target.closest(".popup-tab");
+    if (tab) showPane(tab.dataset.pane);
   });
 
-  document.getElementById("open-settings")?.addEventListener("click", () => {
-    showPane("stats");
-    const details = document.getElementById("data-settings");
-    if (details) details.open = true;
-  });
-});
+  showPane(tabs?.querySelector(".is-active")?.dataset.pane || "words");
+}, { once: true });
+
+window.addEventListener("unload", () => popupApp.destroy());

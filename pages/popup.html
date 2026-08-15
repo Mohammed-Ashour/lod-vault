@@ -11,17 +11,13 @@
 <body>
   <main class="app">
 
-    <!-- ── Header: wordmark, page links, quiet status, theme, settings ── -->
+    <!-- ── Header: wordmark, page links, theme ── -->
     <header class="popup-head">
       <div class="wordmark"><b>LOD</b>Vault</div>
-      <nav class="popup-nav">
-        <span id="auto-mode-badge" class="auto-badge is-hidden" title="Auto mode is on">Auto</span>
+      <nav class="popup-nav" aria-label="Extension pages">
         <button type="button" id="open-flashcards" class="text-link">Flashcards</button>
         <button type="button" id="open-preview" class="text-link">Vault</button>
         <button type="button" class="icon-btn theme-btn" aria-label="Switch to light">☀</button>
-        <button type="button" class="icon-btn" id="open-settings" title="Data &amp; settings" aria-label="Data and settings">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        </button>
       </nav>
     </header>
 
@@ -37,15 +33,15 @@
     </section>
 
     <!-- ── Popup tabs: Words / Stats & data ── -->
-    <nav class="popup-tabs" aria-label="Popup sections">
-      <button type="button" class="popup-tab is-active" data-pane="words">Words</button>
-      <button type="button" class="popup-tab" data-pane="stats">Stats &amp; data</button>
+    <nav class="popup-tabs" aria-label="Popup sections" role="tablist">
+      <button type="button" id="words-tab" class="popup-tab is-active" data-pane="words" role="tab" aria-selected="true" aria-controls="words-pane">Words</button>
+      <button type="button" id="stats-tab" class="popup-tab" data-pane="stats" role="tab" aria-selected="false" aria-controls="stats-pane">Stats &amp; data</button>
     </nav>
 
     <!-- ── Words pane: capture + search + list ── -->
-    <section class="popup-pane" data-pane="words">
+    <section id="words-pane" class="popup-pane is-active" data-pane="words" role="tabpanel" aria-labelledby="words-tab">
 
-      <div id="current-page-card" class="capture-card">
+      <div id="current-page-card" class="capture-card is-empty">
         <p class="capture-label">Currently open</p>
         <div class="word-head">
           <h2 id="current-word">—</h2>
@@ -80,7 +76,7 @@
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
           <input id="search-input" type="search" placeholder="Search words, type, translation, note…" autocomplete="off" aria-label="Search saved words">
         </div>
-        <span id="search-status" class="search-status muted" aria-live="polite">0 saved words</span>
+        <span id="search-status" class="search-status muted" aria-live="polite">Loading…</span>
       </div>
 
       <div id="saved-list" class="saved-list"></div>
@@ -96,12 +92,16 @@
     </section>
 
     <!-- ── Stats & data pane: data status on top ── -->
-    <section class="popup-pane" data-pane="stats">
+    <section id="stats-pane" class="popup-pane" data-pane="stats" role="tabpanel" aria-labelledby="stats-tab">
+
+      <div id="backup-warning" class="backup-warning is-hidden" role="status" aria-live="polite">
+        <span id="backup-warning-message" class="backup-warning-message"></span>
+        <button id="backup-warning-action" class="text-link backup-warning-action" type="button">Back up now</button>
+      </div>
 
       <details id="data-settings" class="data-settings">
         <summary class="data-settings-summary">
           <span class="data-settings-label">Data &amp; settings</span>
-          <span class="data-settings-hint">sync · backup · restore · export</span>
         </summary>
 
         <section class="sync-row" aria-labelledby="sync-languages-title">
@@ -198,11 +198,6 @@
         <button id="toggle-auto-mode" class="btn-ghost auto-toggle" type="button">Turn on</button>
       </div>
     </section>
-
-    <div id="backup-warning" class="backup-warning is-hidden" role="status" aria-live="polite">
-      <span id="backup-warning-message" class="backup-warning-message"></span>
-      <button id="backup-warning-action" class="text-link backup-warning-action" type="button">Back up now</button>
-    </div>
 
     <input id="import-json-file" type="file" accept="application/json,.json" hidden>
 
