@@ -147,7 +147,8 @@
         banner.id = BANNER_ID;
         banner.innerHTML = `
           <div class="lodw-row">
-            <span class="lodw-dot"></span>
+            <span class="lodw-brand"><b>LOD</b>Vault</span>
+            <span class="lodw-dot" aria-hidden="true"></span>
             <span class="lodw-word"></span>
             <span class="lodw-info"></span>
             <div class="lodw-actions">
@@ -157,8 +158,8 @@
           </div>
           <div class="lodw-note-row">
             <button type="button" class="lodw-note-toggle" aria-expanded="false">
-              <span class="lodw-note-icon">📝</span>
-              <span class="lodw-note-toggle-label">Add note</span>
+              <span class="lodw-note-icon" aria-hidden="true">+</span>
+              <span class="lodw-note-toggle-label">Note</span>
             </button>
             <div class="lodw-note-body is-hidden">
               <textarea id="lodw-note-input" class="lodw-note-input" rows="1" placeholder="Add a note…" disabled></textarea>
@@ -167,26 +168,6 @@
           <div class="lodw-meta">Save to enable notes.</div>
           <p class="lodw-action-feedback is-hidden" role="status" aria-live="polite"></p>
         `;
-
-        // Force truncation styles via inline setProperty so no external CSS can override.
-        // The LOD page uses display:flex on #app which can cause the banner (as a flex
-        // descendant) to size to content width, preventing text-overflow: ellipsis.
-        const s = banner.style;
-        s.setProperty("width", "100%", "important");
-        s.setProperty("min-width", "0", "important");
-        s.setProperty("max-width", "100%", "important");
-        s.setProperty("overflow", "hidden", "important");
-        s.setProperty("box-sizing", "border-box", "important");
-
-        const row = banner.querySelector(".lodw-row");
-        row.style.setProperty("overflow", "hidden", "important");
-        row.style.setProperty("min-width", "0", "important");
-
-        const infoEl = banner.querySelector(".lodw-info");
-        infoEl.style.setProperty("overflow", "hidden", "important");
-        infoEl.style.setProperty("text-overflow", "ellipsis", "important");
-        infoEl.style.setProperty("white-space", "nowrap", "important");
-        infoEl.style.setProperty("min-width", "0", "important");
 
         banner.addEventListener("input", (event) => {
           const textarea = event.target.closest(".lodw-note-input");

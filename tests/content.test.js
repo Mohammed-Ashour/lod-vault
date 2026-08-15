@@ -295,8 +295,9 @@ test("applyState shows the word name and note toggle in the banner", async () =>
   const noteToggle = banner.querySelector(".lodw-note-toggle");
 
   assert.equal(word.textContent, "Haus");
+  assert.equal(banner.querySelector(".lodw-brand").textContent, "LODVault");
   assert.ok(noteToggle, "note toggle should be present");
-  assert.ok(banner.querySelector(".lodw-note-icon"), "note icon should be present");
+  assert.equal(banner.querySelector(".lodw-note-icon").textContent, "+");
 });
 
 test("message listener returns the extracted entry for popup requests", () => {

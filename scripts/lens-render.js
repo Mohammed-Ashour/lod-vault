@@ -114,7 +114,7 @@
               <span class="toggle-pill-icon">${wordResult._savedEntry?.study ? "✓" : "○"}</span>
               <span class="toggle-pill-label">Study</span>
             </button>
-            <a class="lodvault-lens-open" href="${escapeHtml(wordResult.entry.url || "https://lod.lu")}" target="_blank" rel="noreferrer">LOD</a>
+            <a class="lodvault-lens-open" href="${escapeHtml(wordResult.entry.url || "https://lod.lu")}" target="_blank" rel="noreferrer">Open on LOD <span aria-hidden="true">↗</span></a>
           </div>`;
       } else if (wordResult.status === "ambiguous" && wordResult.candidates?.length) {
         const candidateListHtml = wordResult.candidates.slice(0, 5).map((candidate) => `

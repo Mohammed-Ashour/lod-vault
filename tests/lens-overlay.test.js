@@ -329,6 +329,13 @@ test("lens overlay exposes a labelled pronunciation control for the resolved wor
   await wait(dom, 0);
 
   const root = getRoot();
+  const status = root.querySelector(".lodvault-lens-status");
+  const openLink = root.querySelector(".lodvault-lens-open");
+  assert.equal(root.querySelector(".lodvault-lens-brand").textContent, "LOD Lens");
+  assert.equal(status.getAttribute("role"), "status");
+  assert.equal(status.getAttribute("aria-live"), "polite");
+  assert.match(openLink.textContent, /Open on LOD/);
+
   const audioBtn = root.querySelector(".lodvault-lens-audio");
   assert.ok(audioBtn, "expected a pronunciation button next to the word");
   assert.equal(audioBtn.dataset.audioId, "HAUS1");
