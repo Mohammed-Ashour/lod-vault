@@ -32,7 +32,9 @@ async function startServer(port) {
       const file = path.join(root, rel);
       if (!file.startsWith(root)) { res.writeHead(403); res.end(); return; }
       const body = await readFile(file);
-      res.writeHead(200, { "content-type": MIME[path.extname(file)] || "application/octet-stream" });
+      const headers = { "content-type": MIME[path.extname(file)] || "application/octet-stream" };
+      if (path.extname(file) === ".html") headers["content-security-policy"] = "script-src 'self'";
+      res.writeHead(200, headers);
       res.end(body);
     } catch {
       res.writeHead(404); res.end("not found");
@@ -102,6 +104,14 @@ async function capturePage(tab, pageUrl, shots) {
       await sleep(600);
     }
     await shoot(send, shots[name], shots);
+    // popup also captures the Stats & data tab (dark + light)
+    if (shots.stats) {
+      await send("Runtime.evaluate", { expression: `document.querySelector('.popup-tab[data-pane="stats"]')?.click()` });
+      await sleep(400);
+      await shoot(send, shots.stats[name], shots);
+      await send("Runtime.evaluate", { expression: `document.querySelector('.popup-tab[data-pane="words"]')?.click()` });
+      await sleep(300);
+    }
   }
   await send("Emulation.clearDeviceMetricsOverride").catch(() => {});
   ws.close();
@@ -117,7 +127,7 @@ async function capturePage(tab, pageUrl, shots) {
   await sleep(1600);
 
   const targets = [
-    ["popup", `http://127.0.0.1:${httpPort}/pages/popup.html`, { width: 420, height: 680 }],
+    ["popup", `http://127.0.0.1:${httpPort}/pages/popup.html`, { width: 420, height: 680, stats: true }],
     ["flashcards", `http://127.0.0.1:${httpPort}/pages/flashcards.html`, { width: 1280, height: 860 }],
     ["vault", `http://127.0.0.1:${httpPort}/pages/preview.html`, { width: 1280, height: 860 }]
   ];
@@ -128,7 +138,8 @@ async function capturePage(tab, pageUrl, shots) {
     const target = tab || (await getJSON(`http://127.0.0.1:${port}/json/list`))[0];
     await capturePage(target, url, {
       width: size.width, height: size.height,
-      dark: `${name}-blue-night.png`, light: `${name}-blue-night-light.png`
+      dark: `${name}-blue-night.png`, light: `${name}-blue-night-light.png`,
+      stats: size.stats ? { dark: `${name}-stats-blue-night.png`, light: `${name}-stats-blue-night-light.png` } : null
     });
   }
   fileServer.close();

@@ -697,3 +697,33 @@ window.addEventListener("beforeunload", () => {
     URL.revokeObjectURL(currentPreviewUrl);
   }
 });
+
+// Blue Night — grouped Export menu and theme mirroring into the vault
+// document. External script wiring: extension pages run under MV3 CSP.
+(() => {
+  const trigger = document.getElementById("export-trigger");
+  const menu = document.getElementById("export-menu");
+  if (trigger && menu) {
+    trigger.addEventListener("click", (event) => {
+      event.stopPropagation();
+      menu.classList.toggle("is-open");
+    });
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest(".menu-wrap")) menu.classList.remove("is-open");
+    });
+    menu.addEventListener("click", () => menu.classList.remove("is-open"));
+  }
+
+  const frame = document.getElementById("preview-frame");
+  if (frame && typeof MutationObserver !== "undefined") {
+    function syncTheme() {
+      const doc = frame.contentDocument;
+      if (!doc) return;
+      doc.documentElement.classList.toggle("light", document.documentElement.classList.contains("light"));
+    }
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    frame.addEventListener("load", syncTheme);
+    syncTheme();
+  }
+})();

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LODVault Flashcards</title>
-  <script>try { if (localStorage.getItem("blueNightTheme") === "light") document.documentElement.classList.add("light"); } catch (e) {}</script>
+  <script src="../scripts/theme-init.js"></script>
   <link rel="stylesheet" href="../styles/blue-night.css">
   <link rel="stylesheet" href="../styles/flashcards.css">
 </head>
@@ -21,7 +21,7 @@
         <button id="open-preview" class="text-link" title="Open Export Vault">Vault</button>
         <span id="session-chip" class="summary-chip" aria-live="polite">Due today · Smart · 10</span>
         <button id="direction-toggle" class="icon-btn direction" title="Toggle reverse cards (R)">⇄ Lux ⇄ EN</button>
-        <button type="button" class="icon-btn theme-btn" onclick="toggleTheme()" aria-label="Switch to light">☀</button>
+        <button type="button" class="icon-btn theme-btn" aria-label="Switch to light">☀</button>
         <div class="menu-wrap">
           <button id="session-trigger" class="btn-ghost" type="button">Session ▾</button>
           <div id="session-menu" class="menu session-menu">
@@ -167,38 +167,5 @@
   <script src="../scripts/shared.js"></script>
   <script src="../scripts/theme.js"></script>
   <script src="../scripts/flashcards.js"></script>
-  <script>
-    // Session summary chip — mirrors the grouped Session menu choices
-    (function () {
-      const chip = document.getElementById("session-chip");
-      const menu = document.getElementById("session-menu");
-      const trigger = document.getElementById("session-trigger");
-
-      function closeMenu() { menu.classList.remove("is-open"); }
-      trigger.addEventListener("click", (event) => {
-        event.stopPropagation();
-        menu.classList.toggle("is-open");
-      });
-      document.addEventListener("click", (event) => {
-        if (!event.target.closest(".menu-wrap")) closeMenu();
-      });
-
-      const labels = {
-        "deck-filter": { due: "Due today", study: "Study list", favorites: "Favorites", all: "All saved" },
-        "order-mode": { smart: "Smart", shuffle: "Shuffle", sequential: "Sequential" },
-        "session-size": { all: "All", "10": "10", "20": "20" }
-      };
-      function updateChip() {
-        const deck = labels["deck-filter"][document.getElementById("deck-filter").value] || "";
-        const order = labels["order-mode"][document.getElementById("order-mode").value] || "";
-        const size = labels["session-size"][document.getElementById("session-size").value] || "";
-        chip.textContent = [deck, order, size].filter(Boolean).join(" · ");
-      }
-      ["deck-filter", "order-mode", "session-size"].forEach((id) => {
-        document.getElementById(id).addEventListener("change", updateChip);
-      });
-      updateChip();
-    })();
-  </script>
 </body>
 </html>

@@ -22,7 +22,9 @@
 
 <img src="docs/screenshots/popup-blue-night.png" width="380" alt="LODVault popup — Blue Night redesign" /> <img src="docs/screenshots/popup-blue-night-light.png" width="380" alt="LODVault popup — Blue Night light mode" />
 
-The popup opens on a single **Today** panel (due words, Start review, vault pulse, Auto mode), a contextual **capture card** for the word you are reading on lod.lu, and the saved-word list as the working surface. Sync, backup, restore, import and export live behind **Data & settings** — one deliberate step away. The ☀/☾ button in the header flips the whole product between navy night and cool paper day.
+The popup opens on a **Today** panel (due words + Start review), then splits into two tabs: **Words** (contextual capture card for the word open on lod.lu, search, saved-word list) and **Stats & data** (sync/backup/restore/export status on top, vault counters, Auto mode). Header links take you straight to Flashcards or the Vault, and the ☀/☾ button flips the whole product between navy night and cool paper day.
+
+<img src="docs/screenshots/popup-stats-blue-night.png" width="380" alt="LODVault popup — Stats & data tab" /> <img src="docs/screenshots/popup-stats-blue-night-light.png" width="380" alt="LODVault popup — Stats & data tab, light mode" />
 
 ---
 

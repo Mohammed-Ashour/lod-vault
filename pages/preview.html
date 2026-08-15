@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LODVault Vault</title>
-  <script>try { if (localStorage.getItem("blueNightTheme") === "light") document.documentElement.classList.add("light"); } catch (e) {}</script>
+  <script src="../scripts/theme-init.js"></script>
   <link rel="stylesheet" href="../styles/blue-night.css">
   <link rel="stylesheet" href="../styles/preview.css">
 </head>
@@ -25,7 +25,7 @@
       </select>
       <select id="lang-filter" class="select" aria-label="Language filter"><option value="">All languages</option></select>
       <button id="refresh-preview" class="icon-btn" title="Refresh" aria-label="Refresh">↻</button>
-      <button type="button" class="icon-btn theme-btn" onclick="toggleTheme()" aria-label="Switch to light">☀</button>
+      <button type="button" class="icon-btn theme-btn" aria-label="Switch to light">☀</button>
       <div class="menu-wrap">
         <button id="export-trigger" class="btn-primary" type="button">Export ▾</button>
         <div id="export-menu" class="menu">
@@ -53,34 +53,5 @@
   <script src="../scripts/shared.js"></script>
   <script src="../scripts/theme.js"></script>
   <script src="../scripts/preview.js"></script>
-  <script>
-    // Export menu toggle (grouped exports, one primary action)
-    (function () {
-      const trigger = document.getElementById("export-trigger");
-      const menu = document.getElementById("export-menu");
-      trigger.addEventListener("click", (event) => {
-        event.stopPropagation();
-        menu.classList.toggle("is-open");
-      });
-      document.addEventListener("click", (event) => {
-        if (!event.target.closest(".menu-wrap")) menu.classList.remove("is-open");
-      });
-      menu.addEventListener("click", () => menu.classList.remove("is-open"));
-    })();
-
-    // Mirror the page theme onto the vault document (generated export HTML)
-    (function () {
-      const frame = document.getElementById("preview-frame");
-      function syncTheme() {
-        const doc = frame.contentDocument;
-        if (!doc) return;
-        doc.documentElement.classList.toggle("light", document.documentElement.classList.contains("light"));
-      }
-      const observer = new MutationObserver(syncTheme);
-      observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-      frame.addEventListener("load", syncTheme);
-      syncTheme();
-    })();
-  </script>
 </body>
 </html>

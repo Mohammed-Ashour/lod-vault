@@ -39,6 +39,11 @@
   }
   applyTheme(saved);
 
+  // CSP-safe wiring: no inline onclick handlers in extension pages.
+  document.querySelectorAll(".theme-btn").forEach((button) => {
+    button.addEventListener("click", toggleTheme);
+  });
+
   globalThis.toggleTheme = toggleTheme;
   globalThis.applyTheme = applyTheme;
 })();
