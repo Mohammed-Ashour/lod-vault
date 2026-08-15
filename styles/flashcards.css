@@ -142,7 +142,41 @@ body {
   line-height: 1.25;
   color: var(--text);
   max-width: 90%;
+  max-height: 100%;
+  overflow-y: auto;
 }
+
+/* open-on-LOD link — quiet pill in the design language */
+.card-open-row {
+  margin-top: 16px;
+  text-align: right;
+}
+.card-open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  transition: all 0.15s;
+}
+.card-open-link:hover {
+  color: var(--accent-lt);
+  border-color: var(--accent);
+  background: var(--tint);
+}
+.card-open-link .open-arrow {
+  font-size: 9px;
+  opacity: 0.75;
+  transition: transform 0.15s;
+}
+.card-open-link:hover .open-arrow { transform: translate(1px, -1px); }
 .hint {
   position: absolute;
   bottom: 18px;

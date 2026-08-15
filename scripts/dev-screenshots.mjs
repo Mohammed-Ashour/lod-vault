@@ -103,6 +103,10 @@ async function capturePage(tab, pageUrl, shots) {
       await send("Runtime.evaluate", { expression: `document.querySelector(".theme-btn")?.click()` });
       await sleep(600);
     }
+    if (shots.reveal) {
+      await send("Runtime.evaluate", { expression: `if (!document.getElementById('flashcard')?.classList.contains('is-revealed')) document.getElementById('flip-card')?.click()` });
+      await sleep(600);
+    }
     await shoot(send, shots[name], shots);
     // popup also captures the Stats & data tab (dark + light)
     if (shots.stats) {
@@ -128,7 +132,7 @@ async function capturePage(tab, pageUrl, shots) {
 
   const targets = [
     ["popup", `http://127.0.0.1:${httpPort}/pages/popup.html`, { width: 420, height: 680, stats: true }],
-    ["flashcards", `http://127.0.0.1:${httpPort}/pages/flashcards.html`, { width: 1280, height: 860 }],
+    ["flashcards", `http://127.0.0.1:${httpPort}/pages/flashcards.html`, { width: 1280, height: 860, reveal: true }],
     ["vault", `http://127.0.0.1:${httpPort}/pages/preview.html`, { width: 1280, height: 860 }]
   ];
 
@@ -139,7 +143,8 @@ async function capturePage(tab, pageUrl, shots) {
     await capturePage(target, url, {
       width: size.width, height: size.height,
       dark: `${name}-blue-night.png`, light: `${name}-blue-night-light.png`,
-      stats: size.stats ? { dark: `${name}-stats-blue-night.png`, light: `${name}-stats-blue-night-light.png` } : null
+      stats: size.stats ? { dark: `${name}-stats-blue-night.png`, light: `${name}-stats-blue-night-light.png` } : null,
+      reveal: size.reveal || false
     });
   }
   fileServer.close();
