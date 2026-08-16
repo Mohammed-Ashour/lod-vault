@@ -1,4 +1,4 @@
-Chrome Web Store upload set — LODVault v2.1.0
+Chrome Web Store upload set — LODVault v2.2.0
 
 Screenshots (upload in this order; Chrome accepts up to five):
 - 01-popup-1280x800.png

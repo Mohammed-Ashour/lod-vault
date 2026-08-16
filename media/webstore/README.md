@@ -1,6 +1,6 @@
 # Chrome Web Store graphics
 
-The generated upload set lives in `upload-v2.1.0/`. It contains exactly the assets accepted by the Chrome Web Store listing form:
+The generated upload set lives in `upload-v2.2.0/`. It contains exactly the assets accepted by the Chrome Web Store listing form:
 
 | Asset | File | Dimensions |
 |---|---|---:|
@@ -13,7 +13,7 @@ The generated upload set lives in `upload-v2.1.0/`. It contains exactly the asse
 | Marquee promo | `promo-marquee-1400x560.png` | 1400×560 |
 | Store icon | `icon-128x128.png` | 128×128 |
 
-Upload the screenshots in numbered order. The same files are bundled in `chrome-web-store-assets-v2.1.0.zip` for handoff; upload the individual PNG files in the Developer Dashboard.
+Upload the screenshots in numbered order. The same files are bundled in `chrome-web-store-assets-v2.2.0.zip` for handoff; upload the individual PNG files in the Developer Dashboard.
 
 ## Rebuild
 
@@ -21,7 +21,7 @@ Upload the screenshots in numbered order. The same files are bundled in `chrome-
 node media/webstore/render-webstore-images.mjs
 ```
 
-The renderer clears the versioned upload folder, captures the source HTML with Playwright, validates every PNG's dimensions, copies the store icon, writes the upload order, and creates the handoff ZIP.
+The renderer clears the versioned upload folder, captures the source HTML through the Chrome DevTools Protocol, validates every PNG's dimensions, copies the store icon, writes the upload order, and creates the handoff ZIP.
 
 ## Chrome requirements
 
