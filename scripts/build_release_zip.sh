@@ -67,6 +67,8 @@ cp \
   scripts/store-core.js \
   scripts/sync-coordinator.js \
   scripts/sync.js \
+  scripts/theme-init.js \
+  scripts/theme.js \
   "$STAGE_DIR/scripts/"
 
 (

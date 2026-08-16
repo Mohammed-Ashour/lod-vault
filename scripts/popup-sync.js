@@ -539,6 +539,10 @@
       `;
     }
 
+    function isStatsPaneActive() {
+      return document.getElementById("stats-pane")?.classList.contains("is-active");
+    }
+
     function renderSyncLanguages() {
       const selectedLanguages = Array.isArray(state.syncLanguages) && state.syncLanguages.length
         ? state.syncLanguages
@@ -551,8 +555,23 @@
         .join(""));
       elements.syncLanguageCount.textContent = `${selectedLanguages.length} of ${maxSelected} selected`;
       elements.syncLanguageCapacity.classList.toggle("sync-language-capacity", true);
-      renderSyncCapacity();
+      if (isStatsPaneActive() && !state.syncLanguagesSaving) void renderSyncCapacity();
       renderSyncNowAction();
+    }
+
+    async function refreshDataStatus() {
+      if (!isStatsPaneActive()) return;
+
+      try {
+        const snapshot = await inspectSyncRemoteState();
+        await Promise.allSettled([
+          renderSyncCapacity(snapshot),
+          refreshSyncHealth(snapshot)
+        ]);
+      } catch {
+        elements.syncLanguageCapacity.textContent = `Sync: Est. ~${getSyncCapacityHint(state.syncLanguages.length)} words`;
+        setSyncHealthStatus("Could not read sync status.", "error");
+      }
     }
 
     async function toggleSyncLanguage(language) {
@@ -599,6 +618,7 @@
       renderSyncCapacity,
       renderVerifiedSyncStatus,
       refreshSyncHealth,
+      refreshDataStatus,
       scheduleSyncCapacityRefresh,
       clearScheduledSyncCapacityRefresh,
       onSyncLanguageChipClick,

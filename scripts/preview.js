@@ -4,7 +4,6 @@ const flashcardsButton = document.getElementById("open-flashcards");
 const refreshButton = document.getElementById("refresh-preview");
 const downloadButton = document.getElementById("download-html");
 const downloadAnkiButton = document.getElementById("download-anki");
-let currentPreviewUrl = "";
 let currentSearchQuery = "";
 let currentLang = "";
 let currentSort = "recent";
@@ -41,13 +40,29 @@ function setPreviewNoteStatus(textarea, message, tone = "") {
 function setPreviewNoteExpanded(section, expanded) {
   const toggle = section?.querySelector(".note-toggle");
   const noteBody = section?.querySelector(".note-body");
-  if (toggle) {
-    toggle.classList.toggle("is-hidden", expanded);
-    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+  const staticNote = Array.from(section?.closest(".entry")?.children || [])
+    .find((element) => element.classList.contains("note"));
+  toggle?.setAttribute("aria-expanded", String(expanded));
+  noteBody?.classList.toggle("is-hidden", !expanded);
+  staticNote?.classList.toggle("is-hidden", expanded);
+}
+
+function renderPreviewStaticNote(entryElement, note) {
+  let staticNote = Array.from(entryElement?.children || [])
+    .find((element) => element.classList.contains("note"));
+  if (!note) {
+    staticNote?.remove();
+    return;
   }
-  if (noteBody) {
-    noteBody.classList.toggle("is-hidden", !expanded);
+
+  if (!staticNote) {
+    staticNote = entryElement.ownerDocument.createElement("p");
+    staticNote.className = "note";
+    entryElement.insertBefore(staticNote, entryElement.querySelector(".preview-note-section"));
   }
+  const label = entryElement.ownerDocument.createElement("strong");
+  label.textContent = "Note:";
+  staticNote.replaceChildren(label, entryElement.ownerDocument.createTextNode(` ${note}`));
 }
 
 const previewNoteAutosave = LodVaultStore.createNoteAutosaveController({
@@ -65,7 +80,13 @@ const previewNoteAutosave = LodVaultStore.createNoteAutosaveController({
     }
 
     const noteSection = textarea.closest(".preview-note-section");
-    if (noteSection && !changedSinceRequest && !savedEntry.note && getPreviewActiveElement() !== textarea) {
+    if (entryElement) renderPreviewStaticNote(entryElement, savedEntry.note);
+    const noteToggle = noteSection?.querySelector(".note-toggle");
+    if (noteToggle) {
+      noteToggle.textContent = savedEntry.note ? "Edit note" : "+ Note";
+      noteToggle.setAttribute("aria-label", savedEntry.note ? "Edit note" : "Add a note");
+    }
+    if (noteSection && !changedSinceRequest && getPreviewActiveElement() !== textarea) {
       setPreviewNoteExpanded(noteSection, false);
     }
 
@@ -147,6 +168,13 @@ function injectPreviewStyles(doc) {
   const style = doc.createElement("style");
   style.id = "lodvault-preview-style";
   style.textContent = `
+    html.embedded body { padding-top: 28px; }
+    html.embedded .page-header h1,
+    html.embedded .page-header .meta,
+    html.embedded .chip-list-favorite,
+    html.embedded .chip-list-study,
+    html.embedded .chip-list-history { display: none; }
+    html.embedded .page-header { margin-bottom: 20px; }
     .preview-entry-actions {
       margin-top: 12px;
       display: flex;
@@ -157,13 +185,13 @@ function injectPreviewStyles(doc) {
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      padding: 5px 11px;
-      font-size: 12.5px;
+      padding: 4px 10px;
+      font-size: 11.5px;
       font-weight: 700;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.12);
+      background: transparent;
+      border: 1px solid var(--line-strong);
       border-radius: 999px;
-      color: #5f8fa8;
+      color: var(--muted);
       cursor: pointer;
       transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
@@ -172,12 +200,11 @@ function injectPreviewStyles(doc) {
       cursor: wait;
     }
     .preview-toggle-pill:hover:enabled {
-      background: rgba(255,255,255,0.1);
-      border-color: rgba(255,255,255,0.22);
-      color: #ddeef5;
+      border-color: var(--teal);
+      color: var(--text);
     }
     .preview-toggle-pill-icon {
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1;
     }
     .preview-toggle-pill-label {
@@ -185,47 +212,38 @@ function injectPreviewStyles(doc) {
       letter-spacing: 0;
     }
     .preview-toggle-pill.is-fav {
-      background: rgba(230,197,96,0.15);
-      border-color: rgba(230,197,96,0.4);
-      color: #e6c560;
+      background: rgba(226,195,103,0.08);
+      border-color: var(--warn);
+      color: var(--warn);
     }
-    .preview-toggle-pill.is-fav:hover:enabled {
-      background: rgba(230,197,96,0.25);
-      border-color: rgba(230,197,96,0.55);
-      color: #f0d56e;
-    }
+    .preview-toggle-pill.is-fav:hover:enabled { background: rgba(226,195,103,0.14); }
     .preview-toggle-pill.is-study {
-      background: rgba(57,167,196,0.15);
-      border-color: rgba(57,167,196,0.4);
-      color: #a8dadc;
+      background: rgba(57,167,196,0.08);
+      border-color: var(--teal);
+      color: var(--teal);
     }
-    .preview-toggle-pill.is-study:hover:enabled {
-      background: rgba(57,167,196,0.25);
-      border-color: rgba(57,167,196,0.55);
-      color: #a8dadc;
-    }
+    .preview-toggle-pill.is-study:hover:enabled { background: rgba(57,167,196,0.14); }
     .preview-delete-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 28px;
-      height: 28px;
+      width: 26px;
+      height: 26px;
       padding: 0;
       margin-left: auto;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: transparent;
+      border: 0;
       border-radius: 7px;
-      color: #5f8fa8;
+      color: var(--muted);
       font-size: 16px;
-      font-weight: 300;
+      font-weight: 400;
       line-height: 1;
       cursor: pointer;
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      transition: background 0.15s, color 0.15s;
     }
     .preview-delete-btn:hover {
-      background: rgba(230,57,70,0.1);
-      border-color: rgba(230,57,70,0.3);
-      color: #e63946;
+      background: rgba(230,96,106,0.08);
+      color: var(--danger, #e6606a);
     }
     .preview-delete-btn:disabled {
       opacity: 0.5;
@@ -233,20 +251,18 @@ function injectPreviewStyles(doc) {
     }
     .preview-note-section {
       margin-top: 10px;
+      border-top: 1px dashed var(--line);
+      padding-top: 8px;
     }
     .preview-note-status {
       margin-top: 4px;
       font-size: 11px;
-      color: #5f8fa8;
+      color: var(--muted);
       line-height: 1.4;
     }
     .preview-note-status[data-tone="saving"],
-    .preview-note-status[data-tone="success"] {
-      color: #a8dadc;
-    }
-    .preview-note-status[data-tone="error"] {
-      color: #f29ba2;
-    }
+    .preview-note-status[data-tone="success"] { color: var(--teal); }
+    .preview-note-status[data-tone="error"] { color: var(--danger, #e6606a); }
     .note-toggle {
       display: inline-flex;
       align-items: center;
@@ -254,19 +270,19 @@ function injectPreviewStyles(doc) {
       padding: 0;
       border: none;
       background: transparent;
-      color: #5f8fa8;
+      color: var(--muted);
       font-size: 11px;
       font-weight: 600;
       cursor: pointer;
-      opacity: 0.55;
+      opacity: 0.6;
       transition: color 0.15s, opacity 0.15s;
     }
     .note-toggle:hover {
-      color: #a8dadc;
+      color: var(--teal);
       opacity: 1;
     }
-    .note-toggle.is-hidden,
-    .note-body.is-hidden {
+    .note-body.is-hidden,
+    .note.is-hidden {
       display: none;
     }
     .note-label {
@@ -276,31 +292,29 @@ function injectPreviewStyles(doc) {
       font-weight: 700;
       letter-spacing: 0.07em;
       text-transform: uppercase;
-      color: #5f8fa8;
+      color: var(--muted);
     }
     .note-input {
       display: block;
       width: 100%;
       min-height: 62px;
       padding: 8px 10px;
-      border: 1px solid #213858;
-      border-radius: 6px;
-      background: #192d44;
-      color: #e4eef4;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
       font: inherit;
       font-size: 12.5px;
       line-height: 1.45;
       resize: vertical;
-      box-shadow: inset 0 1px 3px rgba(0,0,0,0.15);
     }
     .note-input::placeholder {
-      color: #5f8fa8;
+      color: var(--muted);
       opacity: 1;
     }
     .note-input:focus {
       outline: none;
-      border-color: #39a7c4;
-      box-shadow: inset 0 1px 3px rgba(0,0,0,0.15), 0 0 0 3px rgba(57,167,196,0.2);
+      border-color: var(--teal);
     }
     .audio-btn {
       display: inline-flex;
@@ -309,33 +323,33 @@ function injectPreviewStyles(doc) {
       width: 26px;
       height: 26px;
       padding: 0;
-      border: 1px solid rgba(255,255,255,0.12);
+      border: 1px solid var(--line-strong);
       border-radius: 50%;
-      background: rgba(255,255,255,0.05);
-      color: #5f8fa8;
+      background: var(--surface);
+      color: var(--muted);
       cursor: pointer;
       transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
       flex-shrink: 0;
       line-height: 1;
     }
     .audio-btn:hover {
-      background: rgba(57,167,196,0.15);
-      border-color: rgba(57,167,196,0.4);
-      color: #a8dadc;
+      background: rgba(57,167,196,0.12);
+      border-color: var(--teal);
+      color: var(--teal);
       transform: scale(1.08);
     }
     .audio-btn:active { transform: scale(0.95); }
     .audio-btn svg { width: 14px; height: 14px; }
     .audio-btn.is-playing {
-      background: rgba(57,167,196,0.2);
-      border-color: rgba(57,167,196,0.5);
-      color: #39a7c4;
+      background: rgba(57,167,196,0.15);
+      border-color: var(--teal);
+      color: var(--teal);
       animation: audio-pulse 1s ease-in-out infinite;
     }
     .audio-btn.is-error {
-      background: rgba(230,57,70,0.1);
-      border-color: rgba(230,57,70,0.3);
-      color: #e63946;
+      background: rgba(230,96,106,0.08);
+      border-color: var(--danger, #e6606a);
+      color: var(--danger, #e6606a);
     }
     @keyframes audio-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
   `;
@@ -348,6 +362,7 @@ function attachPreviewSearch() {
   const doc = frame.contentDocument;
   if (!doc) return;
 
+  doc.documentElement.classList.add("embedded");
   injectPreviewStyles(doc);
 
   const input = doc.getElementById("search-input");
@@ -374,7 +389,8 @@ function attachPreviewSearch() {
     const activeFilters = [query ? "search" : "", currentLang ? "language" : ""].filter(Boolean).length;
     status.textContent = activeFilters
       ? `${visibleCount} matching word${visibleCount === 1 ? "" : "s"}`
-      : `${entries.length} saved word${entries.length === 1 ? "" : "s"}`;
+      : "";
+    status.hidden = activeFilters === 0;
     empty.hidden = visibleCount !== 0 || activeFilters === 0;
   };
 
@@ -436,55 +452,57 @@ function attachPreviewNoteEditors(doc) {
     const entry = currentEntriesById.get(id);
     if (!entry) continue;
 
-    entryElement.querySelector(".note")?.remove();
-
     const noteSection = doc.createElement("div");
     noteSection.className = "preview-note-section";
 
     const noteToggle = doc.createElement("button");
     noteToggle.type = "button";
-    noteToggle.className = `note-toggle${entry.note ? " is-hidden" : ""}`;
-    noteToggle.setAttribute("aria-label", "Add a note");
-    noteToggle.setAttribute("aria-expanded", entry.note ? "true" : "false");
-    noteToggle.textContent = "+ Note";
+    noteToggle.className = "note-toggle";
+    noteToggle.setAttribute("aria-label", entry.note ? "Edit note" : "Add a note");
+    noteToggle.setAttribute("aria-expanded", "false");
+    noteToggle.textContent = entry.note ? "Edit note" : "+ Note";
     noteToggle.addEventListener("click", () => {
+      if (!noteSection.querySelector(".note-body")) {
+        const noteBody = doc.createElement("div");
+        noteBody.className = "note-body is-hidden";
+
+        const noteLabel = doc.createElement("label");
+        noteLabel.className = "note-label";
+        noteLabel.setAttribute("for", `preview-note-${id}`);
+        noteLabel.textContent = "Note";
+
+        const noteInput = doc.createElement("textarea");
+        noteInput.id = `preview-note-${id}`;
+        noteInput.className = "note-input";
+        noteInput.dataset.noteId = id;
+        noteInput.dataset.savedValue = entry.note || "";
+        noteInput.placeholder = "Add a note for this word...";
+        noteInput.value = entry.note || "";
+        noteInput.addEventListener("input", () => previewNoteAutosave.markDirty(noteInput));
+        noteInput.addEventListener("change", () => previewNoteAutosave.commit(noteInput));
+        noteInput.addEventListener("focusout", () => previewNoteAutosave.commit(noteInput));
+        noteInput.addEventListener("keydown", (event) => {
+          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+            event.preventDefault();
+            previewNoteAutosave.commit(noteInput);
+          }
+        });
+
+        const noteStatus = doc.createElement("p");
+        noteStatus.className = "preview-note-status";
+        noteStatus.textContent = entry.note
+          ? "Saved with this word."
+          : "Add a short note — it saves automatically.";
+
+        noteBody.append(noteLabel, noteInput, noteStatus);
+        noteSection.appendChild(noteBody);
+      }
+
       setPreviewNoteExpanded(noteSection, true);
       noteSection.querySelector(".note-input")?.focus();
     });
 
-    const noteBody = doc.createElement("div");
-    noteBody.className = `note-body${entry.note ? "" : " is-hidden"}`;
-
-    const noteLabel = doc.createElement("label");
-    noteLabel.className = "note-label";
-    noteLabel.setAttribute("for", `preview-note-${id}`);
-    noteLabel.textContent = "Note";
-
-    const noteInput = doc.createElement("textarea");
-    noteInput.id = `preview-note-${id}`;
-    noteInput.className = "note-input";
-    noteInput.dataset.noteId = id;
-    noteInput.dataset.savedValue = entry.note || "";
-    noteInput.placeholder = "Add a note for this word...";
-    noteInput.value = entry.note || "";
-    noteInput.addEventListener("input", () => previewNoteAutosave.markDirty(noteInput));
-    noteInput.addEventListener("change", () => previewNoteAutosave.commit(noteInput));
-    noteInput.addEventListener("focusout", () => previewNoteAutosave.commit(noteInput));
-    noteInput.addEventListener("keydown", (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-        event.preventDefault();
-        previewNoteAutosave.commit(noteInput);
-      }
-    });
-
-    const noteStatus = doc.createElement("p");
-    noteStatus.className = "preview-note-status";
-    noteStatus.textContent = entry.note
-      ? "Saved with this word."
-      : "Add a short note — it saves automatically.";
-
-    noteBody.append(noteLabel, noteInput, noteStatus);
-    noteSection.append(noteToggle, noteBody);
+    noteSection.appendChild(noteToggle);
     entryElement.appendChild(noteSection);
   }
 }
@@ -656,22 +674,15 @@ async function renderPreview({ preserveView = false } = {}) {
   populateLangSelect(entries);
 
   const html = LodVaultStore.buildExportHtml(entries, { includeInlineScript: false });
-  const count = `${entries.length} saved word${entries.length === 1 ? "" : "s"}`;
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
+  const count = `${entries.length} word${entries.length === 1 ? "" : "s"}`;
 
-  if (currentPreviewUrl) {
-    URL.revokeObjectURL(currentPreviewUrl);
-  }
-
-  currentPreviewUrl = url;
-  meta.textContent = `${count} · live vault from local extension storage`;
+  meta.textContent = count;
   frame.onload = () => {
     applyPreviewFilters = () => {};
     attachPreviewSearch();
     restorePreviewView(previewView);
   };
-  frame.src = url;
+  frame.srcdoc = html;
 }
 
 async function downloadHtml() {
@@ -694,7 +705,34 @@ window.addEventListener("beforeunload", () => {
   hideDeleteUndo();
   if (actionFeedbackTimer) clearTimeout(actionFeedbackTimer);
   previewNoteAutosave.destroy();
-  if (currentPreviewUrl) {
-    URL.revokeObjectURL(currentPreviewUrl);
-  }
 });
+
+// Blue Night — grouped Export menu and theme mirroring into the vault
+// document. External script wiring: extension pages run under MV3 CSP.
+(() => {
+  const trigger = document.getElementById("export-trigger");
+  const menu = document.getElementById("export-menu");
+  if (trigger && menu) {
+    trigger.addEventListener("click", (event) => {
+      event.stopPropagation();
+      menu.classList.toggle("is-open");
+    });
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest(".menu-wrap")) menu.classList.remove("is-open");
+    });
+    menu.addEventListener("click", () => menu.classList.remove("is-open"));
+  }
+
+  const frame = document.getElementById("preview-frame");
+  if (frame && typeof MutationObserver !== "undefined") {
+    function syncTheme() {
+      const doc = frame.contentDocument;
+      if (!doc) return;
+      doc.documentElement.classList.toggle("light", document.documentElement.classList.contains("light"));
+    }
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    frame.addEventListener("load", syncTheme);
+    syncTheme();
+  }
+})();

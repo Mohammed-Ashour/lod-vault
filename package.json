@@ -6,6 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "test": "node --test",
+    "artifacts:webstore": "node media/webstore/render-webstore-images.mjs",
     "build:background": "node scripts/build-background.mjs",
     "package:release": "npm run build:background && bash scripts/build_release_zip.sh",
     "lint": "npm run package:release && web-ext lint --source-dir dist/lodvault-firefox.zip"

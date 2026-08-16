@@ -1,4 +1,7 @@
+/* Blue Night entry point for LOD Lens. Kept compact so it never competes
+   with the selected text or the host page. */
 #lodvault-selection-trigger {
+  all: initial;
   position: absolute;
   z-index: 2147483647;
   display: inline-flex;
@@ -6,29 +9,43 @@
   justify-content: center;
   width: 30px;
   height: 30px;
-  padding: 4px;
-  border-radius: 7px;
-  border: 1.5px solid rgba(57, 167, 196, 0.45);
-  background: #111d2e;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  padding: 5px;
+  box-sizing: border-box;
+  border: 1px solid rgba(168, 218, 220, 0.22);
+  border-radius: 8px;
+  background: #0b1520;
+  box-shadow: 0 6px 18px rgba(2, 7, 13, 0.32);
   cursor: pointer;
   pointer-events: auto;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  animation: lodvault-trigger-in 0.14s ease-out;
 }
 
 #lodvault-selection-trigger:hover {
   border-color: #39a7c4;
-  box-shadow: 0 3px 12px rgba(57, 167, 196, 0.2);
+  background: #111d2e;
+  transform: translateY(-1px);
 }
 
-#lodvault-selection-trigger.is-hidden {
-  display: none !important;
+#lodvault-selection-trigger:focus-visible {
+  outline: 2px solid #4fb9d4;
+  outline-offset: 2px;
 }
+
+#lodvault-selection-trigger.is-hidden { display: none !important; }
 
 #lodvault-selection-trigger .lodvault-selection-trigger-logo {
   display: block;
   width: 18px;
   height: 18px;
   object-fit: contain;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+}
+
+@keyframes lodvault-trigger-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #lodvault-selection-trigger { animation: none; transition: none; }
 }

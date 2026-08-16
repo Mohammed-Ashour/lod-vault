@@ -12,8 +12,6 @@ const scriptsDir = resolve(__dirname);
 
 const IIFE_SCRIPTS = [
   "store-core.js",
-  "note-autosave.js",
-  "entry-presenter.js",
   "shared.js",
   "lod-article.js",
   "compress.js",

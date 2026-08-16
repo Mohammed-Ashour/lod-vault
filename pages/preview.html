@@ -4,27 +4,35 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LODVault Vault</title>
+  <script src="../scripts/theme-init.js"></script>
+  <link rel="stylesheet" href="../styles/blue-night.css">
   <link rel="stylesheet" href="../styles/preview.css">
 </head>
 <body>
-  <header class="toolbar">
-    <div>
-      <p class="eyebrow">LODVault</p>
-      <h1>Export vault</h1>
-      <p id="preview-meta" class="meta">Loading…</p>
+  <header class="appbar">
+    <div class="title-lockup">
+      <div class="wordmark"><b>LOD</b>Vault</div>
+      <h1 class="page-title">Vault</h1>
     </div>
-    <div class="toolbar-actions">
-      <select id="sort-order" class="sort-select">
+    <p id="preview-meta" class="status">Loading…</p>
+    <div class="toolbar">
+      <button id="open-flashcards" class="text-link" title="Open Flashcards">Flashcards</button>
+      <select id="sort-order" class="select" aria-label="Sort order">
         <option value="recent">Most recent</option>
         <option value="visited">Most visited</option>
         <option value="alpha">A → Z</option>
         <option value="oldest">Oldest first</option>
       </select>
-      <select id="lang-filter" class="lang-select"><option value="">All languages</option></select>
-      <button id="open-flashcards" class="toolbar-button" title="Open Flashcards">Flashcards</button>
-      <button id="refresh-preview" class="toolbar-button">Refresh</button>
-      <button id="download-html" class="toolbar-button toolbar-button-primary">Download HTML</button>
-      <button id="download-anki" class="toolbar-button">Download Anki</button>
+      <select id="lang-filter" class="select" aria-label="Language filter"><option value="">All languages</option></select>
+      <button id="refresh-preview" class="icon-btn" title="Refresh" aria-label="Refresh">↻</button>
+      <button type="button" class="icon-btn theme-btn" aria-label="Switch to light">☀</button>
+      <div class="menu-wrap">
+        <button id="export-trigger" class="btn-primary" type="button">Export ▾</button>
+        <div id="export-menu" class="menu">
+          <button id="download-html" type="button">Download HTML<small>Full vault, opens anywhere</small></button>
+          <button id="download-anki" type="button">Download Anki<small>Tab-separated deck file</small></button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -43,6 +51,7 @@
   <script src="../scripts/note-autosave.js"></script>
   <script src="../scripts/entry-presenter.js"></script>
   <script src="../scripts/shared.js"></script>
+  <script src="../scripts/theme.js"></script>
   <script src="../scripts/preview.js"></script>
 </body>
 </html>

@@ -79,7 +79,6 @@
       "js": [
         "scripts/store-core.js",
         "scripts/note-autosave.js",
-        "scripts/entry-presenter.js",
         "scripts/shared.js",
         "scripts/lod-article.js",
         "scripts/page-banner.js",

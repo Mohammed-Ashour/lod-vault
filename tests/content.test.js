@@ -150,6 +150,28 @@ test("content script refreshes when article details hydrate after the heading al
   });
 });
 
+test("content script ignores unrelated mutations inside the main article shell", async () => {
+  let entryReads = 0;
+  const { dom } = loadContentScript({
+    html: samplePageHtml(),
+    storeOverrides: {
+      async getEntry() {
+        entryReads += 1;
+        return null;
+      }
+    }
+  });
+
+  await wait(50);
+  entryReads = 0;
+  const unrelated = dom.window.document.createElement("div");
+  unrelated.className = "unrelated-widget";
+  dom.window.document.querySelector("main").appendChild(unrelated);
+  await wait(150);
+
+  assert.equal(entryReads, 0);
+});
+
 test("infoText does not count the primary language in +N for non-default languages", () => {
   const { api } = loadContentScript({
     html: samplePageHtml(),
@@ -273,8 +295,9 @@ test("applyState shows the word name and note toggle in the banner", async () =>
   const noteToggle = banner.querySelector(".lodw-note-toggle");
 
   assert.equal(word.textContent, "Haus");
+  assert.equal(banner.querySelector(".lodw-brand").textContent, "LODVault");
   assert.ok(noteToggle, "note toggle should be present");
-  assert.ok(banner.querySelector(".lodw-note-icon"), "note icon should be present");
+  assert.equal(banner.querySelector(".lodw-note-icon").textContent, "+");
 });
 
 test("message listener returns the extracted entry for popup requests", () => {

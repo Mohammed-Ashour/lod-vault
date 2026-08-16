@@ -4,207 +4,204 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LODVault</title>
+  <script src="../scripts/theme-init.js"></script>
+  <link rel="stylesheet" href="../styles/blue-night.css">
   <link rel="stylesheet" href="../styles/popup.css">
 </head>
 <body>
   <main class="app">
 
-    <header class="header">
-      <div class="header-title">
-        <p class="eyebrow">LODVault</p>
-        <div class="title-row">
-          <h1>Saved words</h1>
-          <span id="auto-mode-badge" class="auto-badge is-hidden">Auto</span>
-        </div>
-      </div>
-      <div class="header-actions">
-        <button id="open-flashcards" class="btn-ghost">Flashcards</button>
-        <button id="open-preview" class="btn-ghost">Vault</button>
-      </div>
+    <!-- ── Header: wordmark, page links, theme ── -->
+    <header class="popup-head">
+      <div class="wordmark"><b>LOD</b>Vault</div>
+      <nav class="popup-nav" aria-label="Extension pages">
+        <button type="button" id="open-flashcards" class="text-link">Flashcards</button>
+        <button type="button" id="open-preview" class="text-link">Vault</button>
+        <button type="button" class="icon-btn theme-btn" aria-label="Switch to light">☀</button>
+      </nav>
     </header>
 
-    <section id="study-card" class="study-banner">
-      <span class="study-banner__label">Study</span>
-      <p id="study-summary" class="study-summary" aria-live="polite">Loading…</p>
-      <button id="start-due-review" class="study-start-btn" type="button">Start review</button>
+    <!-- ── Today panel: what's due, one primary action ── -->
+    <section id="study-card" class="today-panel">
+      <div class="today-main">
+        <div class="today-copy">
+          <p class="today-label">Today</p>
+          <p id="study-summary" class="today-summary" aria-live="polite">Loading…</p>
+        </div>
+        <button id="start-due-review" class="btn-primary" type="button">Start review</button>
+      </div>
     </section>
 
-    <section id="current-page-card" class="current-section">
-      <p class="section-label">Current word</p>
-      <div class="current-word-row">
-        <h2 id="current-word">—</h2>
-        <button type="button" id="current-audio" class="audio-btn" title="Play pronunciation" aria-label="Play pronunciation" style="display:none"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></button>
-      </div>
-      <p id="current-meta" class="muted">Open a word on <code>lod.lu/artikel/…</code></p>
-      <div id="current-meanings" class="item-meanings"></div>
-      <div class="word-actions">
-        <div class="word-toggles">
-          <button id="current-favorite" class="toggle-pill toggle-fav" disabled aria-pressed="false" aria-label="Favorite" title="Add to favorites">
-            <span class="toggle-pill-icon">☆</span>
-            <span class="toggle-pill-label">Fav</span>
-          </button>
-          <button id="current-study" class="toggle-pill toggle-study" disabled aria-pressed="false" aria-label="Study list" title="Add to study list">
-            <span class="toggle-pill-icon">○</span>
-            <span class="toggle-pill-label">Study</span>
+    <!-- ── Popup tabs: Words / Stats & data ── -->
+    <nav class="popup-tabs" aria-label="Popup sections" role="tablist">
+      <button type="button" id="words-tab" class="popup-tab is-active" data-pane="words" role="tab" aria-selected="true" aria-controls="words-pane">Words</button>
+      <button type="button" id="stats-tab" class="popup-tab" data-pane="stats" role="tab" aria-selected="false" aria-controls="stats-pane">Stats &amp; data</button>
+    </nav>
+
+    <!-- ── Words pane: capture + search + list ── -->
+    <section id="words-pane" class="popup-pane is-active" data-pane="words" role="tabpanel" aria-labelledby="words-tab">
+
+      <div id="current-page-card" class="capture-card is-empty">
+        <p class="capture-label">Currently open</p>
+        <div class="word-head">
+          <h2 id="current-word">—</h2>
+          <button type="button" id="current-audio" class="audio-btn" title="Play pronunciation" aria-label="Play pronunciation" style="display:none">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
           </button>
         </div>
-        <button id="current-delete" class="toggle-delete" disabled aria-label="Remove word" title="Remove saved word">
-          <span class="toggle-delete-icon">×</span>
-        </button>
+        <p id="current-meta" class="capture-meta muted">Open a word on <code>lod.lu/artikel/…</code></p>
+        <div id="current-meanings" class="item-meanings"></div>
+        <div class="word-actions">
+          <div class="word-toggles">
+            <button type="button" id="current-favorite" class="toggle-pill toggle-fav" disabled aria-pressed="false" aria-label="Favorite" title="Add to favorites">
+              <span class="toggle-pill-icon">☆</span><span class="toggle-pill-label">Favorite</span>
+            </button>
+            <button type="button" id="current-study" class="toggle-pill toggle-study" disabled aria-pressed="false" aria-label="Study list" title="Add to study list">
+              <span class="toggle-pill-icon">○</span><span class="toggle-pill-label">Study</span>
+            </button>
+          </div>
+          <button type="button" id="current-delete" class="icon-btn is-danger" disabled aria-label="Remove word" title="Remove saved word">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="note-section current-note-section">
+          <label class="note-label" for="current-note">Note</label>
+          <textarea id="current-note" class="note-input" placeholder="Save this word to add a note..." disabled></textarea>
+          <p id="current-note-status" class="note-status muted" aria-live="polite">Open a word on lod.lu to add a note.</p>
+        </div>
       </div>
-      <div class="note-section current-note-section">
-        <label class="note-label" for="current-note">Note</label>
-        <textarea id="current-note" class="note-input" placeholder="Save this word to add a note..." disabled></textarea>
-        <p id="current-note-status" class="helper-text muted" aria-live="polite">Open a word on lod.lu to add a note.</p>
+
+      <div class="search-row">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="search-input" type="search" placeholder="Search words, type, translation, note…" autocomplete="off" aria-label="Search saved words">
+        </div>
+        <span id="search-status" class="search-status muted" aria-live="polite">Loading…</span>
+      </div>
+
+      <div id="saved-list" class="saved-list"></div>
+
+      <div id="empty-state" class="empty-state is-hidden">
+        <h3>No saved words yet</h3>
+        <p>Open a word on <b>lod.lu</b> and save it here.</p>
+      </div>
+      <div id="no-results" class="empty-state is-hidden">
+        <h3>No matches</h3>
+        <p>No words match your search.</p>
       </div>
     </section>
 
-    <section class="auto-row auto-mode-card">
-      <div class="auto-row__copy">
-        <p class="section-label">Auto mode</p>
-        <h2 id="auto-mode-title">Off</h2>
-        <p id="auto-mode-meta" class="muted">Saves every visited word to Study and History.</p>
-      </div>
-      <button id="toggle-auto-mode" class="auto-toggle">Turn on</button>
-    </section>
+    <!-- ── Stats & data pane: data status on top ── -->
+    <section id="stats-pane" class="popup-pane" data-pane="stats" role="tabpanel" aria-labelledby="stats-tab">
 
-    <div class="stats-row">
-      <div class="stat">
-        <strong id="favorite-count">0</strong>
-        <span class="stat-label">Favorites</span>
+      <div id="backup-warning" class="backup-warning is-hidden" role="status" aria-live="polite">
+        <span id="backup-warning-message" class="backup-warning-message"></span>
+        <button id="backup-warning-action" class="text-link backup-warning-action" type="button">Back up now</button>
       </div>
-      <div class="stat-sep"></div>
-      <div class="stat">
-        <strong id="study-count">0</strong>
-        <span class="stat-label">Study</span>
-      </div>
-      <div class="stat-sep"></div>
-      <div class="stat">
-        <strong id="history-count">0</strong>
-        <span class="stat-label">History</span>
-      </div>
-      <div class="stat-sep"></div>
-      <div class="stat">
-        <strong id="total-count">0</strong>
-        <span class="stat-label">Total</span>
-      </div>
-    </div>
 
-    <p id="action-feedback" class="action-feedback is-hidden" role="status" aria-live="polite"></p>
+      <details id="data-settings" class="data-settings">
+        <summary class="data-settings-summary">
+          <span class="data-settings-label">Data &amp; settings</span>
+        </summary>
 
-    <div id="backup-warning" class="backup-warning is-hidden" role="status" aria-live="polite">
-      <span id="backup-warning-message" class="backup-warning-message"></span>
-      <button id="backup-warning-action" class="btn-link backup-warning-action" type="button">Back up now</button>
-    </div>
-
-<details id="data-settings" class="data-settings">
-      <summary class="data-settings-summary">
-        <span class="data-settings-label">Data &amp; settings</span>
-        <span class="data-settings-hint">sync · backup · restore · export</span>
-      </summary>
-
-      <section class="sync-row" aria-labelledby="sync-languages-title">
-        <div class="sync-row__copy">
-          <p class="section-label">Sync languages</p>
-          <h2 id="sync-languages-title">Choose up to 3 languages to include in sync.</h2>
-          <p class="helper-text muted sync-language-helper">Only these languages are synced. This device keeps every saved translation.</p>
+        <section class="sync-row" aria-labelledby="sync-languages-title">
+          <p class="section-title" id="sync-languages-title">Sync languages</p>
+          <p class="helper-text muted">Only these languages are synced. This device keeps every saved translation.</p>
           <div id="sync-language-chips" class="sync-language-chips" role="group" aria-label="Sync languages"></div>
           <div class="sync-language-meta">
-            <div class="sync-meta-top">
-              <p id="sync-language-count" class="muted">3 of 3 selected</p>
-              <p id="sync-language-capacity" class="muted">Sync: 0 / 100 KB used</p>
-            </div>
+            <p id="sync-language-count" class="muted">3 of 3 selected</p>
+            <p id="sync-language-capacity" class="muted">Sync: 0 / 100 KB used</p>
             <div id="sync-capacity-bar" class="sync-capacity-bar">
               <div id="sync-capacity-fill" class="sync-capacity-fill" style="width: 0%"></div>
             </div>
           </div>
           <div class="sync-actions-row">
-            <button id="sync-now" class="btn-link sync-now-btn" type="button">Sync now</button>
-            <button id="sync-pull" class="btn-link sync-pull-btn" type="button">Pull synced data</button>
+            <button id="sync-now" class="btn-ghost" type="button">Sync now</button>
+            <button id="sync-pull" class="btn-ghost" type="button">Pull synced data</button>
           </div>
           <p id="sync-now-status" class="helper-text muted sync-now-status" aria-live="polite"></p>
-          <button id="sync-retry" class="btn-link sync-retry is-hidden" type="button">Retry sync</button>
+          <button id="sync-retry" class="text-link sync-retry is-hidden" type="button">Retry sync</button>
           <p id="sync-verified-status" class="helper-text muted sync-verified-status" aria-live="polite"></p>
           <p id="sync-health-status" class="helper-text muted sync-health-status is-hidden" aria-live="polite"></p>
+        </section>
+
+        <div class="tools-row">
+          <button id="export-json" class="btn-ghost">Backup JSON</button>
+          <button id="import-json" class="btn-ghost">Restore JSON</button>
+          <button id="import-browser-history" class="btn-ghost">Import history</button>
         </div>
-      </section>
 
-      <div class="tools-row">
-        <button id="export-json" class="btn-tool">Backup JSON</button>
-        <button id="import-json" class="btn-tool">Restore JSON</button>
-        <button id="import-browser-history" class="btn-tool">Import history</button>
-      </div>
-
-      <div id="import-history-range-row" class="history-import-row">
-        <label class="history-import-label" for="import-history-range">History range</label>
-        <select id="import-history-range" class="history-import-select">
-          <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
-          <option value="90d">Last 90 days</option>
-          <option value="365d">Last year</option>
-          <option value="all" selected>All time</option>
-        </select>
-      </div>
-
-      <div class="tools-row">
-        <button id="export-html" class="btn-tool">Export HTML</button>
-        <button id="export-anki" class="btn-tool">Export Anki</button>
-      </div>
-
-      <section id="restore-preview" class="restore-preview is-hidden" aria-labelledby="restore-preview-title">
-        <div class="restore-preview-header">
-          <div class="restore-preview-heading">
-            <p class="section-label">Restore backup</p>
-            <h3 id="restore-preview-title">Backup file</h3>
-          </div>
-          <span id="restore-preview-chip" class="status-chip is-neutral">Review</span>
+        <div id="import-history-range-row" class="history-import-row">
+          <label class="history-import-label" for="import-history-range">History range</label>
+          <select id="import-history-range" class="select history-import-select">
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="90d">Last 90 days</option>
+            <option value="365d">Last year</option>
+            <option value="all" selected>All time</option>
+          </select>
         </div>
-        <p id="restore-preview-summary" class="restore-preview-copy"></p>
-        <ul id="restore-preview-details" class="restore-preview-details"></ul>
-        <div class="restore-preview-actions">
-          <button id="restore-confirm" class="btn-tool" type="button">Merge backup</button>
-          <button id="restore-cancel" class="btn-link" type="button">Cancel</button>
-        </div>
-      </section>
 
-      <section id="portable-backup-card" class="portable-backup-card is-neutral" aria-labelledby="portable-backup-title">
-        <div class="portable-backup-header">
-          <div class="portable-backup-heading">
-            <p class="section-label">Portable backup</p>
-            <div class="portable-backup-title-row">
-              <h3 id="portable-backup-title">JSON backup</h3>
-              <span id="portable-backup-chip" class="status-chip is-neutral">Never</span>
+        <div class="tools-row">
+          <button id="export-html" class="btn-ghost">Export HTML</button>
+          <button id="export-anki" class="btn-ghost">Export Anki</button>
+        </div>
+
+        <section id="restore-preview" class="restore-preview is-hidden" aria-labelledby="restore-preview-title">
+          <div class="restore-preview-header">
+            <div class="restore-preview-heading">
+              <p class="section-title">Restore backup</p>
+              <h3 id="restore-preview-title">Backup file</h3>
             </div>
+            <span id="restore-preview-chip" class="status-chip is-neutral">Review</span>
           </div>
-          <button id="portable-backup-now" class="btn-link portable-backup-now is-hidden" type="button">Backup now</button>
+          <p id="restore-preview-summary" class="restore-preview-copy"></p>
+          <ul id="restore-preview-details" class="restore-preview-details"></ul>
+          <div class="restore-preview-actions">
+            <button id="restore-confirm" class="btn-primary" type="button">Merge backup</button>
+            <button id="restore-cancel" class="text-link" type="button">Cancel</button>
+          </div>
+        </section>
+
+        <section id="portable-backup-card" class="portable-backup-card is-neutral" aria-labelledby="portable-backup-title">
+          <div class="portable-backup-header">
+            <div class="portable-backup-heading">
+              <p class="section-title">Portable backup</p>
+              <div class="portable-backup-title-row">
+                <h3 id="portable-backup-title">JSON backup</h3>
+                <span id="portable-backup-chip" class="status-chip is-neutral">Never</span>
+              </div>
+            </div>
+            <button id="portable-backup-now" class="text-link portable-backup-now is-hidden" type="button">Backup now</button>
+          </div>
+          <p id="portable-backup-status" class="portable-backup-copy" aria-live="polite">Portable backup: checking status…</p>
+        </section>
+
+        <section id="import-history-report" class="history-import-report is-hidden" aria-live="polite">
+          <p id="import-history-report-summary" class="history-import-report-summary"></p>
+          <div id="import-history-report-list" class="history-import-report-list"></div>
+        </section>
+      </details>
+
+      <div class="stats-row" role="group" aria-label="Vault summary">
+        <div class="stat"><b id="favorite-count">0</b><span>Favorites</span></div>
+        <div class="stat"><b id="study-count">0</b><span>Study</span></div>
+        <div class="stat"><b id="history-count">0</b><span>History</span></div>
+        <div class="stat"><b id="total-count">0</b><span>Total</span></div>
+      </div>
+
+      <div class="auto-row auto-mode-card">
+        <div class="auto-copy">
+          <p id="auto-mode-title" class="auto-title">Off</p>
+          <p id="auto-mode-meta" class="auto-meta muted">Saves every visited word to Study and History.</p>
         </div>
-        <p id="portable-backup-status" class="portable-backup-copy" aria-live="polite">Portable backup: checking status…</p>
-      </section>
+        <button id="toggle-auto-mode" class="btn-ghost auto-toggle" type="button">Turn on</button>
+      </div>
+    </section>
 
-      <section id="import-history-report" class="history-import-report is-hidden" aria-live="polite">
-        <p id="import-history-report-summary" class="history-import-report-summary"></p>
-        <div id="import-history-report-list" class="history-import-report-list"></div>
-      </section>
+    <input id="import-json-file" type="file" accept="application/json,.json" hidden>
 
-      <input id="import-json-file" type="file" accept="application/json,.json" hidden>
-
-    </details>
-
-    <div class="search-section">
-      <input id="search-input" class="search-input" type="search" placeholder="Search words, type, translation, note…" autocomplete="off">
-      <p id="search-status" class="helper-text muted" aria-live="polite">0 saved words</p>
-    </div>
-
-    <div id="saved-list" class="saved-list"></div>
-
-    <div id="empty-state" class="empty-state is-hidden">
-      No saved words yet. Open a word on lod.lu and save it.
-    </div>
-    <div id="no-results" class="empty-state is-hidden">
-      No words match your search.
-    </div>
-
-    
+    <div id="action-feedback" class="action-feedback is-hidden" role="status" aria-live="polite"></div>
 
     <div id="delete-undo" class="undo-toast is-hidden" role="status" aria-live="polite">
       <span id="delete-undo-message"></span>
@@ -224,6 +221,7 @@
   <script src="../scripts/popup-backup.js"></script>
   <script src="../scripts/popup-study.js"></script>
   <script src="../scripts/popup-app.js"></script>
+  <script src="../scripts/theme.js"></script>
   <script src="../scripts/popup.js"></script>
 </body>
 </html>

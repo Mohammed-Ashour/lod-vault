@@ -15,6 +15,36 @@ function makeEntries(count) {
   }));
 }
 
+test("popup paints local words before reading remote sync status", async () => {
+  let syncReads = 0;
+  let releaseSync;
+  const pendingSync = new Promise((resolve) => { releaseSync = resolve; });
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(2),
+    syncOverrides: {
+      inspectSyncStorage() {
+        syncReads += 1;
+        return pendingSync;
+      }
+    }
+  });
+
+  try {
+    const document = dom.window.document;
+    assert.equal(document.getElementById("words-pane").classList.contains("is-active"), true);
+    assert.equal(document.getElementById("stats-pane").classList.contains("is-active"), false);
+    assert.equal(document.getElementById("words-tab").getAttribute("aria-selected"), "true");
+    assert.equal(document.querySelectorAll(".saved-item").length, 2);
+    assert.equal(syncReads, 0);
+
+    document.getElementById("stats-tab").click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(syncReads, 1);
+  } finally {
+    releaseSync({ ok: true, hasSyncData: false, hasSyncWords: false });
+  }
+});
+
 test("popup shows recent saved words by default without requiring a search", async () => {
   const entries = makeEntries(12);
   const { dom } = await loadPopupScript({ entries });
@@ -27,7 +57,7 @@ test("popup shows recent saved words by default without requiring a search", asy
 
   assert.equal(items.length, 10);
   assert.equal(items[0].querySelector(".word-link").textContent, "Word 1");
-  assert.match(searchStatus.textContent, /12 saved words · showing 10 recent/);
+  assert.equal(searchStatus.textContent, "12 words");
   assert.match(overflow.textContent, /Showing 10 recent words/);
   assert.equal(emptyState.classList.contains("is-hidden"), true);
   assert.equal(noResults.classList.contains("is-hidden"), true);
@@ -227,6 +257,12 @@ function selectRestoreFile(dom, content) {
 
 function flush() {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function openStats(dom) {
+  dom.window.document.getElementById("stats-tab").click();
+  await flush();
+  await flush();
 }
 
 test("popup previews a JSON restore and only merges on confirm", async () => {
@@ -470,6 +506,7 @@ test("popup shows the Needs backup chip and one-click Backup now action when the
 
 test("popup renders sync language chips with count and estimated capacity hints", async () => {
   const { dom } = await loadPopupScript({ syncLanguages: ["en", "fr", "de"] });
+  await openStats(dom);
 
   const chips = Array.from(dom.window.document.querySelectorAll("#sync-language-chips .sync-language-chip"));
   const count = dom.window.document.getElementById("sync-language-count");
@@ -493,6 +530,7 @@ test("popup sync language selector saves immediately and enforces min/max select
       }
     }
   });
+  await openStats(dom);
 
   const ptChip = dom.window.document.querySelector('#sync-language-chips [data-language="pt"]');
   ptChip.click();
@@ -551,6 +589,7 @@ test("popup sync capacity surfaces non-vault sync usage separately", async () =>
       }
     }
   });
+  await openStats(dom);
 
   const capacity = dom.window.document.getElementById("sync-language-capacity");
   assert.match(capacity.textContent, /4\.0 KB \/ 100\.0 KB used/);
@@ -1065,9 +1104,14 @@ test("popup keeps data controls behind the Data & settings disclosure", async ()
   }
   assert.ok(details.contains(syncRow));
 
-  // The header only carries study/navigation actions now.
-  assert.equal(document.querySelector(".header-actions").children.length, 2);
-  assert.equal(document.querySelector(".header-sep"), null);
+  // Header navigation stays direct; the visible Stats & data tab makes a
+  // duplicate settings gear unnecessary.
+  assert.ok(document.querySelector(".popup-head .theme-btn"), "theme button lives in the header");
+  assert.ok(document.querySelector(".popup-head #open-flashcards"));
+  assert.ok(document.querySelector(".popup-head #open-preview"));
+  assert.equal(document.getElementById("open-settings"), null);
+  assert.ok(document.getElementById("stats-pane").contains(document.getElementById("backup-warning")));
+  assert.equal(document.getElementById("words-pane").contains(document.getElementById("backup-warning")), false);
 
   // Learner actions come before data management in the tab order.
   assert.ok(currentCard.compareDocumentPosition(details) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);

@@ -29,8 +29,11 @@
       root.innerHTML = `
         <div class="lodvault-lens-backdrop"></div>
         <section class="lodvault-lens-panel" role="dialog" aria-label="LOD Lens">
-          <button type="button" class="lodvault-lens-close" aria-label="Close">×</button>
-          <div class="lodvault-lens-status">Loading…</div>
+          <header class="lodvault-lens-header">
+            <span class="lodvault-lens-brand"><b>LOD</b> Lens</span>
+            <button type="button" class="lodvault-lens-close" aria-label="Close">×</button>
+          </header>
+          <div class="lodvault-lens-status" role="status" aria-live="polite">Loading…</div>
           <div class="lodvault-lens-result is-hidden">
             <div class="lodvault-lens-result-top">
               <div>
@@ -41,7 +44,7 @@
                 </div>
                 <p class="lodvault-lens-meta"></p>
               </div>
-              <a class="lodvault-lens-open" href="#" target="_blank" rel="noreferrer">LOD</a>
+              <a class="lodvault-lens-open" href="#" target="_blank" rel="noreferrer">Open on LOD <span aria-hidden="true">↗</span></a>
             </div>
             <div class="lodvault-lens-meanings"></div>
             <p class="lodvault-lens-example is-hidden"></p>
@@ -202,7 +205,7 @@
       const padding = 12;
       const gap = 10;
       const panelRect = panel.getBoundingClientRect();
-      const width = Math.max(panelRect.width || panel.offsetWidth || 0, 300);
+      const width = Math.max(panelRect.width || panel.offsetWidth || 0, 330);
       const height = Math.max(panelRect.height || panel.offsetHeight || 0, 220);
       const minLeft = window.scrollX + padding;
       const maxLeft = window.scrollX + window.innerWidth - width - padding;

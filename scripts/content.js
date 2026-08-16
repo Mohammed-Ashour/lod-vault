@@ -203,27 +203,29 @@ async function handleListToggle(listName) {
   }
 }
 
+const ARTICLE_CONTENT_SELECTOR = 'h1, .microstructures, .targetLanguages, .examples, .inflection, meta[name="description"]';
+
 function matchesArticleMutationNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
-
   return Boolean(
-    node.matches?.('h1, .microstructures, .targetLanguages, .examples, .inflection, meta[name="description"]')
-    || node.querySelector?.('h1, .microstructures, .targetLanguages, .examples, .inflection, meta[name="description"]')
-    || node.closest?.("main")
+    node.matches?.(ARTICLE_CONTENT_SELECTOR)
+    || node.closest?.(".microstructures, .targetLanguages, .examples, .inflection")
   );
 }
 
+function containsArticleMutationNode(node) {
+  return matchesArticleMutationNode(node) || Boolean(node?.querySelector?.(ARTICLE_CONTENT_SELECTOR));
+}
+
 function mutationTouchesArticleContent(mutation) {
-  if (matchesArticleMutationNode(mutation?.target)) {
-    return true;
-  }
+  if (matchesArticleMutationNode(mutation?.target)) return true;
 
   for (const node of mutation?.addedNodes || []) {
-    if (matchesArticleMutationNode(node)) return true;
+    if (containsArticleMutationNode(node)) return true;
   }
 
   for (const node of mutation?.removedNodes || []) {
-    if (matchesArticleMutationNode(node)) return true;
+    if (containsArticleMutationNode(node)) return true;
   }
 
   return false;

@@ -171,35 +171,30 @@
     }
 
     async function refreshPortableBackupMeta() {
-      if (typeof store.getFlashcardMeta === "function") {
-        try {
-          const meta = (await store.getFlashcardMeta()) || {};
-          state.flashcardReviewCount = Object.values(meta).reduce(
-            (total, card) => total + (Math.max(0, Number(card?.totalReviews) || 0)),
-            0
-          );
-        } catch {
-          state.flashcardReviewCount = 0;
-        }
-      }
+      const [flashcards, backup] = await Promise.allSettled([
+        typeof store.getFlashcardMeta === "function" ? store.getFlashcardMeta() : {},
+        typeof store.getPortableBackupMeta === "function" ? store.getPortableBackupMeta() : {}
+      ]);
 
-      if (typeof store.getPortableBackupMeta !== "function") {
-        state.portableBackupMeta = normalizePortableBackupMeta({});
+      const flashcardMeta = flashcards.status === "fulfilled" ? (flashcards.value || {}) : {};
+      state.flashcardReviewCount = Object.values(flashcardMeta).reduce(
+        (total, card) => total + (Math.max(0, Number(card?.totalReviews) || 0)),
+        0
+      );
+      state.portableBackupReady = true;
+
+      if (backup.status === "fulfilled") {
+        state.portableBackupMeta = normalizePortableBackupMeta(backup.value);
         renderPortableBackupStatus();
         return;
       }
 
-      try {
-        state.portableBackupMeta = normalizePortableBackupMeta(await store.getPortableBackupMeta());
-        renderPortableBackupStatus();
-      } catch {
-        state.portableBackupMeta = normalizePortableBackupMeta({});
-        setPortableBackupStatus("Portable backup status unavailable.", {
-          tone: "error",
-          chipLabel: "Error",
-          showAction: false
-        });
-      }
+      state.portableBackupMeta = normalizePortableBackupMeta({});
+      setPortableBackupStatus("Portable backup status unavailable.", {
+        tone: "error",
+        chipLabel: "Error",
+        showAction: false
+      });
     }
 
     function normalizeHistoryImportRange(value) {

@@ -24,6 +24,7 @@ const DAILY_TARGETS = new Set([5, 10, 20]);
 const DECK_FILTERS = new Set(["due", "study", "favorites", "all"]);
 const ORDER_MODES = new Set(["smart", "shuffle", "sequential"]);
 const STUDY_MODES = new Set(["self", "mc"]);
+const DECK_LABELS = { due: "Due today", study: "Study list", favorites: "Favorites", all: "All saved" };
 const elements = {};
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -512,9 +513,10 @@ function renderDeck() {
   const count = state.deck.length;
 
   if (elements.deckStatus) {
+    const deckLabel = DECK_LABELS[state.filter] || "Deck";
     elements.deckStatus.textContent = count
-      ? `${count} card${count === 1 ? "" : "s"} in this deck`
-      : "No cards in this deck yet.";
+      ? `${deckLabel} · ${count} card${count === 1 ? "" : "s"} in this deck`
+      : `${deckLabel} · No cards in this deck yet.`;
   }
 
   if (!entry) {
@@ -665,7 +667,7 @@ function buildAnswerMarkup(entry) {
     ${entry.inflection ? `<p><strong>Inflection:</strong> ${LodVaultStore.escapeHtml(entry.inflection)}</p>` : ""}
     ${entry.example ? `<blockquote>${LodVaultStore.escapeHtml(entry.example)}</blockquote>` : ""}
     ${entry.note ? `<div class="note"><strong>Note:</strong> ${LodVaultStore.escapeHtml(entry.note)}</div>` : ""}
-    <p><a href="${LodVaultStore.escapeHtml(entry.url)}" target="_blank" rel="noreferrer">Open on LOD</a></p>
+    <p class="card-open-row"><a class="card-open-link" href="${LodVaultStore.escapeHtml(entry.url)}" target="_blank" rel="noreferrer">Open on LOD <span class="open-arrow" aria-hidden="true">↗</span></a></p>
   `;
 }
 
@@ -775,3 +777,18 @@ function endSession() {
   state.sessionResults = [];
   void clearSavedSession();
 }
+
+// Session setup stays behind one menu; extension CSP forbids inline wiring.
+(() => {
+  const menu = document.getElementById("session-menu");
+  const trigger = document.getElementById("session-trigger");
+  if (!menu || !trigger) return;
+
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    menu.classList.toggle("is-open");
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".menu-wrap")) menu.classList.remove("is-open");
+  });
+})();
