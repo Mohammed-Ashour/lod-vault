@@ -29,8 +29,12 @@
       <div class="menu-wrap">
         <button id="export-trigger" class="btn-primary" type="button">Export ▾</button>
         <div id="export-menu" class="menu">
-          <button id="download-html" type="button">Download HTML<small>Full vault, opens anywhere</small></button>
-          <button id="download-anki" type="button">Download Anki<small>Tab-separated deck file</small></button>
+          <button id="download-html" type="button"><span id="download-html-label">Download HTML</span><small id="download-html-scope">Full vault, opens anywhere</small></button>
+          <button id="download-anki" type="button"><span id="download-anki-label">Download Anki</span><small id="download-anki-scope">Tab-separated deck file</small></button>
+          <div id="export-all-actions" class="menu-section" hidden>
+            <button id="download-html-all" type="button">Download all as HTML<small id="download-html-all-scope">Ignore active filters</small></button>
+            <button id="download-anki-all" type="button">Download all for Anki<small id="download-anki-all-scope">Ignore active filters</small></button>
+          </div>
         </div>
       </div>
     </div>

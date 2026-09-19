@@ -235,6 +235,13 @@ html.theme-switching *::after {
 .menu button:hover { background: var(--tint); color: var(--text); }
 .menu button + button { margin-top: 1px; }
 .menu button small { display: block; color: var(--muted); font-weight: 500; margin-top: 1px; }
+.menu button:disabled { opacity: 0.45; cursor: default; }
+.menu button:disabled:hover { background: transparent; color: var(--text-2); }
+.menu-section {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+}
 
 /* ── Inputs ──────────────────────────────────────────── */
 .select {

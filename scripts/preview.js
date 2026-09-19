@@ -4,6 +4,9 @@ const flashcardsButton = document.getElementById("open-flashcards");
 const refreshButton = document.getElementById("refresh-preview");
 const downloadButton = document.getElementById("download-html");
 const downloadAnkiButton = document.getElementById("download-anki");
+const downloadAllButton = document.getElementById("download-html-all");
+const downloadAllAnkiButton = document.getElementById("download-anki-all");
+const exportAllActions = document.getElementById("export-all-actions");
 let currentSearchQuery = "";
 let currentLang = "";
 let currentSort = "recent";
@@ -99,8 +102,10 @@ refreshButton.addEventListener("click", renderPreview);
 flashcardsButton?.addEventListener("click", () => {
   chrome.tabs.create({ url: chrome.runtime.getURL("pages/flashcards.html") });
 });
-downloadButton.addEventListener("click", downloadHtml);
-downloadAnkiButton.addEventListener("click", downloadAnki);
+downloadButton.addEventListener("click", () => downloadHtml());
+downloadAnkiButton.addEventListener("click", () => downloadAnki());
+downloadAllButton?.addEventListener("click", () => downloadHtml({ all: true }));
+downloadAllAnkiButton?.addEventListener("click", () => downloadAnki({ all: true }));
 document.getElementById("lang-filter").addEventListener("change", (e) => {
   currentLang = e.target.value;
   applyLangFilter();
@@ -358,6 +363,71 @@ function injectPreviewStyles(doc) {
 
 /* ── search ──────────────────────────────────────── */
 
+function normalizeSearchQuery(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function matchesVaultFilters(searchText, languages, query = currentSearchQuery, language = currentLang) {
+  const normalizedQuery = normalizeSearchQuery(query);
+  const matchesQuery = !normalizedQuery || String(searchText || "").toLowerCase().includes(normalizedQuery);
+  const matchesLanguage = !language || (languages || []).includes(language);
+  return matchesQuery && matchesLanguage;
+}
+
+function getFilteredEntries(entries, query = currentSearchQuery, language = currentLang) {
+  return (entries || [])
+    .filter((entry) => matchesVaultFilters(
+      LodVaultStore.buildSearchText(entry),
+      Object.keys(entry.translations || {}),
+      query,
+      language
+    ))
+    .map((entry) => {
+      if (!language) return entry;
+      return {
+        ...entry,
+        translations: {
+          [language]: entry.translations[language]
+        }
+      };
+    });
+}
+
+function hasActiveFilters() {
+  return Boolean(normalizeSearchQuery(currentSearchQuery) || currentLang);
+}
+
+function formatWordCount(count) {
+  return `${count} word${count === 1 ? "" : "s"}`;
+}
+
+function renderExportScope(visibleCount = null) {
+  const entries = Array.from(currentEntriesById.values());
+  const totalCount = entries.length;
+  const filtered = hasActiveFilters();
+  const filteredCount = filtered && Number.isFinite(visibleCount)
+    ? visibleCount
+    : (filtered ? getFilteredEntries(entries).length : totalCount);
+  const scopeCount = filtered ? filteredCount : totalCount;
+
+  document.getElementById("download-html-label").textContent = filtered ? "Download filtered HTML" : "Download HTML";
+  document.getElementById("download-anki-label").textContent = filtered ? "Download filtered Anki" : "Download Anki";
+  document.getElementById("download-html-scope").textContent = filtered
+    ? `Current view, ${formatWordCount(filteredCount)}`
+    : `Full vault, ${formatWordCount(totalCount)}`;
+  document.getElementById("download-anki-scope").textContent = filtered
+    ? `Current view, ${formatWordCount(filteredCount)}`
+    : `Full vault, ${formatWordCount(totalCount)}`;
+  document.getElementById("download-html-all-scope").textContent = `Ignore filters, ${formatWordCount(totalCount)}`;
+  document.getElementById("download-anki-all-scope").textContent = `Ignore filters, ${formatWordCount(totalCount)}`;
+
+  downloadButton.disabled = scopeCount === 0;
+  downloadAnkiButton.disabled = scopeCount === 0;
+  if (downloadAllButton) downloadAllButton.disabled = totalCount === 0;
+  if (downloadAllAnkiButton) downloadAllAnkiButton.disabled = totalCount === 0;
+  if (exportAllActions) exportAllActions.hidden = !filtered;
+}
+
 function attachPreviewSearch() {
   const doc = frame.contentDocument;
   if (!doc) return;
@@ -372,26 +442,24 @@ function attachPreviewSearch() {
   if (!input || !status || !empty) return;
 
   applyPreviewFilters = () => {
-    const query = (input.value || "").trim().toLowerCase();
     currentSearchQuery = input.value || "";
     let visibleCount = 0;
 
     for (const entry of entries) {
-      const matchesQuery = !query || (entry.dataset.search || "").includes(query);
       const languages = (entry.dataset.langs || "").split(",").filter(Boolean);
-      const matchesLanguage = !currentLang || languages.includes(currentLang);
-      const match = matchesQuery && matchesLanguage;
+      const match = matchesVaultFilters(entry.dataset.search, languages);
 
       entry.hidden = !match;
       if (match) visibleCount += 1;
     }
 
-    const activeFilters = [query ? "search" : "", currentLang ? "language" : ""].filter(Boolean).length;
+    const activeFilters = [normalizeSearchQuery(currentSearchQuery) ? "search" : "", currentLang ? "language" : ""].filter(Boolean).length;
     status.textContent = activeFilters
       ? `${visibleCount} matching word${visibleCount === 1 ? "" : "s"}`
       : "";
     status.hidden = activeFilters === 0;
     empty.hidden = visibleCount !== 0 || activeFilters === 0;
+    renderExportScope(visibleCount);
   };
 
   input.value = currentSearchQuery;
@@ -672,6 +740,7 @@ async function renderPreview({ preserveView = false } = {}) {
   entries = sortEntries(entries, currentSort);
   currentEntriesById = new Map(entries.map((entry) => [entry.id, entry]));
   populateLangSelect(entries);
+  renderExportScope();
 
   const html = LodVaultStore.buildExportHtml(entries, { includeInlineScript: false });
   const count = `${entries.length} word${entries.length === 1 ? "" : "s"}`;
@@ -685,20 +754,26 @@ async function renderPreview({ preserveView = false } = {}) {
   frame.srcdoc = html;
 }
 
-async function downloadHtml() {
+async function getExportEntries({ all = false } = {}) {
   let entries = await LodVaultStore.getEntries();
   entries = sortEntries(entries, currentSort);
-  const html = LodVaultStore.buildExportHtml(entries);
-  const date = new Date().toISOString().slice(0, 10);
-  LodVaultStore.downloadTextFile(`lodvault-export-${date}.html`, html, "text/html");
+  return all ? entries : getFilteredEntries(entries);
 }
 
-async function downloadAnki() {
-  let entries = await LodVaultStore.getEntries();
-  entries = sortEntries(entries, currentSort);
+async function downloadHtml({ all = false } = {}) {
+  const entries = await getExportEntries({ all });
+  const html = LodVaultStore.buildExportHtml(entries);
+  const date = new Date().toISOString().slice(0, 10);
+  const filtered = !all && hasActiveFilters();
+  LodVaultStore.downloadTextFile(`lodvault-${filtered ? "filtered-" : ""}export-${date}.html`, html, "text/html");
+}
+
+async function downloadAnki({ all = false } = {}) {
+  const entries = await getExportEntries({ all });
   const text = LodVaultStore.buildAnkiExport(entries);
   const date = new Date().toISOString().slice(0, 10);
-  LodVaultStore.downloadTextFile(`lodvault-anki-${date}.txt`, text, "text/tab-separated-values");
+  const filtered = !all && hasActiveFilters();
+  LodVaultStore.downloadTextFile(`lodvault-anki-${filtered ? "filtered-" : ""}${date}.txt`, text, "text/tab-separated-values");
 }
 
 window.addEventListener("beforeunload", () => {
