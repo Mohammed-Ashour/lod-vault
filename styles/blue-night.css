@@ -235,9 +235,23 @@ html.theme-switching *::after {
 .menu button:hover { background: var(--tint); color: var(--text); }
 .menu button + button { margin-top: 1px; }
 .menu button small { display: block; color: var(--muted); font-weight: 500; margin-top: 1px; }
+.menu button:disabled { opacity: 0.45; cursor: default; }
+.menu button:disabled:hover { background: transparent; color: var(--text-2); }
+.menu-section {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+}
 
 /* ── Inputs ──────────────────────────────────────────── */
+.select-wrap {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
 .select {
+  appearance: none;
+  -webkit-appearance: none;
   height: 34px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
@@ -248,6 +262,25 @@ html.theme-switching *::after {
   transition: border-color 0.15s;
   max-width: 100%;
 }
+.select-wrap .select { padding-right: 40px; }
+.select-chevron {
+  position: absolute;
+  top: calc(50% + 1px);
+  right: 15px;
+  width: 12px;
+  height: 8px;
+  color: var(--muted);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.select-chevron path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.select-wrap:focus-within .select-chevron { color: var(--accent-lt); }
 .select:hover { border-color: var(--accent); }
 .select:focus { outline: none; border-color: var(--accent); }
 
