@@ -262,13 +262,13 @@ html.theme-switching *::after {
   transition: border-color 0.15s;
   max-width: 100%;
 }
-.select-wrap .select { padding-right: 36px; }
+.select-wrap .select { padding-right: 40px; }
 .select-chevron {
   position: absolute;
-  top: 50%;
-  right: 12px;
-  width: 14px;
-  height: 14px;
+  top: calc(50% + 1px);
+  right: 15px;
+  width: 12px;
+  height: 8px;
   color: var(--muted);
   pointer-events: none;
   transform: translateY(-50%);
