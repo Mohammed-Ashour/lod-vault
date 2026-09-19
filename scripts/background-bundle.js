@@ -3744,8 +3744,41 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     };
   }
 
+  function filterUnchangedSyncPayload(payload = {}, currentData = {}) {
+    if (!currentData || typeof currentData !== "object") {
+      return { changedPayload: payload, skippedKeys: [] };
+    }
+
+    const changedPayload = {};
+    const skippedKeys = [];
+
+    for (const [key, value] of Object.entries(payload || {})) {
+      const currentValue = currentData[key];
+      const unchanged = Object.prototype.hasOwnProperty.call(currentData, key) && (
+        typeof value === "string" && typeof currentValue === "string"
+          ? value === currentValue
+          : stableStringify(value) === stableStringify(currentValue)
+      );
+
+      if (unchanged) {
+        skippedKeys.push(key);
+        continue;
+      }
+
+      changedPayload[key] = value;
+    }
+
+    return { changedPayload, skippedKeys };
+  }
+
   async function writeSyncPayload(payload, options = {}) {
-    const validation = validateSyncPayload(payload, options);
+    // Drop keys whose stored value is already identical, so a routine push
+    // only writes (and spends sync quota on) the keys that actually changed.
+    // Compressed shards compare as strings; anything else compares by
+    // stableStringify. A wrong "changed" verdict only costs a redundant write,
+    // which is what happened for every key before this filter existed.
+    const { changedPayload, skippedKeys } = filterUnchangedSyncPayload(payload, options.currentData);
+    const validation = validateSyncPayload(changedPayload, options);
     if (!validation.ok) {
       console.warn("[LODVault] Sync push skipped: payload exceeds sync quota.", {
         oversizeKeys: validation.oversizeKeys,
@@ -3755,11 +3788,13 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         finalItemCount: validation.finalItemCount,
         maxItemsExceeded: validation.maxItemsExceeded
       });
-      return validation;
+      return { ...validation, skippedKeys };
     }
 
     try {
-      await chrome.storage.sync.set(payload);
+      if (Object.keys(changedPayload).length) {
+        await chrome.storage.sync.set(changedPayload);
+      }
 
       if (options.removeKeys?.length) {
         await chrome.storage.sync.remove(options.removeKeys);
@@ -3771,6 +3806,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         return {
           ok: false,
           reason,
+          skippedKeys,
           estimatedBytes: validation.estimatedBytes,
           finalEstimatedBytes: validation.finalEstimatedBytes,
           itemCount: validation.itemCount,
@@ -3782,7 +3818,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       throw error;
     }
 
-    return validation;
+    return { ...validation, skippedKeys };
   }
 
   async function compressShard(shard) {
