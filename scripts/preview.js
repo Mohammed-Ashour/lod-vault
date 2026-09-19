@@ -728,7 +728,16 @@ window.addEventListener("beforeunload", () => {
     function syncTheme() {
       const doc = frame.contentDocument;
       if (!doc) return;
-      doc.documentElement.classList.toggle("light", document.documentElement.classList.contains("light"));
+      const root = doc.documentElement;
+      const light = document.documentElement.classList.contains("light");
+      if (root.classList.contains("light") === light) return;
+      // Mirror the one-paint swap from theme.js: without the guard the export
+      // document animates every entry while the outer page already changed.
+      root.classList.add("theme-switching");
+      root.classList.toggle("light", light);
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => root.classList.remove("theme-switching"))
+      );
     }
     const observer = new MutationObserver(syncTheme);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });

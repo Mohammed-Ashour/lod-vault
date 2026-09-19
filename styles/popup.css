@@ -177,7 +177,7 @@ code {
   border: 1px solid var(--line-strong);
   border-radius: 50%;
   color: var(--accent);
-  transition: all 0.15s;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
   flex-shrink: 0;
 }
 .audio-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
@@ -210,7 +210,7 @@ code {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-full);
   color: var(--muted);
-  transition: all 0.15s;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 .toggle-pill:hover:enabled { border-color: var(--accent); color: var(--text); }
 .toggle-pill-icon { font-size: 11px; }
@@ -327,7 +327,7 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
   font-size: 15px;
   font-weight: 400;
   opacity: 0.6;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, opacity 0.15s;
 }
 .control-btn:hover:enabled { opacity: 1; color: var(--danger); background: var(--tint); }
 
@@ -474,7 +474,7 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
   border-radius: var(--r-full);
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 .sync-language-chip:hover { border-color: var(--accent); color: var(--accent-lt); }
 .sync-language-chip.is-selected {
