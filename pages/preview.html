@@ -17,13 +17,19 @@
     <p id="preview-meta" class="status">Loading…</p>
     <div class="toolbar">
       <button id="open-flashcards" class="text-link" title="Open Flashcards">Flashcards</button>
-      <select id="sort-order" class="select" aria-label="Sort order">
-        <option value="recent">Most recent</option>
-        <option value="visited">Most visited</option>
-        <option value="alpha">A → Z</option>
-        <option value="oldest">Oldest first</option>
-      </select>
-      <select id="lang-filter" class="select" aria-label="Language filter"><option value="">All languages</option></select>
+      <span class="select-wrap">
+        <select id="sort-order" class="select" aria-label="Sort order">
+          <option value="recent">Most recent</option>
+          <option value="visited">Most visited</option>
+          <option value="alpha">A → Z</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+        <svg class="select-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 6 4.5 4 4.5-4"/></svg>
+      </span>
+      <span class="select-wrap">
+        <select id="lang-filter" class="select" aria-label="Language filter"><option value="">All languages</option></select>
+        <svg class="select-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 6 4.5 4 4.5-4"/></svg>
+      </span>
       <button id="refresh-preview" class="icon-btn" title="Refresh" aria-label="Refresh">↻</button>
       <button type="button" class="icon-btn theme-btn" aria-label="Switch to light">☀</button>
       <div class="menu-wrap">

@@ -244,7 +244,14 @@ html.theme-switching *::after {
 }
 
 /* ── Inputs ──────────────────────────────────────────── */
+.select-wrap {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
 .select {
+  appearance: none;
+  -webkit-appearance: none;
   height: 34px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
@@ -255,6 +262,25 @@ html.theme-switching *::after {
   transition: border-color 0.15s;
   max-width: 100%;
 }
+.select-wrap .select { padding-right: 36px; }
+.select-chevron {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.select-chevron path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.select-wrap:focus-within .select-chevron { color: var(--accent-lt); }
 .select:hover { border-color: var(--accent); }
 .select:focus { outline: none; border-color: var(--accent); }
 

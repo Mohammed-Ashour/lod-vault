@@ -7,6 +7,18 @@ const { JSDOM } = require("jsdom");
 
 const repoRoot = path.resolve(__dirname, "..");
 
+test("preview uses consistent decorative chevrons for its select controls", () => {
+  const dom = new JSDOM(fs.readFileSync(path.join(repoRoot, "pages/preview.html"), "utf8"));
+
+  for (const id of ["sort-order", "lang-filter"]) {
+    const select = dom.window.document.getElementById(id);
+    assert.equal(select.parentElement.classList.contains("select-wrap"), true);
+    const chevron = select.nextElementSibling;
+    assert.equal(chevron.classList.contains("select-chevron"), true);
+    assert.equal(chevron.getAttribute("aria-hidden"), "true");
+  }
+});
+
 test("preview restores its scroll position and expanded meanings after an entry changes", () => {
   const outer = new JSDOM(fs.readFileSync(path.join(repoRoot, "pages/preview.html"), "utf8"), {
     url: "https://extension.test/pages/preview.html"
