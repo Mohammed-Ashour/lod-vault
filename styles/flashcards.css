@@ -232,7 +232,7 @@ body {
   padding: 4px 10px;
   border: 1px solid var(--line);
   border-radius: var(--r-full);
-  transition: all 0.15s;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 .card-open-link:hover {
   color: var(--accent-lt);
@@ -263,7 +263,7 @@ body {
   border: 1px solid var(--line-strong);
   border-radius: 50%;
   color: var(--accent);
-  transition: all 0.15s;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 .audio-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .audio-btn.is-playing { background: var(--tint-strong); border-color: var(--accent); color: var(--accent); animation: audio-pulse 1s ease-in-out infinite; }
@@ -284,7 +284,7 @@ body {
   font-size: 14px;
   font-weight: 600;
   text-align: left;
-  transition: all 0.15s;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 .mc-options button:hover { border-color: var(--accent); color: var(--text); background: var(--tint); }
 

@@ -459,6 +459,10 @@
       --warn:    #b98a1f;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html.theme-switching,
+    html.theme-switching *,
+    html.theme-switching *::before,
+    html.theme-switching *::after { transition: none !important; }
     body {
       background: var(--bg); color: var(--text);
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
