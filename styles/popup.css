@@ -343,6 +343,7 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 .lookup-result { padding: 13px 0; border-bottom: 1px solid var(--line); }
 .lookup-result-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .lookup-word { flex: 1; min-width: 0; }
+.lookup-save-area { flex-shrink: 0; }
 .lookup-word .word-link { font-size: 24px; white-space: normal; overflow-wrap: anywhere; }
 .lookup-word .item-meta { margin-top: 1px; font-size: 10.5px; }
 .lookup-save { padding: 6px 10px; font-size: 11px; white-space: nowrap; }

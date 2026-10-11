@@ -63,7 +63,7 @@
       if (phase === "idle") {
         markup = '<div class="empty-state lookup-state"><h3>Find a Luxembourgish word</h3><p>Search in any LOD language, then save the Luxembourgish entry.</p><p class="lookup-privacy">Only your search text is sent to LOD.</p></div>';
       } else if (phase === "loading") {
-        markup = '<p class="lookup-state-copy" role="status">Searching the LOD dictionary…</p>';
+        markup = '<p class="lookup-state-copy">Searching the LOD dictionary…</p>';
       } else if (phase === "error") {
         markup = '<div class="empty-state lookup-state"><h3>LOD could not be reached</h3><p>Your saved words are still available in My vault.</p><button type="button" class="btn-ghost" data-action="retry">Try again</button></div>';
       } else if (!results.length) {
@@ -133,8 +133,8 @@
       const isLod = source === "lod";
       elements.vaultSource.classList.toggle("is-active", !isLod);
       elements.lodSource.classList.toggle("is-active", isLod);
-      elements.vaultSource.setAttribute("aria-pressed", String(!isLod));
-      elements.lodSource.setAttribute("aria-pressed", String(isLod));
+      elements.vaultSource.setAttribute("aria-checked", String(!isLod));
+      elements.lodSource.setAttribute("aria-checked", String(isLod));
       ctx.elements.currentPageCard.classList.toggle("is-lookup-context", isLod);
       elements.vaultPanel.classList.toggle("is-hidden", isLod);
       elements.panel.classList.toggle("is-hidden", !isLod);
@@ -162,8 +162,8 @@
         entryRequests.set(result.id, promise);
       }
       const entry = await entryRequests.get(result.id);
-      // Apply each query\'s matched translations even when the canonical entry
-      // was cached by an earlier lookup in a different language.
+      // Keep the current search match when the canonical entry omits that
+      // language; canonical entry translations still win when both exist.
       return { ...entry, translations: { ...result.translations, ...entry.translations } };
     }
 

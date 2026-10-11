@@ -92,7 +92,7 @@ test("source switch continues a local query, but retains separate local and LOD 
   assert.equal(app.input.getAttribute("aria-label"), "Search saved words");
   app.click("#search-source-lod"); await wait();
   assert.equal(app.input.value, "house");
-  assert.equal(app.doc.getElementById("search-source-lod").getAttribute("aria-pressed"), "true");
+  assert.equal(app.doc.getElementById("search-source-lod").getAttribute("aria-checked"), "true");
 });
 
 test("debounces dictionary typing and Enter flushes the pending search once", async (t) => {
