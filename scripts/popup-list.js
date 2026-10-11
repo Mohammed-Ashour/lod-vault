@@ -1,22 +1,3 @@
-// popup-list.js — Saved-list feature module for the popup page.
-//
-// Owns the saved words list (render, search, stats, Favorite/Study/Note/Delete
-// interactions), the Flashcards/Vault page openers, and the renderSavedList hub
-// that refreshes every popup section after the vault changes. Renders into the
-// popup DOM through the shared ctx object.
-//
-// Cross-module calls (resolved lazily at runtime):
-//   ctx.current.renderAutoMode()          — history count in the auto-mode copy
-//   ctx.current.syncCurrentCardState()    — current card after vault changes
-//   ctx.current.showNoteBody()            — "+ Note" reveal in list items
-//   ctx.sync.renderSyncLanguages()        — chips/capacity after vault changes
-//   ctx.sync.renderVerifiedSyncStatus()   — verified label after vault changes
-//   ctx.sync.refreshSyncHealth()          — health banner after vault changes
-//   ctx.backup.renderPortableBackupStatus() — backup chip after vault changes
-//   ctx.study.refreshStudyCard()           — due/new counts after vault changes
-//   ctx.showActionFeedback()              — transient action feedback toast
-//   ctx.deleteUndo.deleteEntry()          — delete-with-undo for list items
-//   ctx.noteAutosave                      — autosave for list note textareas
 (() => {
   function createListModule(ctx) {
     const { store, chromeApi, state, elements } = ctx;
@@ -95,6 +76,7 @@
       state.savedEntries = entries;
       renderSummary(entries);
       renderList();
+      ctx.lookup?.refreshSavedState();
 
       ctx.current.renderAutoMode();
       ctx.sync.renderSyncLanguages();
@@ -114,7 +96,9 @@
       const hasQuery = state.searchQuery.trim().length > 0;
       const displayEntries = hasQuery ? visibleEntries : entries;
 
-      elements.searchStatus.textContent = formatSearchStatus(visibleEntries.length, entries.length);
+      if (state.searchSource !== "lod") {
+        elements.searchStatus.textContent = formatSearchStatus(visibleEntries.length, entries.length);
+      }
 
       if (!entries.length) {
         elements.savedList.innerHTML = "";
@@ -221,6 +205,7 @@
     function onSavedListInput(event) {
       const textarea = event.target.closest("textarea[data-note-id]");
       if (!textarea) return;
+      delete textarea.dataset.discarded;
       ctx.noteAutosave.markDirty(textarea);
     }
 
@@ -237,6 +222,10 @@
     }
 
     function onSearchInput(event) {
+      if (state.searchSource === "lod") {
+        ctx.lookup.onInput(event);
+        return;
+      }
       state.searchQuery = event.target.value || "";
       renderList();
     }

@@ -1,13 +1,3 @@
-// popup-sync.js — Sync panel feature module for the popup page.
-//
-// Owns the sync language chips, capacity bar, Sync now / Pull synced data /
-// Retry actions, the last-verified-sync status and the sync health inspection.
-// Renders into the popup DOM and coordinates with the other popup modules
-// through the shared ctx object created by popup-app.js.
-//
-// Cross-module calls (resolved lazily at runtime, after popup-app.js wires ctx):
-//   ctx.list.renderSavedList()        — after pull/push changed the vault
-//   ctx.current.refreshCurrentPage()  — after pull/push changed the current word
 (() => {
   function createSyncModule(ctx) {
     const { store, chromeApi, state, elements } = ctx;

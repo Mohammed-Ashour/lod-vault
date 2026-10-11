@@ -1,6 +1,7 @@
 (() => {
   const API_LOCALE = "lb";
   const API_ROOT = `https://lod.lu/api/${API_LOCALE}`;
+  const SEARCH_LANGUAGES = Object.freeze(["lb", "en", "fr", "de", "pt", "nl"]);
   const DEFAULT_SENTENCE_LOOKUP_CONCURRENCY = 6;
 
   function cleanText(value) {
@@ -24,9 +25,10 @@
       .replace(/ß/g, "ss");
   }
 
-  function buildSearchUrl(query) {
+  function buildSearchUrl(query, language = API_LOCALE) {
+    if (!SEARCH_LANGUAGES.includes(language)) throw new Error("Unsupported search language.");
     const url = new URL(`${API_ROOT}/search`);
-    url.searchParams.set("lang", API_LOCALE);
+    url.searchParams.set("lang", language);
     url.searchParams.set("query", normalizeSelection(query));
     return url.toString();
   }
@@ -41,8 +43,9 @@
     return url.toString();
   }
 
-  function buildSearchPageUrl(query) {
-    return `https://lod.lu/search/${encodeURIComponent(normalizeSelection(query))}/${API_LOCALE}`;
+  function buildSearchPageUrl(query, language = API_LOCALE) {
+    if (!SEARCH_LANGUAGES.includes(language)) throw new Error("Unsupported search language.");
+    return `https://lod.lu/search/${encodeURIComponent(normalizeSelection(query))}/${language}`;
   }
 
   function stripDiacritics(value) {
@@ -109,7 +112,7 @@
     return response.json();
   }
 
-  function mapCandidate(result = {}) {
+  function mapCandidate(result = {}, language = API_LOCALE) {
     const id = cleanText(result.article_id || result.id);
     return {
       id,
@@ -117,6 +120,9 @@
       word: cleanDictionaryText(result.word_lb || result.lemma),
       pos: cleanDictionaryText(result.pos),
       matches: Array.isArray(result.matches) ? result.matches.slice() : [],
+      translations: language === "lb" ? {} : {
+        [language]: [...new Set((result.meanings || []).map((meaning) => cleanDictionaryText(meaning.translation)).filter(Boolean))].join(" · ")
+      },
       url: id ? `https://lod.lu/artikel/${encodeURIComponent(id)}` : ""
     };
   }
@@ -219,9 +225,24 @@
       return { query: "", candidates: [] };
     }
 
-    const data = await fetchJson(buildSearchUrl(normalizedQuery), options.fetch);
-    const candidates = Array.isArray(data?.results) ? data.results.map(mapCandidate).filter((candidate) => candidate.id) : [];
-    return { query: normalizedQuery, candidates };
+    const languages = options.language === "all" ? SEARCH_LANGUAGES : [options.language || API_LOCALE];
+    const responses = await Promise.all(languages.map(async (language) => {
+      const data = await fetchJson(buildSearchUrl(normalizedQuery, language), options.fetch);
+      if (!Array.isArray(data?.results)) throw new Error("Invalid LOD search response.");
+      return data.results.map((result) => mapCandidate(result, language)).filter((candidate) => candidate.id && candidate.word);
+    }));
+    const merged = new Map();
+    for (const candidates of responses) {
+      for (const candidate of candidates) {
+        const existing = merged.get(candidate.id);
+        if (existing) {
+          Object.assign(existing.translations, candidate.translations);
+        } else {
+          merged.set(candidate.id, candidate);
+        }
+      }
+    }
+    return { query: normalizedQuery, candidates: [...merged.values()] };
   }
 
   async function fetchEntry(id, options = {}) {
@@ -448,6 +469,7 @@
 
   globalThis.LodVaultLensLookup = {
     API_ROOT,
+    SEARCH_LANGUAGES,
     normalizeSelection,
     buildSearchUrl,
     buildEntryUrl,

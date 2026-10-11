@@ -6,6 +6,22 @@ const { JSDOM } = require("jsdom");
 
 const { loadSharedStore } = require("./helpers/loaders");
 
+test("addToList is idempotent, atomic, and preserves existing memberships and notes", async () => {
+  const { store } = loadSharedStore();
+  const entry = { id: "HAUS1", word: "Haus", translations: { en: "house", nl: "huis" } };
+  await Promise.all([store.addToList(entry, "study"), store.addToList(entry, "study")]);
+  await store.saveNote("HAUS1", "Keep this note");
+  await Promise.all([store.addToList(entry, "favorite"), store.addToList(entry, "favorite")]);
+  const saved = await store.getEntry("HAUS1");
+  assert.equal(saved.favorite, true);
+  assert.equal(saved.study, true);
+  assert.equal(saved.history, false);
+  assert.equal(saved.visitCount, 0);
+  assert.equal(saved.note, "Keep this note");
+  assert.equal(saved.translations.nl, "huis");
+  await assert.rejects(() => store.addToList(entry, "history"), /Unsupported list/);
+});
+
 test("getIdFromUrl extracts and decodes article ids", () => {
   const { store } = loadSharedStore();
 
@@ -1163,6 +1179,24 @@ test("importJson reports per-category counts from the actual merge", async () =>
   assert.equal(storageData[store.STORAGE_KEY].BEEM1.study, true);
   assert.equal(storageData[store.STORAGE_KEY].GONE1.favorite, true);
   assert.equal(storageData[store.DELETED_KEY]?.GONE1, undefined, "restored word must lose its tombstone");
+});
+
+test("note autosave failures keep a draft without an automatic retry loop", async () => {
+  const { store } = loadSharedStore();
+  const dom = new JSDOM('<textarea data-note-id="HAUS1" data-saved-value=""></textarea>');
+  const textarea = dom.window.document.querySelector("textarea");
+  let attempts = 0;
+  const controller = store.createNoteAutosaveController({
+    async saveNote() { attempts += 1; throw Error("Storage unavailable"); }
+  });
+  textarea.value = "Unsaved draft";
+  controller.markDirty(textarea, 1);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(attempts, 1);
+  assert.equal(textarea.dataset.dirty, "true");
+  assert.equal(await controller.flush(textarea), false);
+  assert.equal(attempts, 2);
+  controller.destroy(); dom.window.close();
 });
 
 test("createNoteAutosaveController trims, saves, and updates textarea dataset state", async () => {

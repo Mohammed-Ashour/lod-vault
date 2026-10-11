@@ -969,7 +969,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return entry && shouldKeepEntry(entry) ? entry : null;
   }
 
-  async function toggleListDirect(entry, listName) {
+  async function changeListMembership(entry, listName, toggle) {
     return runVaultIo(async () => {
       if (!["favorite", "study"].includes(listName)) {
         throw new Error(`Unsupported list: ${listName}`);
@@ -992,7 +992,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       merged.history = Boolean(existing?.history);
       merged.visitCount = normalizeVisitCount(existing?.visitCount);
       merged.lastVisitedAt = cleanText(existing?.lastVisitedAt);
-      merged[listName] = !merged[listName];
+      merged[listName] = toggle ? !merged[listName] : true;
 
       if (!shouldKeepEntry(merged)) {
         delete entryMap[normalized.id];
@@ -1012,7 +1012,13 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   }
 
   async function toggleList(entry, listName) {
-    return runStoreMutation("toggleList", [entry, listName], toggleListDirect);
+    return runStoreMutation("toggleList", [entry, listName], () => changeListMembership(entry, listName, true));
+  }
+
+  // An explicit Save must never toggle an existing membership off, including
+  // when another popup or tab saves the same canonical article concurrently.
+  async function addToList(entry, listName) {
+    return runStoreMutation("addToList", [entry, listName], () => changeListMembership(entry, listName, false));
   }
 
   async function recordAutoVisitDirect(entry) {
@@ -2193,6 +2199,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     getEntries,
     getEntry,
     toggleList,
+    addToList,
     recordAutoVisit,
     removeFromHistory,
     refreshEntryData,
@@ -2600,9 +2607,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return extractEntryFromHtmlWithRegex(html, url);
   }
 
-  /**
-   * Full info text for title attribute (POS + all translations).
-   */
   function infoTextFull(entry) {
     const parts = [];
     if (entry?.pos) parts.push(entry.pos);
@@ -2678,10 +2682,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 (() => {
   const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-  /* ------------------------------------------------------------------ */
-  /*  Feature detection                                                   */
-  /* ------------------------------------------------------------------ */
-
   let compressionAvailable = false;
 
   try {
@@ -2696,10 +2696,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   } catch (_error) {
     // Intentionally empty — fall back to no-op.
   }
-
-  /* ------------------------------------------------------------------ */
-  /*  Custom base64 (avoids btoa/atob which may be absent in workers)     */
-  /* ------------------------------------------------------------------ */
 
   function bytesToBase64(bytes) {
     let result = "";
@@ -2756,10 +2752,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return bytes;
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Stream helpers                                                     */
-  /* ------------------------------------------------------------------ */
-
   async function readAllChunks(readableStream) {
     const reader = readableStream.getReader();
     const chunks = [];
@@ -2804,10 +2796,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
     return result;
   }
-
-  /* ------------------------------------------------------------------ */
-  /*  Public API                                                         */
-  /* ------------------------------------------------------------------ */
 
   /**
    * Compress a UTF-8 string via deflate-raw and return a base64-encoded
@@ -2887,10 +2875,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   function isAvailable() {
     return compressionAvailable;
   }
-
-  /* ------------------------------------------------------------------ */
-  /*  Export                                                             */
-  /* ------------------------------------------------------------------ */
 
   globalThis.LodVaultCompress = Object.freeze({
     compress,
@@ -4030,9 +4014,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     initPromise = null;
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Sync usage statistics (for the popup capacity bar)                  */
-  /* ------------------------------------------------------------------ */
 
   async function inspectSyncStorage() {
     try {
@@ -4493,6 +4474,7 @@ const OPEN_LENS_OVERLAY_MESSAGE_TYPE = "lodvault:open-lens-overlay";
 const LENS_PROXY_MESSAGE_TYPE = "lodvault:lens-fetch";
 const LENS_PROXY_ALLOWED_ORIGIN = "https://lod.lu";
 const LENS_PROXY_ALLOWED_LOCALE = "lb";
+const LENS_PROXY_SEARCH_LANGUAGES = new Set(["lb", ...LodVaultStore.TRANSLATION_LANGUAGE_ORDER]);
 const LENS_PROXY_SEARCH_PATH = `/api/${LENS_PROXY_ALLOWED_LOCALE}/search`;
 const LENS_PROXY_SUGGEST_PATH = `/api/${LENS_PROXY_ALLOWED_LOCALE}/suggest`;
 const LENS_PROXY_ENTRY_PREFIX = `/api/${LENS_PROXY_ALLOWED_LOCALE}/entry/`;
@@ -4518,6 +4500,7 @@ const STORE_MUTATION_METHODS = new Set([
   "setSyncLanguages",
   "markSyncVerified",
   "toggleList",
+  "addToList",
   "recordAutoVisit",
   "removeFromHistory",
   "refreshEntryData",
@@ -4618,11 +4601,11 @@ function validateLensProxyUrl(value) {
 
     const lang = sanitizeLensQuery(parsed.searchParams.get("lang"));
     const query = sanitizeLensQuery(parsed.searchParams.get("query"));
-    if (lang !== LENS_PROXY_ALLOWED_LOCALE || !query) {
+    if (!LENS_PROXY_SEARCH_LANGUAGES.has(lang) || !query || parsed.searchParams.getAll("lang").length !== 1 || parsed.searchParams.getAll("query").length !== 1) {
       throw new Error("Blocked unauthorized LOD Lens request URL.");
     }
 
-    parsed.search = `?lang=${encodeURIComponent(LENS_PROXY_ALLOWED_LOCALE)}&query=${encodeURIComponent(query)}`;
+    parsed.search = `?lang=${encodeURIComponent(lang)}&query=${encodeURIComponent(query)}`;
     return parsed.toString();
   }
 
@@ -5005,7 +4988,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     fetch(requestUrl, {
       method: "GET",
-      headers: { Accept: "application/json" }
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15000)
     })
       .then(async (response) => {
         const text = await response.text();

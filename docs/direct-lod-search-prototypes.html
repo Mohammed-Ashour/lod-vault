@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LODVault · Direct search, five prototypes</title>
+<style>
+/* Deliberately follows the shipped Blue Night palette and Georgia word headings. */
+:root {
+  color-scheme: dark;
+  --page:#0b1520; --surface:#111d2e; --raised:#192d44;
+  --accent:#39a7c4; --accent-h:#4fb9d4; --accent-lt:#a8dadc;
+  --text:#e4eef4; --text-2:#b8cedb; --muted:#91afc2;
+  --line:rgba(168,218,220,.12); --line-strong:rgba(168,218,220,.23);
+  --tint:rgba(168,218,220,.07); --on-accent:#06212b;
+  --ok:#78cfa0; --warn:#e2c367; --danger:#ee929a; --scrim:rgba(3,10,17,.72);
+  --serif:Georgia,'Times New Roman',serif;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;
+}
+html.light {
+  color-scheme:light;
+  --page:#f1f5f8; --surface:#fff; --raised:#e8eef4;
+  --accent:#147f9c; --accent-h:#0f6f8a; --accent-lt:#0e7490;
+  --text:#13222e; --text-2:#43586a; --muted:#5b7182;
+  --line:rgba(18,48,74,.13); --line-strong:rgba(18,48,74,.23);
+  --tint:rgba(15,80,110,.06); --on-accent:#fff;
+  --ok:#287449; --warn:#886316; --danger:#b33743; --scrim:rgba(10,22,34,.35);
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--page); color:var(--text); font:14px/1.5 var(--sans); }
+button,input,select,textarea { font:inherit; }
+button,a,select,input,textarea { -webkit-tap-highlight-color:transparent; }
+button { cursor:pointer; }
+button:disabled { cursor:default; opacity:.6; }
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,textarea:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+button { color:var(--text-2); }
+a { color:var(--accent-lt); text-underline-offset:3px; }
+h1,h2,h3,p { margin:0; }
+svg { width:16px; height:16px; flex-shrink:0; vertical-align:middle; }
+[hidden] { display:none!important; }
+.masthead { border-bottom:1px solid var(--line); padding:19px 32px; display:flex; justify-content:space-between; align-items:center; gap:20px; }
+.wordmark { font-size:19px; font-weight:800; letter-spacing:-.03em; }
+.wordmark b { color:var(--accent-lt); }
+.masthead-left { display:flex; align-items:center; gap:20px; }
+#theme-toggle { white-space:nowrap; flex-shrink:0; }
+.masthead-label { font-size:11px; color:var(--muted); border-left:1px solid var(--line-strong); padding-left:20px; letter-spacing:.09em; text-transform:uppercase; }
+.btn,.primary,.ghost,.text-btn,.icon-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; border-radius:8px; border:1px solid var(--line-strong); background:transparent; padding:7px 11px; font-size:12px; font-weight:600; min-height:33px; }
+.btn:hover,.ghost:hover { background:var(--tint); border-color:var(--accent); }
+.primary { background:var(--accent); color:var(--on-accent); border-color:transparent; }
+.primary:hover { background:var(--accent-h); }
+.text-btn { border:0; padding:5px 7px; color:var(--muted); background:none; }
+.text-btn:hover { color:var(--accent-lt); }
+.icon-btn { padding:0; width:30px; height:30px; min-height:30px; border:0; }
+.icon-btn:hover { background:var(--tint); color:var(--text); }
+.intro { max-width:1424px; margin:auto; padding:36px 32px 27px; display:flex; align-items:flex-end; justify-content:space-between; gap:40px; }
+.eyebrow { font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--accent-lt); }
+h1 { font:normal 38px/1.18 var(--serif); margin:7px 0 13px; letter-spacing:-.02em; }
+.intro-copy { max-width:560px; color:var(--text-2); font-size:14px; }
+.demo-note { max-width:300px; color:var(--muted); font-size:12px; border-left:2px solid var(--line-strong); padding-left:16px; }
+.demo-note strong { display:block; color:var(--text-2); margin-bottom:4px; font-weight:600; }
+.lab-bar { border-top:1px solid var(--line); border-bottom:1px solid var(--line); background:var(--surface); }
+.lab-tools { max-width:1424px; margin:auto; padding:15px 32px; display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px 20px; }
+.control { display:flex; flex-direction:column; gap:5px; }
+.control label { color:var(--muted); font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
+select { background:var(--surface); color:var(--text-2); border:1px solid var(--line-strong); border-radius:6px; padding:7px 26px 7px 9px; max-width:100%; }
+.lab-tools select { font-size:12px; min-height:34px; }
+.lab-tools .reset { margin-left:auto; }
+.lab-status { font-size:11px; color:var(--muted); align-self:center; margin-top:17px; }
+.gallery { max-width:1424px; margin:auto; padding:30px 32px 42px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:38px 24px; align-items:start; }
+.concept { min-width:0; }
+.concept-heading { display:flex; align-items:baseline; gap:9px; margin-bottom:7px; }
+.index { color:var(--accent); font:12px ui-monospace,SFMono-Regular,Menlo,monospace; }
+.concept h2 { font-size:16px; font-weight:650; letter-spacing:-.02em; }
+.recommend { margin-left:auto; color:var(--accent-lt); font-size:10px; white-space:nowrap; }
+.concept-copy { font-size:12px; color:var(--muted); min-height:40px; max-width:380px; margin-bottom:16px; }
+.popup { background:var(--page); border:1px solid var(--line-strong); border-radius:12px; overflow:hidden; height:670px; display:flex; flex-direction:column; position:relative; box-shadow:0 10px 32px rgba(0,0,0,.12); font-size:12px; }
+.popup-head { display:flex; align-items:center; padding:10px 14px; gap:8px; background:var(--surface); border-bottom:1px solid var(--line); min-height:51px; }
+.popup-head .wordmark { font-size:17px; }
+.popup-nav { margin-left:auto; display:flex; gap:2px; align-items:center; }
+.popup-nav .text-btn { font-size:11px; padding:4px 5px; }
+.today { display:flex; align-items:center; gap:12px; padding:13px 16px; border-bottom:1px solid var(--line); }
+.today-copy { flex:1; min-width:0; }
+.today .eyebrow { color:var(--accent); font-size:10px; }
+.today-summary { font:20px/1.3 var(--serif); margin-top:2px; }
+.today .primary { padding:7px 12px; white-space:nowrap; }
+.tabs { display:flex; padding:8px 14px 0; border-bottom:1px solid var(--line); gap:2px; }
+.tab { background:none; border:0; border-bottom:2px solid transparent; color:var(--muted); padding:7px 10px; font-size:12px; font-weight:600; }
+.tab.active { color:var(--text); border-color:var(--accent); }
+.tab:hover { color:var(--text); }
+.pane { overflow-y:auto; flex:1; min-height:0; scrollbar-width:thin; scrollbar-color:var(--line-strong) transparent; }
+.capture { padding:11px 16px; border-bottom:1px solid var(--line); }
+.label { color:var(--muted); text-transform:uppercase; font-size:10px; font-weight:700; letter-spacing:.07em; }
+.capture-title { font:22px/1.3 var(--serif); margin-top:3px; }
+.capture-line { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.capture p { color:var(--text-2); font-size:12px; margin-top:3px; }
+.mini-pill { display:inline-flex; gap:5px; align-items:center; border:1px solid var(--line-strong); border-radius:99px; color:var(--accent-lt); font-size:10px; padding:3px 9px; }
+.capture .mini-pill svg { width:11px; height:11px; }
+.search-area { padding:15px 16px 10px; }
+.search-box { display:flex; align-items:center; gap:8px; border:1px solid var(--line-strong); border-radius:8px; background:var(--surface); padding:0 10px; min-height:39px; }
+.search-box:focus-within { border-color:var(--accent); }
+.search-box svg { color:var(--muted); width:14px; height:14px; }
+.search-box input { border:0; background:none; color:var(--text); width:100%; min-width:0; outline:none; font-size:12px; padding:10px 0; }
+.search-box input::placeholder { color:var(--muted); }
+.search-box .clear { min-width:22px; width:22px; min-height:24px; height:24px; }
+.search-meta { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:8px; color:var(--muted); font-size:10px; }
+.search-meta select { border:0; background:transparent; padding:3px 19px 3px 0; font-size:11px; max-width:165px; }
+.search-meta .label { font-size:9px; }
+.source-switch { display:flex; padding:3px; background:var(--surface); border:1px solid var(--line); border-radius:7px; margin-bottom:10px; }
+.source-switch button { flex:1; background:transparent; border:0; border-radius:5px; padding:6px; font-size:11px; color:var(--muted); }
+.source-switch button.active { background:var(--raised); color:var(--text); }
+.result-group { padding:0 16px; }
+.group-head { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0 8px; font-size:10px; color:var(--muted); border-bottom:1px solid var(--line); }
+.group-head strong { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-2); }
+.result { border-bottom:1px solid var(--line); padding:12px 0; animation:result-in .16s ease-out; }
+.result-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.word-title { display:flex; align-items:baseline; gap:7px; min-width:0; flex-wrap:wrap; }
+.word { font:normal 23px/1.2 var(--serif); color:var(--text); overflow-wrap:anywhere; }
+.word small { font:11px var(--sans); color:var(--muted); }
+.word-title .pos { color:var(--muted); font-size:10px; }
+.result .primary,.result .ghost { font-size:10px; padding:5px 8px; min-height:29px; white-space:nowrap; }
+.result .primary svg,.result .ghost svg { width:12px; height:12px; }
+.saved-tag { font-size:10px; color:var(--ok); display:inline-flex; gap:4px; align-items:center; white-space:nowrap; }
+.saved-tag svg { width:12px; height:12px; }
+.translation { margin-top:5px; color:var(--text-2); font-size:12px; overflow-wrap:anywhere; }
+.lang { color:var(--muted); font-size:9px; font-weight:700; margin-right:5px; }
+.match-note { color:var(--muted); font-size:10px; margin-top:2px; }
+mark { background:var(--tint); color:var(--accent-lt); padding:0 2px; border-radius:2px; }
+details { margin-top:7px; }
+summary { color:var(--accent-lt); cursor:pointer; font-size:10px; padding:3px 0; }
+.entry-body { padding-top:10px; animation:result-in .16s ease-out; }
+.translation-table { margin:0; display:grid; grid-template-columns:30px 1fr; row-gap:5px; font-size:11px; }
+.translation-table dt { color:var(--muted); font-size:9px; font-weight:700; }
+.translation-table dd { margin:0; color:var(--text-2); }
+.example { font:italic 14px/1.6 var(--serif); color:var(--text-2); border-left:2px solid var(--line-strong); padding-left:10px; margin:13px 0 10px; }
+.entry-tools { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:9px; }
+.entry-tools .ghost { min-height:28px; padding:4px 8px; font-size:10px; }
+.entry-tools svg { width:12px; height:12px; }
+.entry-tools [aria-pressed=true] { color:var(--accent-lt); border-color:var(--accent); background:var(--tint); }
+.entry-tools [data-action=favorite][aria-pressed=true] { color:var(--warn); border-color:var(--warn); }
+.entry-link { display:inline-flex; gap:4px; align-items:center; margin-left:auto; font-size:10px; text-decoration:none; }
+.entry-link svg { width:11px; height:11px; }
+.note-label { display:block; font-size:10px; color:var(--muted); margin-top:10px; }
+.note-input { width:100%; background:var(--surface); border:1px solid var(--line-strong); color:var(--text); border-radius:6px; padding:7px 8px; font-size:11px; resize:vertical; min-height:40px; margin-top:5px; }
+.note-input::placeholder { color:var(--muted); }
+.note-helper { color:var(--muted); font-size:10px; margin-top:3px; }
+.result-footer { padding:12px 16px; font-size:10px; color:var(--muted); }
+.local-list { padding:0 16px 10px; }
+.local-row { padding:12px 0; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; justify-content:space-between; }
+.local-row .word { font-size:21px; }
+.local-row p { font-size:11px; color:var(--muted); margin-top:3px; }
+.quiet { font-size:10px; color:var(--muted); }
+.lookup-link { width:100%; display:flex; justify-content:space-between; align-items:center; padding:11px 16px; border:0; border-bottom:1px solid var(--line); background:var(--tint); color:var(--accent-lt); font-size:12px; }
+.lookup-link svg { width:15px; height:15px; }
+.capture-tabs { display:flex; gap:14px; padding:12px 16px 0; }
+.capture-tabs button { background:none; border:0; color:var(--muted); padding:0 0 6px; font-size:10px; border-bottom:1px solid transparent; }
+.capture-tabs button.active { color:var(--accent-lt); border-color:var(--accent); }
+.inspector { padding:0 16px 16px; }
+.inspector-top { display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); padding:5px 0 8px; }
+.inspector-top .text-btn { padding-left:0; font-size:10px; }
+.article { padding:16px 0 5px; }
+.article .word { font-size:30px; }
+.article-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:7px; gap:10px; }
+.article .pos { color:var(--muted); font-size:10px; margin-top:3px; }
+.article .primary { padding:6px 10px; font-size:11px; }
+.candidate-strip { display:flex; gap:5px; flex-wrap:wrap; padding:0 0 11px; border-bottom:1px solid var(--line); }
+.candidate-strip button { background:var(--surface); border:1px solid var(--line-strong); border-radius:6px; font-size:11px; padding:4px 8px; }
+.candidate-strip button.active { color:var(--accent-lt); border-color:var(--accent); }
+.popup-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:9px 16px; border-top:1px solid var(--line); font-size:10px; color:var(--muted); background:var(--surface); min-height:34px; }
+.feedback { position:absolute; left:12px; right:12px; bottom:42px; background:var(--text); color:var(--page); border-radius:8px; padding:10px 12px; display:flex; align-items:center; gap:8px; font-size:11px; box-shadow:0 5px 18px rgba(0,0,0,.2); z-index:6; animation:toast-in .18s ease-out; }
+.feedback button { margin-left:auto; border:0; background:none; color:var(--page); text-decoration:underline; font-size:11px; padding:2px 4px; }
+.feedback svg { width:13px; height:13px; }
+.state { padding:30px 15px; text-align:center; color:var(--muted); }
+.state-icon { display:grid; place-items:center; width:36px; height:36px; margin:0 auto 12px; color:var(--accent); background:var(--tint); border-radius:50%; }
+.state h3 { color:var(--text); font:19px var(--serif); margin-bottom:7px; }
+.state p { max-width:280px; margin:0 auto 14px; font-size:12px; }
+.state .ghost { font-size:11px; }
+.idle { padding:18px 16px 26px; }
+.idle-title { font:22px var(--serif); margin-bottom:8px; }
+.idle p { color:var(--muted); font-size:12px; margin-bottom:16px; }
+.example-queries { display:flex; gap:7px; flex-wrap:wrap; }
+.example-queries .ghost { font-size:11px; }
+.skeleton { padding:16px; }
+.skeleton div { background:var(--raised); height:12px; width:76%; border-radius:4px; margin:10px 0; animation:pulse .8s ease-in-out infinite alternate; }
+.skeleton div:nth-child(3n+1) { height:22px; width:43%; margin-top:20px; }
+.skeleton div:nth-child(3n) { width:55%; }
+.drawer-shade { position:absolute; inset:51px 0 34px; background:var(--scrim); z-index:2; }
+.drawer { position:absolute; left:0; right:0; top:116px; bottom:34px; background:var(--page); border-radius:12px 12px 0 0; border-top:1px solid var(--line-strong); z-index:3; display:flex; flex-direction:column; box-shadow:0 -8px 26px rgba(0,0,0,.18); animation:drawer-in .2s ease-out; }
+.drawer-heading { display:flex; align-items:center; justify-content:space-between; padding:13px 16px 0; }
+.drawer-heading h3 { font-size:13px; font-weight:650; }
+.drawer .search-area { padding-top:10px; }
+.drawer-content { overflow-y:auto; min-height:0; flex:1; scrollbar-width:thin; }
+.drawer-tip { font-size:10px; color:var(--muted); padding:10px 16px; border-top:1px solid var(--line); }
+.stats-demo { padding:20px 16px; }
+.stats-demo h3 { font:24px var(--serif); }
+.stats-demo p { color:var(--muted); margin:9px 0 18px; }
+.stats-counts { display:grid; grid-template-columns:repeat(3,1fr); border-block:1px solid var(--line); }
+.stats-counts div { padding:12px 5px; }
+.stats-counts b { display:block; font:24px var(--serif); }
+.stats-counts span { font-size:10px; color:var(--muted); }
+.tradeoff { margin-top:13px; display:grid; grid-template-columns:48px 1fr; gap:6px 9px; font-size:11px; line-height:1.5; }
+.tradeoff dt { color:var(--text-2); }
+.tradeoff dd { color:var(--muted); margin:0; }
+.decision { max-width:1360px; margin:0 auto 32px; padding:25px 0; border-block:1px solid var(--line); display:flex; gap:32px; align-items:flex-start; }
+.decision h2 { font:25px var(--serif); min-width:235px; }
+.decision p { color:var(--text-2); max-width:650px; font-size:13px; }
+.decision small { display:block; color:var(--muted); margin-top:10px; font-size:11px; }
+.bottom { max-width:1424px; padding:0 32px 32px; margin:auto; display:flex; justify-content:space-between; gap:20px; color:var(--muted); font-size:11px; }
+.gallery.focus { grid-template-columns:minmax(0,420px); justify-content:center; }
+.gallery.focus .concept-copy { min-height:0; }
+@keyframes result-in { from { opacity:.5; transform:translateY(3px); } to { opacity:1; transform:none; } }
+@keyframes drawer-in { from { opacity:0; transform:translateY(15px); } to { opacity:1; transform:none; } }
+@keyframes toast-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+@keyframes pulse { to { opacity:.4; } }
+@media (max-width:1190px) { .gallery { grid-template-columns:repeat(2,minmax(0,420px)); justify-content:center; } .decision { margin-inline:32px; } }
+@media (max-width:760px) {
+  .masthead { padding:15px 18px; } .masthead-left { gap:12px; } .masthead-label { padding-left:12px; font-size:9px; }
+  .intro { padding:27px 18px 24px; display:block; } h1 { font-size:31px; }
+  .demo-note { max-width:none; margin-top:18px; } .lab-tools { padding:14px 18px; gap:12px; }
+  .lab-tools .reset { margin-left:0; } .lab-status { margin-top:0; width:100%; }
+  .gallery { grid-template-columns:minmax(0,420px); padding:25px 18px; gap:32px; }
+  .concept-copy { min-height:0; } .decision { display:block; margin:0 18px 25px; } .decision h2 { margin-bottom:10px; }
+  .bottom { padding:0 18px 25px; flex-direction:column; gap:7px; }
+}
+@media (max-width:370px) { .popup-head { padding-inline:10px; } .popup-nav .text-btn { font-size:10px; padding-inline:3px; } .popup-nav { gap:0; } .masthead-label { display:none; } .tab { padding-inline:8px; } }
+@media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
+</style>
+</head>
+<body>
+<svg aria-hidden="true" style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M20 12H5m6-6-6 6 6 6"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6m0-6L10 14M10 4H4v16h16v-6"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/></symbol>
+  <symbol id="i-study" viewBox="0 0 24 24"><rect x="5" y="7" width="14" height="14" rx="2"/><path d="M8 3h8M7 5h10M9 14h6"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+  <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 3 2 21h20ZM12 9v5m0 3v1"/></symbol>
+</svg>
+<header class="masthead">
+  <div class="masthead-left"><div class="wordmark"><b>LOD</b>Vault</div><span class="masthead-label">Feature design / 01</span></div>
+  <button class="btn" id="theme-toggle" type="button" aria-pressed="false"><svg fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><use href="#i-sun"/></svg><span>Light mode</span></button>
+</header>
+<main>
+  <section class="intro" aria-labelledby="page-title">
+    <div><p class="eyebrow">Five ways into the dictionary</p><h1 id="page-title">Direct dictionary search</h1><p class="intro-copy">Look up a word in any LOD language. Find the Luxembourgish entry and save it without leaving the extension.</p></div>
+    <p class="demo-note"><strong>Interactive UI prototypes</strong>Local sample results. Saves are shared across all five previews, stay in this page, and never touch your real vault.</p>
+  </section>
+  <div class="lab-bar">
+    <div class="lab-tools">
+      <div class="control"><label for="view-select">Compare</label><select id="view-select"><option value="all">All five options</option><option value="a">01 · Unified search</option><option value="b">02 · Source switch</option><option value="c">03 · Dictionary tab</option><option value="d">04 · Capture + lookup</option><option value="e">05 · Quick-search drawer</option></select></div>
+      <div class="control"><label for="sample-select">Try a language</label><select id="sample-select"><option value="en">English · house</option><option value="lb">Lëtzebuergesch · Haus</option><option value="fr">Français · maison</option><option value="de">Deutsch · Haus</option><option value="pt">Português · casa</option><option value="nl">Nederlands · huis</option></select></div>
+      <div class="control"><label for="state-select">Search state</label><select id="state-select"><option value="normal">Results</option><option value="idle">Before searching</option><option value="empty">No matches</option><option value="error">Connection error</option><option value="loading">Loading</option></select></div>
+      <span class="lab-status" id="lab-status" aria-live="polite">3 words in the demo vault</span>
+      <button class="btn reset" id="reset" type="button">Reset demo</button>
+    </div>
+  </div>
+  <section class="gallery" id="gallery" aria-label="Compare search prototypes">
+    <article class="concept" data-concept="a">
+      <div class="concept-heading"><span class="index">01</span><h2>Unified search</h2><span class="recommend">Recommended</span></div>
+      <p class="concept-copy">One field. Saved words first, new dictionary matches just below.</p>
+      <div class="popup" id="popup-a" data-id="a" aria-label="Unified search prototype"></div>
+      <dl class="tradeoff"><dt>Fits</dt><dd>Finding and collecting words in the same flow.</dd><dt>Cost</dt><dd>Needs clear source labels and reliable result ranking.</dd></dl>
+    </article>
+    <article class="concept" data-concept="b">
+      <div class="concept-heading"><span class="index">02</span><h2>Source switch</h2></div>
+      <p class="concept-copy">Keep the familiar Words tab. Choose where the search runs.</p>
+      <div class="popup" id="popup-b" data-id="b" aria-label="Source switch prototype"></div>
+      <dl class="tradeoff"><dt>Fits</dt><dd>The smallest change to the existing popup.</dd><dt>Cost</dt><dd>One extra switch before a dictionary lookup.</dd></dl>
+    </article>
+    <article class="concept" data-concept="c">
+      <div class="concept-heading"><span class="index">03</span><h2>Dictionary tab</h2></div>
+      <p class="concept-copy">A dedicated lookup workspace, with a full entry one click away.</p>
+      <div class="popup" id="popup-c" data-id="c" aria-label="Dictionary tab prototype"></div>
+      <dl class="tradeoff"><dt>Fits</dt><dd>Looking up several words in a row.</dd><dt>Cost</dt><dd>Another top-level tab in an already small popup.</dd></dl>
+    </article>
+    <article class="concept" data-concept="d">
+      <div class="concept-heading"><span class="index">04</span><h2>Capture + lookup</h2></div>
+      <p class="concept-copy">The current-word area becomes a word finder. Your list stays below.</p>
+      <div class="popup" id="popup-d" data-id="d" aria-label="Capture and lookup prototype"></div>
+      <dl class="tradeoff"><dt>Fits</dt><dd>Reusing Favorite, Study, and Note in the capture flow.</dd><dt>Cost</dt><dd>Article detail pushes the saved list farther down.</dd></dl>
+    </article>
+    <article class="concept" data-concept="e">
+      <div class="concept-heading"><span class="index">05</span><h2>Quick-search drawer</h2></div>
+      <p class="concept-copy">Open a temporary lookup drawer. Close it to return to your list.</p>
+      <div class="popup" id="popup-e" data-id="e" aria-label="Quick-search drawer prototype"></div>
+      <dl class="tradeoff"><dt>Fits</dt><dd>A quick lookup without changing your current view.</dd><dt>Cost</dt><dd>Less space for long results. The list is hidden while open.</dd></dl>
+    </article>
+  </section>
+  <section class="decision" aria-labelledby="decision-title"><h2 id="decision-title">Start with option 01.</h2><div><p>A single field removes the question of where to search. Show local matches immediately, then add clearly labelled LOD results. Saving should update the same entry everywhere, even when the query is a French, German, or Portuguese translation.</p><small>Option 02 is the safer alternative if keeping dictionary requests explicit matters more than eliminating a switch.</small></div></section>
+</main>
+<footer class="bottom"><span>Blue Night palette · Existing popup typography · 420px target width</span><span>Sample queries also include coffee, café, Kaffi, hello, Moien, book, livre, and Buch.</span></footer>
+<script>
+(() => {
+  'use strict';
+  const languages = { lb:'Lëtzebuergesch', en:'English', fr:'Français', de:'Deutsch', pt:'Português', nl:'Nederlands' };
+  const samples = { lb:'Haus', en:'house', fr:'maison', de:'Haus', pt:'casa', nl:'huis' };
+  // Illustrative fixtures, not a live LOD response. Canonical LB IDs are shared by every preview.
+  const entries = [
+    { id:'haus', word:'Haus', pos:'noun · neuter', lb:'Haus', en:'house, building', fr:'maison', de:'Haus', pt:'casa', nl:'huis', example:'Mir wunnen an engem Haus.', gloss:'We live in a house.' },
+    { id:'heem', word:'Heem', pos:'noun · neuter', lb:'Heem', en:'home, household', fr:'foyer, maison', de:'Heim, Zuhause', pt:'lar, casa', nl:'thuis, huis', example:'Ech fille mech hei wéi doheem.', gloss:'I feel at home here.' },
+    { id:'wunneng', word:'Wunneng', pos:'noun · feminine', lb:'Wunneng', en:'apartment, house, dwelling', fr:'appartement, logement, maison', de:'Wohnung, Haus', pt:'apartamento, casa', nl:'woning, huis', example:'Si sichen eng nei Wunneng.', gloss:'They are looking for a new apartment.' },
+    { id:'kaffi', word:'Kaffi', pos:'noun · masculine', lb:'Kaffi', en:'coffee', fr:'café', de:'Kaffee', pt:'café', nl:'koffie', example:'Ech drénken eng Taass Kaffi.', gloss:'I drink a cup of coffee.' },
+    { id:'moien', word:'Moien', pos:'greeting', lb:'Moien', en:'hello, good morning', fr:'bonjour, salut', de:'hallo, guten Morgen', pt:'olá, bom dia', nl:'hallo, goedemorgen', example:'Moien! Wéi geet et?', gloss:'Hello! How are you?' },
+    { id:'buch', word:'Buch', pos:'noun · neuter', lb:'Buch', en:'book', fr:'livre', de:'Buch', pt:'livro', nl:'boek', example:'Ech liesen e Buch.', gloss:'I am reading a book.' }
+  ];
+  const configs = { a:'unified', b:'switch', c:'tab', d:'capture', e:'drawer' };
+  let vault;
+  const states = {};
+  const timers = new Map();
+  const toastTimers = new Map();
+  let globalState = 'normal';
+  let sampleLanguage = 'en';
+  const byId = id => entries.find(entry => entry.id === id);
+  const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const icon = name => `<svg fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+  const norm = text => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const popup = id => document.getElementById(`popup-${id}`);
+  const status = message => { document.getElementById('lab-status').textContent = message || `${vault.size} words in the demo vault`; };
+  const seed = () => new Map([['heem',{ favorite:true, study:false, note:'' }],['kaffi',{ favorite:false, study:true, note:'' }],['moien',{ favorite:true, study:true, note:'' }]]);
+
+  function matching(s, local = false) {
+    const query = norm(s.query);
+    return entries.filter(entry => {
+      if (local && !vault.has(entry.id)) return false;
+      if (!query) return local;
+      // Local search stays broad, just like the shipped saved-word filter.
+      const keys = local || s.language === 'all' ? Object.keys(languages) : [s.language];
+      return keys.some(key => norm(entry[key]).includes(query)) || (local && norm(vault.get(entry.id)?.note || '').includes(query));
+    });
+  }
+  function translation(entry, s) {
+    if (s.language !== 'all' && s.language !== 'lb') return { lang:s.language, text:entry[s.language] };
+    const matched = Object.keys(languages).find(lang => lang !== 'lb' && norm(entry[lang]).includes(norm(s.query)));
+    const lang = matched || 'en';
+    return { lang, text:entry[lang] };
+  }
+  function searchMarkup(id, { local = false, switched = false } = {}) {
+    const s = states[id];
+    return `<div class="search-area">
+      ${switched ? `<div class="source-switch" role="group" aria-label="Search source"><button type="button" data-action="source" data-value="vault" class="${s.source === 'vault' ? 'active' : ''}" aria-pressed="${s.source === 'vault'}">My vault <span class="quiet">${vault.size}</span></button><button type="button" data-action="source" data-value="lod" class="${s.source === 'lod' ? 'active' : ''}" aria-pressed="${s.source === 'lod'}">Search LOD</button></div>` : ''}
+      <form class="search-form" data-local="${local}" role="search" aria-label="${local ? 'Search saved words' : 'Search LOD dictionary'}">
+        <div class="search-box">${icon('search')}<input type="search" name="query" value="${esc(s.query)}" placeholder="${local ? 'Search saved words…' : id === 'a' ? 'Search your vault and LOD…' : 'Search a word in LOD…'}" autocomplete="off" spellcheck="false" aria-label="${local ? 'Search saved words' : 'Search a word in any supported language'}"><button class="icon-btn clear" type="button" data-action="clear" aria-label="Clear search">${icon('close')}</button></div>
+      </form>
+      ${!local ? `<div class="search-meta"><label for="lang-${id}" class="label">Search language</label><select id="lang-${id}" data-action="language" aria-label="Search language"><option value="all" ${s.language === 'all' ? 'selected' : ''}>All languages</option>${Object.entries(languages).map(([key,name]) => `<option value="${key}" ${s.language === key ? 'selected' : ''}>${name}</option>`).join('')}</select></div>` : ''}
+    </div>`;
+  }
+  function captureMarkup() {
+    const record = vault.get('kaffi');
+    const savedState = record?.study ? `${icon('study')} In Study` : record?.favorite ? `${icon('star')} Favorite` : record ? `${icon('check')} In vault` : 'Not saved';
+    return `<section class="capture"><span class="label">Currently open</span><div class="capture-line"><h3 class="capture-title">Kaffi</h3><span class="mini-pill">${savedState}</span></div><p><span class="lang">EN</span>coffee</p></section>`;
+  }
+  function tabMarkup(id) {
+    const s = states[id];
+    const tabs = id === 'c' ? [['words','Words'],['lod','Search LOD'],['stats','Stats & data']] : [['words','Words'],['stats','Stats & data']];
+    return `<nav class="tabs" aria-label="Popup sections" ${id === 'e' && s.open ? 'inert' : ''}>${tabs.map(([key,name]) => `<button type="button" class="tab ${s.tab === key ? 'active' : ''}" data-action="tab" data-value="${key}" aria-pressed="${s.tab === key}">${name}</button>`).join('')}</nav>`;
+  }
+  function localMarkup(id) {
+    const saved = [...vault.keys()].reverse().map(byId);
+    return `<div class="local-list"><div class="group-head"><strong>My vault</strong><span>${vault.size} words</span></div>${saved.map(entry => `<div class="local-row"><div><span class="word">${esc(entry.word)}</span><p>${esc(entry.en)}</p></div><span class="quiet">${vault.get(entry.id).study ? 'Study' : vault.get(entry.id).favorite ? 'Favorite' : 'Saved'}</span></div>`).join('')}</div>`;
+  }
+  function statsMarkup() {
+    return `<section class="stats-demo"><span class="label">Demo vault</span><h3>Stats & data</h3><p>These counts update when you save a dictionary result.</p><div class="stats-counts"><div><b>${vault.size}</b><span>Total words</span></div><div><b>${[...vault.values()].filter(x => x.favorite).length}</b><span>Favorites</span></div><div><b>${[...vault.values()].filter(x => x.study).length}</b><span>Study</span></div></div><p>This prototype does not change sync, backup, or extension settings.</p></section>`;
+  }
+  function buildFrame(id) {
+    const s = states[id];
+    const root = popup(id);
+    const oldScroll = root.querySelector('.pane')?.scrollTop || 0;
+    let body;
+    if (s.tab === 'stats') body = statsMarkup();
+    else if (id === 'a') body = `${captureMarkup()}${searchMarkup(id)}<div class="results" aria-live="polite"></div>`;
+    else if (id === 'b') body = `${captureMarkup()}${searchMarkup(id,{ local:s.source === 'vault', switched:true })}<div class="results" aria-live="polite"></div>`;
+    else if (id === 'c') body = s.tab === 'lod' ? `${searchMarkup(id)}<div class="results" aria-live="polite"></div>` : `${captureMarkup()}${searchMarkup(id,{local:true})}<div class="results" aria-live="polite"></div>`;
+    else if (id === 'd') body = `<nav class="capture-tabs" aria-label="Capture source"><button type="button" data-action="capture-source" data-value="page" class="${s.capture === 'page' ? 'active' : ''}" aria-pressed="${s.capture === 'page'}">Currently open</button><button type="button" data-action="capture-source" data-value="lookup" class="${s.capture === 'lookup' ? 'active' : ''}" aria-pressed="${s.capture === 'lookup'}">Look up a word</button></nav>${s.capture === 'lookup' ? `${searchMarkup(id)}<div class="results" aria-live="polite"></div>` : captureMarkup()}${localMarkup(id)}`;
+    else body = `${captureMarkup()}<button type="button" class="lookup-link" data-action="drawer-open">${icon('search')}<span>Look up a word in LOD</span>${icon('arrow')}</button>${localMarkup(id)}`;
+    root.innerHTML = `<header class="popup-head"><div class="wordmark"><b>LOD</b>Vault</div><nav class="popup-nav" aria-label="Extension pages"><button type="button" class="text-btn" data-action="review">Flashcards</button><button type="button" class="text-btn" data-action="vault">Vault <span class="vault-count">${vault.size}</span></button>${id === 'e' ? `<button type="button" class="icon-btn" data-action="drawer-open" aria-label="Search LOD">${icon('search')}</button>` : `<button type="button" class="icon-btn" data-action="theme" aria-label="Toggle color theme">${icon('sun')}</button>`}</nav></header>
+      <section class="today" ${id === 'e' && s.open ? 'inert' : ''}><div class="today-copy"><span class="eyebrow">Today</span><p class="today-summary">2 due · 2 new</p></div><button type="button" class="primary" data-action="review">Start review</button></section>
+      ${tabMarkup(id)}<section class="pane" ${id === 'e' && s.open ? 'inert' : ''} aria-label="${s.tab === 'stats' ? 'Stats and data' : 'Words workspace'}">${body}</section>
+      <footer class="popup-footer"><span><span class="vault-count">${vault.size}</span> words in your vault</span><span>Local demo</span></footer>
+      <div class="feedback" role="status" hidden></div>
+      ${id === 'e' && s.open ? `<div class="drawer-shade" data-action="drawer-close" aria-hidden="true"></div><section class="drawer" aria-label="Quick LOD lookup"><header class="drawer-heading"><h3>Search LOD</h3><button type="button" class="icon-btn" data-action="drawer-close" aria-label="Close lookup">${icon('close')}</button></header>${searchMarkup(id)}<div class="drawer-content results" aria-live="polite"></div><p class="drawer-tip">Save here, then close to return to your words.</p></section>` : ''}`;
+    root.querySelector('.pane').scrollTop = oldScroll;
+    renderResults(id);
+  }
+  function saveButton(entry) {
+    return vault.has(entry.id) ? `<span class="saved-tag">${icon('check')} In vault</span>` : `<button class="primary" type="button" data-action="save" data-entry="${entry.id}" aria-label="Save ${esc(entry.word)} to vault">${icon('plus')} Save</button>`;
+  }
+  function entryBody(entry, s) {
+    const saved = vault.get(entry.id);
+    const noteId = `note-${s.id}-${entry.id}`;
+    return `<div class="entry-body"><dl class="translation-table">${Object.keys(languages).filter(key => key !== 'lb').map(key => `<dt>${key.toUpperCase()}</dt><dd lang="${key}">${esc(entry[key])}</dd>`).join('')}</dl>
+      <p class="example"><span lang="lb">${esc(entry.example)}</span><br><span class="quiet">${esc(entry.gloss)}</span></p>
+      <div class="entry-tools"><button type="button" class="ghost" data-action="favorite" data-entry="${entry.id}" aria-pressed="${!!saved?.favorite}">${icon('star')} Favorite</button><button type="button" class="ghost" data-action="study" data-entry="${entry.id}" aria-pressed="${!!saved?.study}">${icon('study')} Study</button><a class="entry-link" href="https://lod.lu/search/${encodeURIComponent(entry.word)}/lb" target="_blank" rel="noopener noreferrer">Open LOD ${icon('external')}</a></div>
+      <label class="note-label" for="${noteId}">Note</label><textarea id="${noteId}" class="note-input" data-entry="${entry.id}" ${saved ? '' : 'disabled'} placeholder="${saved ? 'Add a personal note…' : 'Save this word to add a note…'}">${esc(saved?.note || '')}</textarea><p class="note-helper">${saved ? 'Notes stay in this demo only.' : 'Favorite or Study also saves the word.'}</p></div>`;
+  }
+  function rowMarkup(entry, s, { compact = false } = {}) {
+    const t = translation(entry,s);
+    const open = s.expanded.has(entry.id);
+    return `<article class="result" data-result="${entry.id}"><div class="result-top"><div class="word-title"><h3 class="word" lang="lb">${esc(entry.word)}</h3><span class="pos">${esc(entry.pos)}</span></div>${saveButton(entry)}</div><p class="translation"><span class="lang">${t.lang.toUpperCase()}</span><span lang="${t.lang}">${esc(t.text)}</span></p>${s.language !== 'lb' ? `<p class="match-note">Luxembourgish entry · ${vault.has(entry.id) ? 'already saved' : 'LOD dictionary'}</p>` : ''}
+      ${compact ? `<button class="text-btn" type="button" data-action="inspect" data-entry="${entry.id}" style="padding-left:0;font-size:10px;color:var(--accent-lt)">View entry ${icon('arrow')}</button>` : `<details data-entry="${entry.id}" ${open ? 'open' : ''}><summary>Translations, example & lists</summary>${entryBody(entry,s)}</details>`}</article>`;
+  }
+  function groupMarkup(title, items, s, compact = false) {
+    if (!items.length) return '';
+    return `<section class="result-group"><div class="group-head"><strong>${title}</strong><span>${items.length} ${items.length === 1 ? 'match' : 'matches'}</span></div>${items.map(entry => rowMarkup(entry,s,{compact})).join('')}</section>`;
+  }
+  function articleMarkup(entry, s, candidates = null) {
+    return `<section class="inspector">${candidates ? `<div class="candidate-strip" role="group" aria-label="Dictionary matches">${candidates.map(candidate => `<button type="button" data-action="inspect" data-entry="${candidate.id}" class="${candidate.id === entry.id ? 'active' : ''}" aria-pressed="${candidate.id === entry.id}">${esc(candidate.word)}</button>`).join('')}</div><p class="quiet" style="margin-top:8px">${candidates.length} matches · Choose a Luxembourgish entry</p>` : `<div class="inspector-top"><button type="button" class="text-btn" data-action="back">${icon('back')} All results</button><span class="quiet">LOD entry</span></div>`}<article class="article" data-result="${entry.id}"><div class="article-head"><div><h3 class="word" lang="lb">${esc(entry.word)}</h3><p class="pos">${esc(entry.pos)}</p></div>${saveButton(entry)}</div>${entryBody(entry,s)}</article></section>`;
+  }
+  function idleMarkup(s) {
+    return `<div class="idle"><h3 class="idle-title">Find a Luxembourgish word</h3><p>Search in Lëtzebuergesch, English, Français, Deutsch, Português, or Nederlands.</p><div class="example-queries">${['house','maison','café','Buch'].map(query => `<button type="button" class="ghost" data-action="example" data-value="${query}">${esc(query)}</button>`).join('')}</div></div>`;
+  }
+  function stateMarkup(type, s) {
+    if (type === 'idle') return idleMarkup(s);
+    if (type === 'loading') return `<div class="skeleton" role="status" aria-label="Searching LOD"><p class="quiet">Searching LOD…</p>${'<div></div>'.repeat(6)}</div>`;
+    if (type === 'error') return `<div class="state"><div class="state-icon">${icon('warning')}</div><h3>LOD couldn't be reached</h3><p>Your saved words are still available. Try the dictionary again.</p><button class="ghost" type="button" data-action="retry">Try again</button></div>`;
+    return `<div class="state"><div class="state-icon">${icon('search')}</div><h3>No dictionary matches</h3><p>No sample entries match "${esc(s.query)}". Try a different spelling or search all languages.</p><button class="ghost" type="button" data-action="all-languages">Search all languages</button></div>`;
+  }
+  function isLocal(id) {
+    const s = states[id];
+    return (id === 'b' && s.source === 'vault') || (id === 'c' && s.tab === 'words');
+  }
+  function renderResults(id) {
+    const s = states[id];
+    const box = popup(id).querySelector('.results');
+    if (!box) return;
+    const local = isLocal(id);
+    const results = matching(s,local);
+    let type = local ? 'normal' : s.override || globalState;
+    if (s.busy) type = 'loading';
+    if (!s.query.trim() && !local) type = 'idle';
+    if (type === 'normal' && !results.length && !local) type = 'empty';
+    let content;
+    if (local) content = results.length ? groupMarkup('My vault',results,s) : `<div class="state"><h3>No saved matches</h3><p>Look up the word in the dictionary and save it here.</p><button class="ghost" type="button" data-action="find-lod">Search LOD ${icon('arrow')}</button></div>`;
+    else if (type !== 'normal') {
+      const localMatches = id === 'a' ? matching(s,true) : [];
+      content = type === 'idle' ? stateMarkup(type,s) + groupMarkup('My vault',localMatches,s) : groupMarkup('In your vault',localMatches,s) + stateMarkup(type,s);
+    } else if (id === 'a') {
+      const inVault = matching(s,true);
+      const fresh = results.filter(entry => !vault.has(entry.id));
+      content = groupMarkup('In your vault',inVault,s) + groupMarkup('From LOD',fresh,s);
+      if (!fresh.length) content += '<p class="result-footer">All dictionary matches are already in your vault.</p>';
+    } else if (id === 'd') {
+      const selected = results.find(entry => entry.id === s.selected) || results[0];
+      s.selected = selected.id;
+      content = articleMarkup(selected,s,results);
+    } else if (id === 'c' && s.selected) {
+      const selected = results.find(entry => entry.id === s.selected);
+      content = selected ? articleMarkup(selected,s) : groupMarkup('LOD dictionary',results,s,true);
+    } else content = groupMarkup('LOD dictionary',results,s,id === 'c');
+    if (type === 'normal' && !local && id !== 'd' && !s.selected) content += '<p class="result-footer">Save the Luxembourgish entry with all its translations.</p>';
+    box.innerHTML = content;
+  }
+  function syncVaultUI() {
+    Object.keys(configs).forEach(id => {
+      const root = popup(id);
+      root.querySelectorAll('.vault-count').forEach(el => { el.textContent = vault.size; });
+      const s = states[id];
+      if (s.tab === 'stats') root.querySelector('.pane').innerHTML = statsMarkup();
+      else {
+        const local = root.querySelector('.local-list');
+        if (local) local.outerHTML = localMarkup(id);
+        const capture = root.querySelector('.capture');
+        if (capture) capture.outerHTML = captureMarkup();
+        renderResults(id);
+      }
+      const switchCount = root.querySelector('.source-switch .quiet');
+      if (switchCount) switchCount.textContent = vault.size;
+    });
+    status();
+  }
+  function feedback(id, message, undo = null) {
+    const box = popup(id).querySelector('.feedback');
+    clearTimeout(toastTimers.get(id));
+    box.innerHTML = `${icon('check')}<span>${esc(message)}</span>${undo ? '<button type="button" data-action="undo">Undo</button>' : ''}`;
+    box.hidden = false;
+    states[id].undo = undo;
+    toastTimers.set(id,setTimeout(() => { box.hidden = true; states[id].undo = null; },4500));
+  }
+  function startSearch(id) {
+    const s = states[id];
+    clearTimeout(timers.get(id));
+    s.override = 'normal';
+    s.selected = null;
+    s.busy = !!s.query.trim() && !isLocal(id);
+    renderResults(id);
+    timers.set(id,setTimeout(() => { s.busy = false; renderResults(id); },320));
+  }
+  function focusSearch(id) { popup(id).querySelector('.search-box input')?.focus(); }
+  function setQuery(id,query,language = null) {
+    const s = states[id];
+    s.query = query;
+    if (language) s.language = language;
+    if (id === 'e') s.open = true;
+    if (id === 'c') s.tab = 'lod';
+    if (id === 'd') s.capture = 'lookup';
+    buildFrame(id); startSearch(id); focusSearch(id);
+  }
+  function theme() {
+    const light = document.documentElement.classList.toggle('light');
+    const button = document.getElementById('theme-toggle');
+    button.setAttribute('aria-pressed',String(light));
+    button.querySelector('span').textContent = light ? 'Dark mode' : 'Light mode';
+  }
+  function reset() {
+    timers.forEach(clearTimeout); toastTimers.forEach(clearTimeout);
+    vault = seed(); globalState = 'normal'; sampleLanguage = 'en';
+    document.getElementById('state-select').value = 'normal';
+    document.getElementById('sample-select').value = 'en';
+    Object.keys(configs).forEach(id => {
+      states[id] = { id, query:'house', language:'all', source:'lod', tab:id === 'c' ? 'lod' : 'words', capture:'lookup', open:true, selected:null, expanded:new Set(), busy:false, override:null, undo:null };
+      buildFrame(id);
+    });
+    status();
+  }
+
+  document.getElementById('gallery').addEventListener('input',event => {
+    const root = event.target.closest('.popup');
+    if (!root) return;
+    const id = root.dataset.id;
+    if (event.target.matches('input[name=query]')) { states[id].query = event.target.value; startSearch(id); }
+    if (event.target.matches('.note-input')) {
+      const saved = vault.get(event.target.dataset.entry);
+      if (saved) {
+        saved.note = event.target.value;
+        document.querySelectorAll(`.note-input[data-entry="${event.target.dataset.entry}"]`).forEach(note => { if (note !== event.target) note.value = saved.note; });
+        event.target.nextElementSibling.textContent = 'Note saved in this demo.';
+      }
+    }
+  });
+  document.getElementById('gallery').addEventListener('submit',event => {
+    if (!event.target.matches('.search-form')) return;
+    event.preventDefault();
+    startSearch(event.target.closest('.popup').dataset.id);
+  });
+  document.getElementById('gallery').addEventListener('change',event => {
+    if (event.target.dataset.action !== 'language') return;
+    const id = event.target.closest('.popup').dataset.id;
+    states[id].language = event.target.value;
+    startSearch(id);
+  });
+  document.getElementById('gallery').addEventListener('toggle',event => {
+    if (!event.target.matches('details[data-entry]')) return;
+    const root = event.target.closest('.popup');
+    if (!root) return;
+    const s = states[root.dataset.id];
+    if (event.target.open) s.expanded.add(event.target.dataset.entry);
+    else s.expanded.delete(event.target.dataset.entry);
+  },true);
+  document.getElementById('gallery').addEventListener('keydown',event => {
+    const root = event.target.closest('.popup');
+    if (event.key === 'Escape' && root?.dataset.id === 'e' && states.e.open) {
+      states.e.open = false; buildFrame('e'); popup('e').querySelector('[data-action=drawer-open]').focus();
+    }
+  });
+  document.getElementById('gallery').addEventListener('click',event => {
+    const button = event.target.closest('[data-action]');
+    if (!button) return;
+    const root = button.closest('.popup');
+    const id = root.dataset.id;
+    const s = states[id];
+    const action = button.dataset.action;
+    const entry = byId(button.dataset.entry);
+    if (action === 'save' || action === 'favorite' || action === 'study') {
+      const previous = vault.has(entry.id) ? { ...vault.get(entry.id) } : null;
+      const record = previous ? { ...previous } : { favorite:false, study:false, note:'' };
+      if (action !== 'save') record[action] = !record[action];
+      vault.set(entry.id,record);
+      syncVaultUI();
+      const message = action === 'save' ? `${entry.word} saved to your vault` : record[action] ? `${entry.word} added to ${action === 'study' ? 'Study' : 'Favorites'}` : `${entry.word} removed from ${action === 'study' ? 'Study' : 'Favorites'}`;
+      feedback(id,message,{ entry:entry.id, previous });
+      // The Save button becomes a saved state, so leave focus on the entry's next action.
+      const newRow = root.querySelector(`[data-result="${entry.id}"]`);
+      const focusTarget = action === 'save' ? newRow?.querySelector('summary, [data-action=favorite], [data-action=inspect]') : newRow?.querySelector(`[data-action="${action}"]`);
+      focusTarget?.focus({preventScroll:true});
+    } else if (action === 'undo' && s.undo) {
+      const undo = s.undo;
+      if (undo.previous) vault.set(undo.entry,undo.previous); else vault.delete(undo.entry);
+      s.undo = null; syncVaultUI(); feedback(id,'Change undone');
+    } else if (action === 'clear') setQuery(id,'');
+    else if (action === 'example') setQuery(id,button.dataset.value,'all');
+    else if (action === 'source') { s.source = button.dataset.value; s.selected = null; buildFrame(id); focusSearch(id); }
+    else if (action === 'tab') { s.tab = button.dataset.value; s.selected = null; buildFrame(id); }
+    else if (action === 'capture-source') { s.capture = button.dataset.value; buildFrame(id); if (s.capture === 'lookup') focusSearch(id); }
+    else if (action === 'inspect') { s.selected = entry.id; renderResults(id); root.querySelector('.inspector button')?.focus({preventScroll:true}); }
+    else if (action === 'back') { s.selected = null; renderResults(id); root.querySelector('[data-action=inspect]')?.focus({preventScroll:true}); }
+    else if (action === 'drawer-open') { s.open = true; buildFrame(id); focusSearch(id); }
+    else if (action === 'drawer-close') { s.open = false; buildFrame(id); root.querySelector('[data-action=drawer-open]')?.focus(); }
+    else if (action === 'retry') startSearch(id);
+    else if (action === 'all-languages') { s.language = 'all'; s.override = 'normal'; buildFrame(id); startSearch(id); }
+    else if (action === 'find-lod') { s.source = 'lod'; s.tab = id === 'c' ? 'lod' : 'words'; buildFrame(id); startSearch(id); focusSearch(id); }
+    else if (action === 'theme') theme();
+    else if (action === 'vault') { if (id === 'e') s.open = false; if (id === 'b') s.source = 'vault'; if (id === 'c') s.tab = 'words'; buildFrame(id); feedback(id,`${vault.size} words saved in this demo. Your real vault is unchanged.`); }
+    else if (action === 'review') feedback(id,'Flashcard review is outside this search prototype.');
+  });
+  document.getElementById('theme-toggle').addEventListener('click',theme);
+  document.getElementById('reset').addEventListener('click',reset);
+  document.getElementById('view-select').addEventListener('change',event => {
+    const value = event.target.value;
+    document.getElementById('gallery').classList.toggle('focus',value !== 'all');
+    document.querySelectorAll('.concept').forEach(el => { el.hidden = value !== 'all' && el.dataset.concept !== value; });
+  });
+  document.getElementById('sample-select').addEventListener('change',event => {
+    sampleLanguage = event.target.value;
+    globalState = 'normal'; document.getElementById('state-select').value = 'normal';
+    Object.keys(configs).forEach(id => {
+      clearTimeout(timers.get(id));
+      Object.assign(states[id],{ query:samples[sampleLanguage], language:sampleLanguage, source:'lod', tab:id === 'c' ? 'lod' : 'words', capture:'lookup', open:true, override:null, selected:null, busy:false });
+      buildFrame(id);
+    });
+  });
+  document.getElementById('state-select').addEventListener('change',event => {
+    globalState = event.target.value;
+    Object.keys(configs).forEach(id => {
+      clearTimeout(timers.get(id));
+      const s = states[id];
+      Object.assign(s,{ query:globalState === 'idle' ? '' : globalState === 'empty' ? 'zzzz' : samples[sampleLanguage], source:'lod', tab:id === 'c' ? 'lod' : 'words', capture:'lookup', open:true, selected:null, override:null, busy:false });
+      buildFrame(id);
+    });
+  });
+  reset();
+})();
+</script>
+</body>
+</html>

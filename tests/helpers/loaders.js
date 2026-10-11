@@ -372,6 +372,7 @@ async function loadPopupScript({
   flashcardMeta = {},
   popupHtml,
   storeOverrides = {},
+  lookupOverrides = null,
   syncOverrides = null
 } = {}) {
   const shared = loadSharedStore();
@@ -411,6 +412,7 @@ async function loadPopupScript({
     buildMeaningText: shared.store.buildMeaningText,
     buildMeaningChipsMarkup: shared.store.buildMeaningChipsMarkup,
     buildMeaningCollapsibleMarkup: shared.store.buildMeaningCollapsibleMarkup,
+    buildMeaningRowsMarkup: shared.store.buildMeaningRowsMarkup,
     describeListAction: shared.store.describeListAction,
     async getAutoMode() {
       return autoMode;
@@ -535,6 +537,8 @@ async function loadPopupScript({
     "scripts/popup-sync.js",
     "scripts/popup-current.js",
     "scripts/popup-list.js",
+    "scripts/lens-lookup.js",
+    "scripts/popup-lookup.js",
     "scripts/popup-backup.js",
     "scripts/popup-study.js"
   ];
@@ -543,6 +547,7 @@ async function loadPopupScript({
     .join("\n");
 
   const source = `${popupModulesSource}
+if (globalThis.__lookupOverrides) Object.assign(globalThis.LodVaultLensLookup, globalThis.__lookupOverrides);
 ${fs.readFileSync(path.join(repoRoot, "scripts/popup-app.js"), "utf8")}
 ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
 ;globalThis.__popupTest = {
@@ -551,7 +556,8 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
   renderList: popupApp.renderList,
   renderSavedList: popupApp.renderSavedList,
   refreshCurrentPage: popupApp.refreshCurrentPage,
-  formatSearchStatus: popupApp.formatSearchStatus
+  formatSearchStatus: popupApp.formatSearchStatus,
+  destroy: popupApp.destroy
 };`;
 
   const context = {
@@ -566,6 +572,8 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
     chrome,
     LodVaultStore,
     LodVaultSync: syncOverrides || undefined,
+    __lookupOverrides: lookupOverrides,
+    LodVaultStoreCore: shared.store,
     console,
     URL: dom.window.URL,
     Blob,
@@ -807,6 +815,7 @@ function loadBackgroundScript(initialStorage = {}) {
     URL,
     TextEncoder,
     TextDecoder,
+    AbortSignal,
     __LOD_SYNC_PUSH_DEBOUNCE_MS__: 10,
     __LOD_SYNC_REPUSH_DELAY_MS__: 0,
     setTimeout,

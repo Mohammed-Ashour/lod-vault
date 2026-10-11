@@ -1,19 +1,3 @@
-// popup-app.js — Composition root for the popup page.
-//
-// Creates the shared ctx object (store, chrome API, state, elements), the
-// shared services (action feedback, note autosave, delete-with-undo), and the
-// four feature modules that render the popup sections:
-//
-//   popup-sync.js    — sync panel (chips, capacity, sync now/pull/retry)
-//   popup-current.js — current word card, note, auto mode
-//   popup-list.js    — saved list, search, stats
-//   popup-backup.js  — exports, imports, portable backup
-//   popup-study.js   — study card (due/new counts, today progress, start review)
-//
-// This file only wires modules together: element lookup, event listeners,
-// tab/storage/message routing and the init/destroy lifecycle. Feature logic
-// lives in the modules above; cross-module calls go through ctx.sync /
-// ctx.current / ctx.list / ctx.backup (resolved lazily at runtime).
 (() => {
   function createApp(options = {}) {
     const store = options.store || globalThis.LodVaultStore;
@@ -24,6 +8,7 @@
       currentEntry: null,
       savedEntries: [],
       searchQuery: "",
+      searchSource: "vault",
       autoMode: false,
       syncLanguages: [...(store.DEFAULT_SETTINGS?.syncLanguages || ["en", "fr", "de"])],
       lastVerifiedSyncAt: "",
@@ -64,34 +49,32 @@
     }
     ctx.showActionFeedback = showActionFeedback;
 
-    // Feature modules. Each renders one popup section and coordinates with the
-    // others through ctx. They must exist before createApp runs (see popup.html
-    // and tests/helpers/loaders.js for the script load order).
     ctx.sync = globalThis.LodVaultPopupSync.create(ctx);
     ctx.current = globalThis.LodVaultPopupCurrent.create(ctx);
     ctx.list = globalThis.LodVaultPopupList.create(ctx);
+    ctx.lookup = globalThis.LodVaultPopupLookup.create(ctx);
     ctx.backup = globalThis.LodVaultPopupBackup.create(ctx);
     ctx.study = globalThis.LodVaultPopupStudy.create(ctx);
 
-    // Note autosave coordinator. Shared by the current-word textarea and the
-    // saved-list note textareas; routes saves through the store and refreshes
-    // whichever section changed.
     const noteAutosave = store.createNoteAutosaveController({
       getTimerKey: (textarea) => textarea === elements.currentNoteInput
         ? "current-note"
-        : `saved-note:${textarea?.dataset?.noteId || ""}`,
+        : `${textarea?.dataset?.lookupNote ? "lookup-note" : "saved-note"}:${textarea?.dataset?.noteId || ""}`,
       setStatus: (textarea, message) => {
         if (textarea === elements.currentNoteInput) {
           ctx.current.setCurrentNoteStatus(message);
+        } else if (textarea?.dataset?.lookupNote) {
+          const status = textarea.closest(".note-section")?.querySelector(".note-status");
+          if (status) status.textContent = message;
         }
       },
-      saveNote: async (noteId, requestValue) => {
+      saveNote: async (noteId, requestValue, textarea) => {
         try {
           return await store.saveNote(noteId, requestValue);
         } catch (error) {
           const message = String(error || "");
           const isMissingEntry = message.includes("Entry not found");
-          if (!isMissingEntry || !state.currentEntry || state.currentEntry.id !== noteId) {
+          if (!isMissingEntry || textarea !== elements.currentNoteInput || !state.currentEntry || state.currentEntry.id !== noteId) {
             throw error;
           }
 
@@ -109,6 +92,12 @@
         if (savedEntry?.id === state.currentEntry?.id) {
           ctx.current.renderCurrentPageCard(savedEntry);
           await ctx.current.syncCurrentTabSavedEntry(savedEntry);
+        }
+
+        ctx.lookup.refreshSavedState();
+        if (textarea?.dataset?.lookupNote) {
+          ctx.list.renderList();
+          return;
         }
 
         if (!changedSinceRequest && state.searchQuery.trim()) {
@@ -365,6 +354,7 @@
       elements.restoreConfirm?.addEventListener("click", ctx.backup.confirmRestoreJson);
       elements.restoreCancel?.addEventListener("click", ctx.backup.cancelRestoreJson);
       elements.searchInput.addEventListener("input", ctx.list.onSearchInput);
+      ctx.lookup.init();
       elements.deleteUndoButton.addEventListener("click", () => deleteUndo.onUndoClick());
       elements.currentNoteInput.addEventListener("input", ctx.current.onCurrentNoteInput);
       elements.currentNoteInput.addEventListener("change", ctx.current.onCurrentNoteCommit);
@@ -409,6 +399,7 @@
       ctx.sync.clearScheduledSyncCapacityRefresh();
       deleteUndo.hide();
       if (actionFeedbackTimer) clearTimeout(actionFeedbackTimer);
+      ctx.lookup.destroy();
       noteAutosave.destroy();
       initialized = false;
     }
@@ -422,7 +413,8 @@
       renderSavedList: ctx.list.renderSavedList,
       refreshCurrentPage: ctx.current.refreshCurrentPage,
       refreshDataStatus: ctx.sync.refreshDataStatus,
-      formatSearchStatus: ctx.list.formatSearchStatus
+      formatSearchStatus: ctx.list.formatSearchStatus,
+      lookup: ctx.lookup
     };
   }
 

@@ -1,18 +1,3 @@
-// popup-backup.js — Backup & import feature module for the popup page.
-//
-// Owns the portable backup status card, JSON/HTML/Anki exports, JSON restore,
-// and browser-history import (range select, permission request, progress
-// report). Renders into the popup DOM through the shared ctx object.
-//
-// Cross-module calls (resolved lazily at runtime):
-//   ctx.list.renderSavedList()             — after import/restore changed vault
-//   ctx.current.refreshCurrentPage()       — after import/restore changed words
-//   ctx.current.renderAutoMode()           — after settings changes
-//   ctx.sync.refreshSettingsState()        — after import restored settings
-//   ctx.sync.renderSyncLanguages()         — chips/capacity after import
-//   ctx.sync.renderSyncNowAction()         — busy state of sync buttons
-//   ctx.sync.scheduleSyncCapacityRefresh() — capacity after import changes
-//   ctx.showActionFeedback()               — transient action feedback toast
 (() => {
   function createBackupModule(ctx) {
     const { store, chromeApi, state, elements } = ctx;

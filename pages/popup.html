@@ -11,7 +11,6 @@
 <body>
   <main class="app">
 
-    <!-- ── Header: wordmark, page links, theme ── -->
     <header class="popup-head">
       <div class="wordmark"><b>LOD</b>Vault</div>
       <nav class="popup-nav" aria-label="Extension pages">
@@ -21,7 +20,6 @@
       </nav>
     </header>
 
-    <!-- ── Today panel: what's due, one primary action ── -->
     <section id="study-card" class="today-panel">
       <div class="today-main">
         <div class="today-copy">
@@ -32,13 +30,11 @@
       </div>
     </section>
 
-    <!-- ── Popup tabs: Words / Stats & data ── -->
     <nav class="popup-tabs" aria-label="Popup sections" role="tablist">
       <button type="button" id="words-tab" class="popup-tab is-active" data-pane="words" role="tab" aria-selected="true" aria-controls="words-pane">Words</button>
       <button type="button" id="stats-tab" class="popup-tab" data-pane="stats" role="tab" aria-selected="false" aria-controls="stats-pane">Stats &amp; data</button>
     </nav>
 
-    <!-- ── Words pane: capture + search + list ── -->
     <section id="words-pane" class="popup-pane is-active" data-pane="words" role="tabpanel" aria-labelledby="words-tab">
 
       <div id="current-page-card" class="capture-card is-empty">
@@ -71,6 +67,11 @@
         </div>
       </div>
 
+      <div class="search-source-switch" role="radiogroup" aria-label="Search source">
+        <button type="button" id="search-source-vault" class="is-active" role="radio" aria-checked="true" aria-controls="vault-search-results">My vault</button>
+        <button type="button" id="search-source-lod" role="radio" aria-checked="false" aria-controls="lod-search-results">Search LOD</button>
+      </div>
+
       <div class="search-row">
         <div class="search-box">
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
@@ -79,19 +80,37 @@
         <span id="search-status" class="search-status muted" aria-live="polite">Loading…</span>
       </div>
 
-      <div id="saved-list" class="saved-list"></div>
-
-      <div id="empty-state" class="empty-state is-hidden">
-        <h3>No saved words yet</h3>
-        <p>Open a word on <b>lod.lu</b> and save it here.</p>
+      <div id="lod-search-language-row" class="lookup-language-row is-hidden">
+        <label for="lod-search-language">Search language</label>
+        <select id="lod-search-language" class="select">
+          <option value="all">All languages</option>
+          <option value="lb">Lëtzebuergesch</option>
+          <option value="en">English</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+          <option value="pt">Português</option>
+          <option value="nl">Nederlands</option>
+        </select>
       </div>
-      <div id="no-results" class="empty-state is-hidden">
-        <h3>No matches</h3>
-        <p>No words match your search.</p>
+
+      <section id="lod-search-results" class="is-hidden" aria-label="LOD dictionary results" aria-busy="false">
+        <div id="lod-results-list" class="lookup-results" aria-live="polite"></div>
+      </section>
+
+      <div id="vault-search-results">
+        <div id="saved-list" class="saved-list"></div>
+
+        <div id="empty-state" class="empty-state is-hidden">
+          <h3>No saved words yet</h3>
+          <p>Use Search LOD or open a word on <b>lod.lu</b> to save it here.</p>
+        </div>
+        <div id="no-results" class="empty-state is-hidden">
+          <h3>No matches</h3>
+          <p>No saved words match. Try Search LOD to find a new word.</p>
+        </div>
       </div>
     </section>
 
-    <!-- ── Stats & data pane: data status on top ── -->
     <section id="stats-pane" class="popup-pane" data-pane="stats" role="tabpanel" aria-labelledby="stats-tab">
 
       <div id="backup-warning" class="backup-warning is-hidden" role="status" aria-live="polite">
@@ -218,6 +237,8 @@
   <script src="../scripts/popup-sync.js"></script>
   <script src="../scripts/popup-current.js"></script>
   <script src="../scripts/popup-list.js"></script>
+  <script src="../scripts/lens-lookup.js"></script>
+  <script src="../scripts/popup-lookup.js"></script>
   <script src="../scripts/popup-backup.js"></script>
   <script src="../scripts/popup-study.js"></script>
   <script src="../scripts/popup-app.js"></script>
