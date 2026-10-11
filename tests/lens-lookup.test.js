@@ -22,6 +22,46 @@ function loadLensLookup(fetchImpl = async () => ({ ok: true, json: async () => (
   return context.LodVaultLensLookup;
 }
 
+test("search supports every LOD language and preserves matched translations", async () => {
+  const seen = [];
+  const lensLookup = loadLensLookup(async (url) => {
+    const language = new URL(url).searchParams.get("lang");
+    seen.push(language);
+    return { ok: true, json: async () => ({ results: [{
+      article_id: "HAUS1", word_lb: "Haus", meanings: [{ translation: `matched ${language}` }]
+    }] }) };
+  });
+  for (const language of ["lb", "en", "fr", "de", "pt", "nl"]) {
+    const result = await lensLookup.search("house", { language });
+    assert.equal(result.candidates[0].id, "HAUS1");
+    if (language !== "lb") assert.equal(result.candidates[0].translations[language], `matched ${language}`);
+  }
+  assert.deepEqual(seen, ["lb", "en", "fr", "de", "pt", "nl"]);
+});
+
+test("all-language search merges by canonical article and keeps homographs separate", async () => {
+  const lensLookup = loadLensLookup(async (url) => {
+    const language = new URL(url).searchParams.get("lang");
+    return { ok: true, json: async () => ({ results: [
+      { article_id: "GINN1", word_lb: "ginn", meanings: [{ translation: `meaning ${language}` }] },
+      { article_id: "GINN2", word_lb: "ginn", meanings: [{ translation: `other ${language}` }] },
+      { article_id: "", word_lb: "Invalid" }
+    ] }) };
+  });
+  const result = await lensLookup.search("ginn", { language: "all" });
+  assert.equal(result.candidates.length, 2);
+  assert.deepEqual({ ...result.candidates[0].translations }, {
+    en: "meaning en", fr: "meaning fr", de: "meaning de", pt: "meaning pt", nl: "meaning nl"
+  });
+});
+
+test("search rejects unsupported languages and malformed responses", async () => {
+  const lensLookup = loadLensLookup(async () => ({ ok: true, json: async () => ({ results: null }) }));
+  await assert.rejects(() => lensLookup.search("Haus", { language: "es" }), /Unsupported search language/);
+  await assert.rejects(() => lensLookup.search("Haus"), /Invalid LOD search response/);
+  assert.equal(lensLookup.buildSearchPageUrl("café", "pt"), "https://lod.lu/search/caf%C3%A9/pt");
+});
+
 test("normalizeSelection trims punctuation around selected text", () => {
   const lensLookup = loadLensLookup();
 

@@ -735,6 +735,37 @@ test("background only proxies the approved LOD Lens API endpoints", async () => 
   ]);
 });
 
+test("background accepts supported search languages without broadening API paths", async () => {
+  const background = loadBackgroundScript();
+  const calls = [];
+  background.context.fetch = async (url) => {
+    calls.push(url);
+    return { ok: true, status: 200, text: async () => '{"results":[]}' };
+  };
+  for (const language of ["lb", "en", "fr", "de", "pt", "nl"]) {
+    const response = await background.dispatchRuntimeMessage({
+      type: "lodvault:lens-fetch",
+      url: `https://lod.lu/api/lb/search?lang=${language}&query=house`
+    });
+    assert.equal(response.ok, true);
+  }
+  assert.equal(calls.length, 6);
+});
+
+test("background queues idempotent dictionary saves through the existing mutation service", async () => {
+  const background = loadBackgroundScript();
+  const message = {
+    type: background.context.LodVaultStore.STORE_MUTATION_MESSAGE_TYPE,
+    method: "addToList",
+    args: [{ id: "HAUS1", word: "Haus", translations: { en: "house" } }, "favorite"]
+  };
+  const responses = await Promise.all([background.dispatchStoreMutation(message), background.dispatchStoreMutation(message)]);
+  assert.ok(responses.every((response) => response.ok));
+  const saved = await background.context.LodVaultStore.getEntry("HAUS1");
+  assert.equal(saved.favorite, true);
+  assert.equal(saved.history, false);
+});
+
 test("background rejects non-whitelisted lens proxy URLs before fetching", async () => {
   const background = loadBackgroundScript();
   let fetchCalls = 0;
@@ -747,7 +778,9 @@ test("background rejects non-whitelisted lens proxy URLs before fetching", async
   for (const url of [
     "https://example.com/api/lb/search?lang=lb&query=Haus",
     "https://lod.lu/artikel/HAUS1",
-    "https://lod.lu/api/lb/search?lang=en&query=Haus",
+    "https://lod.lu/api/lb/search?lang=es&query=Haus",
+    "https://lod.lu/api/lb/search?lang=lb&lang=en&query=Haus",
+    "https://lod.lu/api/lb/search?lang=lb&query=Haus&query=maison",
     "https://lod.lu/api/lb/suggest?query=Haus&extra=1",
     "https://lod.lu/api/lb/entry/HAUS1?foo=bar",
     "https://lod.lu/api/lb/entry/HAUS%2F1",

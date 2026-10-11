@@ -69,7 +69,7 @@ All session setup (deck, order, size, mode, daily target) is grouped behind one 
 | 🔊 **Pronunciation audio** | Play LOD pronunciation audio from the popup and saved-word list |
 | 📝 **Notes** | Write your own note for each saved word (auto-saved) |
 | 🔎 **LOD Lens** | Select Luxembourgish text on supported pages to translate it in a floating overlay, then save it straight to your vault |
-| 🔍 **Search** | Filter your saved words in the popup |
+| 🔍 **Search** | Switch between My vault and Search LOD in the popup. Look up Luxembourgish, English, French, German, Portuguese, or Dutch words and save the Luxembourgish entry to Favorites or Study |
 | 🃏 **Flashcards** | Review your saved words with a simple flashcard mode |
 | 👁 **Preview** | Browse your full word list in a clean page — no download needed |
 | 📤 **Export HTML / Anki** | Download standalone HTML or Anki-ready text export |
@@ -145,7 +145,10 @@ The **LODVault** icon will appear in your browser toolbar.
 - Choose up to **3 sync languages** for sync payload size control and use **Sync now** when you want an immediate push
 - Use **Import history** with a date range (7d / 30d / 90d / 365d / all time) to add missing LOD words
 - Review the import report and use **Backup JSON** before uninstalling or changing installations if you want a portable backup
-- Search, play pronunciation audio, add notes, toggle lists, or delete words from there
+- **My vault** filters saved words without sending a dictionary request
+- **Search LOD** searches all supported languages by default, or a selected language. Results stay inside the popup. **Save to Favorites** fetches the full entry before saving; expand a result for translations, an example, Study, and notes
+- Dictionary searches send only the query text to LOD. Switching back to My vault keeps your local search
+- Play pronunciation audio, add notes, toggle lists, or delete saved words from there
 
 ### Study with flashcards
 - Click **Flashcards** in the popup
@@ -208,7 +211,7 @@ Builds the release zips and runs `web-ext lint` on the Firefox artifact (`dist/l
 - Everything you save lives in your browser via `chrome.storage.local`
 - If browser sync is enabled, a compact replica is stored in `chrome.storage.sync`
 - In Chrome, uninstalling the extension may remove both local data and its extension sync data, so use **Backup JSON** if you want a portable backup before uninstalling
-- No analytics, no tracking, no external requests
+- No analytics or tracking. Dictionary search and LOD Lens send only the text you choose to look up to the LOD API; they do not send page contents or personal notes
 
 ---
 

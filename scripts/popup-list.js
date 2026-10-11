@@ -95,6 +95,7 @@
       state.savedEntries = entries;
       renderSummary(entries);
       renderList();
+      ctx.lookup?.refreshSavedState();
 
       ctx.current.renderAutoMode();
       ctx.sync.renderSyncLanguages();
@@ -114,7 +115,9 @@
       const hasQuery = state.searchQuery.trim().length > 0;
       const displayEntries = hasQuery ? visibleEntries : entries;
 
-      elements.searchStatus.textContent = formatSearchStatus(visibleEntries.length, entries.length);
+      if (state.searchSource !== "lod") {
+        elements.searchStatus.textContent = formatSearchStatus(visibleEntries.length, entries.length);
+      }
 
       if (!entries.length) {
         elements.savedList.innerHTML = "";
@@ -221,6 +224,7 @@
     function onSavedListInput(event) {
       const textarea = event.target.closest("textarea[data-note-id]");
       if (!textarea) return;
+      delete textarea.dataset.discarded;
       ctx.noteAutosave.markDirty(textarea);
     }
 
@@ -237,6 +241,10 @@
     }
 
     function onSearchInput(event) {
+      if (state.searchSource === "lod") {
+        ctx.lookup.onInput(event);
+        return;
+      }
       state.searchQuery = event.target.value || "";
       renderList();
     }
