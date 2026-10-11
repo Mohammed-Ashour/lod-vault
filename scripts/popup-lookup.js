@@ -1,5 +1,3 @@
-// Dictionary source for the Words tab. Reuses Lens's API client and the vault's
-// mutation queue; search never records visits or saves entries implicitly.
 (() => {
   function createLookupModule(ctx) {
     const { store, state } = ctx;

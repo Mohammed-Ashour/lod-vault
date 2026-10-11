@@ -2607,9 +2607,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return extractEntryFromHtmlWithRegex(html, url);
   }
 
-  /**
-   * Full info text for title attribute (POS + all translations).
-   */
   function infoTextFull(entry) {
     const parts = [];
     if (entry?.pos) parts.push(entry.pos);
@@ -2685,10 +2682,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 (() => {
   const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-  /* ------------------------------------------------------------------ */
-  /*  Feature detection                                                   */
-  /* ------------------------------------------------------------------ */
-
   let compressionAvailable = false;
 
   try {
@@ -2703,10 +2696,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   } catch (_error) {
     // Intentionally empty — fall back to no-op.
   }
-
-  /* ------------------------------------------------------------------ */
-  /*  Custom base64 (avoids btoa/atob which may be absent in workers)     */
-  /* ------------------------------------------------------------------ */
 
   function bytesToBase64(bytes) {
     let result = "";
@@ -2763,10 +2752,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return bytes;
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Stream helpers                                                     */
-  /* ------------------------------------------------------------------ */
-
   async function readAllChunks(readableStream) {
     const reader = readableStream.getReader();
     const chunks = [];
@@ -2811,10 +2796,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
     return result;
   }
-
-  /* ------------------------------------------------------------------ */
-  /*  Public API                                                         */
-  /* ------------------------------------------------------------------ */
 
   /**
    * Compress a UTF-8 string via deflate-raw and return a base64-encoded
@@ -2894,10 +2875,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   function isAvailable() {
     return compressionAvailable;
   }
-
-  /* ------------------------------------------------------------------ */
-  /*  Export                                                             */
-  /* ------------------------------------------------------------------ */
 
   globalThis.LodVaultCompress = Object.freeze({
     compress,
@@ -4037,9 +4014,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     initPromise = null;
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Sync usage statistics (for the popup capacity bar)                  */
-  /* ------------------------------------------------------------------ */
 
   async function inspectSyncStorage() {
     try {

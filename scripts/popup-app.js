@@ -1,20 +1,3 @@
-// popup-app.js — Composition root for the popup page.
-//
-// Creates the shared ctx object (store, chrome API, state, elements), the
-// shared services (action feedback, note autosave, delete-with-undo), and the
-// feature modules that render the popup sections:
-//
-//   popup-sync.js    — sync panel (chips, capacity, sync now/pull/retry)
-//   popup-current.js — current word card, note, auto mode
-//   popup-list.js    — saved list, local filtering, stats
-//   popup-lookup.js  — dictionary source, language search, save and entry detail
-//   popup-backup.js  — exports, imports, portable backup
-//   popup-study.js   — study card (due/new counts, today progress, start review)
-//
-// This file only wires modules together: element lookup, event listeners,
-// tab/storage/message routing and the init/destroy lifecycle. Feature logic
-// lives in the modules above; cross-module calls go through ctx.sync /
-// ctx.current / ctx.list / ctx.backup (resolved lazily at runtime).
 (() => {
   function createApp(options = {}) {
     const store = options.store || globalThis.LodVaultStore;
@@ -66,9 +49,6 @@
     }
     ctx.showActionFeedback = showActionFeedback;
 
-    // Feature modules. Each renders one popup section and coordinates with the
-    // others through ctx. They must exist before createApp runs (see popup.html
-    // and tests/helpers/loaders.js for the script load order).
     ctx.sync = globalThis.LodVaultPopupSync.create(ctx);
     ctx.current = globalThis.LodVaultPopupCurrent.create(ctx);
     ctx.list = globalThis.LodVaultPopupList.create(ctx);
@@ -76,9 +56,6 @@
     ctx.backup = globalThis.LodVaultPopupBackup.create(ctx);
     ctx.study = globalThis.LodVaultPopupStudy.create(ctx);
 
-    // Note autosave coordinator. Shared by the current-word textarea and the
-    // saved-list note textareas; routes saves through the store and refreshes
-    // whichever section changed.
     const noteAutosave = store.createNoteAutosaveController({
       getTimerKey: (textarea) => textarea === elements.currentNoteInput
         ? "current-note"
