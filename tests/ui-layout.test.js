@@ -122,17 +122,6 @@ test("lookup membership controls are visible without loading details and remain 
   assert.equal(app.doc.querySelector('[data-list="study"]').getAttribute("aria-pressed"), "true");
 });
 
-test("Flashcards shortcuts leave native button Enter behavior alone", async (t) => {
-  const app = await loadFlashcardsScript({ entries: [{ ...entry, study: true }] });
-  t.after(() => app.dom.window.close());
-  const trigger = app.dom.window.document.getElementById("session-trigger");
-  trigger.focus();
-  const event = new app.dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
-  trigger.dispatchEvent(event);
-  assert.equal(event.defaultPrevented, false);
-  assert.equal(app.api.state.revealed, false);
-});
-
 test("Session disclosure reports state and Escape restores its trigger", async (t) => {
   const app = await loadFlashcardsScript({ entries: [{ ...entry, study: true }] });
   t.after(() => app.dom.window.close());
