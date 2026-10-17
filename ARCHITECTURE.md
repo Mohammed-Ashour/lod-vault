@@ -73,7 +73,7 @@ Dependencies point from page controllers toward these helpers. Layout changes mu
 ## Module ownership boundaries
 
 - `styles/blue-night.css`: shared tokens, buttons, menus and companion-page header behavior. Generated export tokens in `scripts/entry-presenter.js` must match theme changes.
-- `styles/popup.css` and `pages/popup.html`: bounded popup shell, fixed search controls, current-word disclosure inside the Words scroller and separate feedback/Undo rows.
+- `styles/popup.css` and `pages/popup.html`: bounded popup shell, fixed search controls, current-word disclosure inside the Words scroller and a collapsing status/Undo footer below it.
 - `scripts/popup-lookup.js`: remote query/language state, stale-request protection, hydration, membership patching and note-recovery behavior. It retains result DOM across an unchanged source round trip.
 - `scripts/popup-list.js`: local filtering and saved rows. Retained rows reuse live note sections during refresh.
 - `scripts/popup-current.js`: active article and current-note behavior.

@@ -128,8 +128,8 @@ try {
   await click('#search-source-lod'); await sleep(80);
   check(same(inputRect, await rect('.search-box')) && same(sourceRect, await rect('.search-source-switch')), 'Source switch keeps search geometry');
   const firstAction = await rect('.lookup-save-area');
-  const footer = await rect('.popup-feedback');
-  check(firstAction[1]+firstAction[3]<=footer[1], 'First lookup actions are visible without expanding or scrolling');
+  const footerTop = await evaluate(`(() => {const f=document.querySelector('.popup-feedback');return getComputedStyle(f).display==='none' ? innerHeight : f.getBoundingClientRect().top;})()`);
+  check(firstAction[1]+firstAction[3]<=footerTop, 'First lookup actions are visible without expanding or scrolling');
   await click('.lookup-details > summary'); await sleep(70);
   await evaluate(`window.retainedNote=document.querySelector('.lookup-result textarea');retainedNote.value='Draft retained';retainedNote.dispatchEvent(new Event('input',{bubbles:true}));`);
   await click('#search-source-vault'); await click('#search-source-lod'); await sleep(80);
@@ -148,12 +148,16 @@ try {
   check(await evaluate(`document.body.clientHeight===600 && document.documentElement.scrollHeight===600`), 'Expanded settings do not resize frame');
   await click('#words-tab'); await click('.theme-btn'); await sleep(220);
   check(same(inputRect, await rect('.search-box')), 'Light theme preserves search geometry');
-  await evaluate(`popupApp.elements.actionFeedback.textContent='Another action completed.';popupApp.elements.actionFeedback.classList.remove('is-hidden');popupApp.elements.deleteUndo.classList.remove('is-hidden');`);
+  await evaluate(`popupApp.elements.actionFeedback.textContent='Another action completed.';popupApp.elements.actionFeedback.classList.remove('is-hidden');popupApp.elements.deleteUndo.classList.remove('is-hidden');popupApp.syncFeedbackFooter();`);
+  check(await evaluate(`document.querySelector('.popup-feedback').classList.contains('is-active')`), 'Feedback row appears while active');
   const feedbackRect = await rect('#action-feedback'), undoRect = await rect('#delete-undo');
   check(feedbackRect[1] + feedbackRect[3] <= undoRect[1] + .1, 'Feedback and Undo have separate rows');
+  check(same(inputRect, await rect('.search-box')), 'Feedback appearance does not move search');
+  await evaluate(`popupApp.elements.actionFeedback.classList.add('is-hidden');popupApp.elements.deleteUndo.classList.add('is-hidden');popupApp.syncFeedbackFooter();`);
+  check(await evaluate(`!document.querySelector('.popup-feedback').classList.contains('is-active') && document.getElementById('words-scroll').clientHeight>${await evaluate("document.getElementById('words-scroll').clientHeight") - 4}`), 'Idle footer collapses and returns the space to results');
   for (const height of [480, 360]) {
     await send('Emulation.setDeviceMetricsOverride', { width: 420, height, deviceScaleFactor: 1, mobile: false });
-    check(await evaluate(`document.querySelector('.popup-feedback').getBoundingClientRect().bottom<=innerHeight+.1 && document.getElementById('words-scroll').clientHeight>=90`), `Popup footer remains reachable at ${height}px height`);
+    check(await evaluate(`(document.querySelector('.popup-feedback').getBoundingClientRect().bottom<=innerHeight+.1 || getComputedStyle(document.querySelector('.popup-feedback')).display==='none') && document.getElementById('words-scroll').clientHeight>=90`), `Popup status stays reachable at ${height}px height`);
   }
   await navigate('popup');
   await evaluate(`LodVaultLensLookup.search=()=>new Promise(()=>{})`); await click('#search-source-lod'); await type('loading');

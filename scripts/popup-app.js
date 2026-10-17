@@ -43,9 +43,19 @@
       elements.actionFeedback.textContent = message;
       elements.actionFeedback.classList.toggle("is-error", tone === "error");
       elements.actionFeedback.classList.remove("is-hidden");
+      syncFeedbackFooter();
       actionFeedbackTimer = setTimeout(() => {
         elements.actionFeedback?.classList.add("is-hidden");
+        syncFeedbackFooter();
       }, 5000);
+    }
+
+    // The status footer only exists while it has something to say. Search and
+    // the source switch live above the scroller, so this never moves them.
+    function syncFeedbackFooter() {
+      const active = !elements.actionFeedback?.classList.contains("is-hidden")
+        || !elements.deleteUndo?.classList.contains("is-hidden");
+      elements.actionFeedback?.parentElement.classList.toggle("is-active", active);
     }
     ctx.showActionFeedback = showActionFeedback;
 
@@ -124,6 +134,7 @@
       }
       pendingDeletedEntry = null;
       elements.deleteUndo?.classList.add("is-hidden");
+      syncFeedbackFooter();
     }
 
     function showDeleteUndo(entry) {
@@ -132,6 +143,7 @@
       pendingDeletedEntry = JSON.parse(JSON.stringify(entry));
       elements.deleteUndoMessage.textContent = `Removed ${entry.word}.`;
       elements.deleteUndo.classList.remove("is-hidden");
+      syncFeedbackFooter();
       deleteUndoTimer = setTimeout(hideDeleteUndo, 8000);
     }
 
@@ -414,6 +426,7 @@
       refreshCurrentPage: ctx.current.refreshCurrentPage,
       refreshDataStatus: ctx.sync.refreshDataStatus,
       formatSearchStatus: ctx.list.formatSearchStatus,
+      syncFeedbackFooter,
       lookup: ctx.lookup
     };
   }

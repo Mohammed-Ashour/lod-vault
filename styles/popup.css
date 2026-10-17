@@ -701,13 +701,14 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 .backup-warning .backup-warning-action { flex-shrink: 0; padding: 3px 8px; font-size: 11.5px; }
 
 /* toasts (shared shell in blue-night.css) */
-.popup-feedback { flex-shrink: 0; height: 64px; padding: 3px 16px; border-top: 1px solid var(--line); background: var(--surface); display: grid; grid-template-rows: 1fr 1fr; min-width: 0; }
-.popup-feedback #action-feedback, .popup-feedback #delete-undo { position: static; transform: none; animation: none; opacity: 1; box-shadow: none; border-radius: 0; background: transparent; color: var(--text-2); max-width: 100%; min-width: 0; padding: 0; font-size: 11px; line-height: 1.3; overflow-wrap: anywhere; overflow-y: auto; }
-.popup-feedback .feedback-idle { grid-row: 1; grid-column: 1; font-size: 11px; align-self: center; }
-.popup-feedback:has(#action-feedback:not(.is-hidden)) .feedback-idle { display: none; }
+/* Status rows appear only when there is something to say. They sit below the
+   scroller, so appearing or leaving never moves search or the source switch. */
+.popup-feedback { flex-shrink: 0; border-top: 1px solid var(--line); background: var(--surface); display: grid; min-width: 0; }
+.popup-feedback:not(.is-active) { display: none; }
+.popup-feedback #action-feedback, .popup-feedback #delete-undo { position: static; transform: none; animation: none; opacity: 1; box-shadow: none; border-radius: 0; background: transparent; color: var(--text-2); max-width: 100%; min-width: 0; max-height: 4.2em; padding: 7px 16px; font-size: 11px; line-height: 1.3; overflow-wrap: anywhere; overflow-y: auto; }
 .popup-feedback #action-feedback { grid-row: 1; grid-column: 1; display: block; }
 .popup-feedback #action-feedback.is-error { color: var(--danger); }
-.popup-feedback #delete-undo { grid-row: 2; }
+.popup-feedback #delete-undo { grid-row: 2; border-top: 1px dashed var(--line); }
 .note-input, .meaning-value, .item-example { overflow-wrap: anywhere; }
 
 @media (max-height: 480px) {

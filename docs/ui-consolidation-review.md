@@ -120,7 +120,7 @@ Do not change storage schemas, API contracts, note autosave/recovery, background
 4. Repair narrow Vault and Flashcards layouts. Check real iframe state retention and grading controls.
 5. Verify Chrome and Firefox with short/tall windows, both themes, long translations, slow/offline LOD, large vaults, unsaved notes, external storage changes and delete/Undo.
 
-The user approved implementation on 2026-10-17. The fixed frame, search-first ordering, current-word disclosure, aligned Favorite/Study actions and companion-page layout fixes are implemented. The existing modules retain their responsibilities. Production feedback uses two reserved rows so action status and Undo can coexist. On displays at or below 420px high, Today yields its space to results; Flashcards remains available in the header.
+The user approved implementation on 2026-10-17. The fixed frame, search-first ordering, current-word disclosure, aligned Favorite/Study actions and companion-page layout fixes are implemented. The existing modules retain their responsibilities. Production status and Undo share a footer below the scroller. It collapses while idle, so results keep the space; appearing never moves search. On displays at or below 420px high, Today yields its space to results; Flashcards remains available in the header.
 
 ## Prototype-stage verification
 

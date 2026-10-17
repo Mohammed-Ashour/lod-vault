@@ -21,6 +21,15 @@ test("popup search sits outside the only Words scroller, including current-page 
   for (const id of ["search-input", "search-status", "search-source-vault"]) assert.equal(scroll.contains(app.get(id)), false, id);
   assert.equal(app.get("search-status").parentElement.className, "search-meta-row");
   assert.equal(app.get("action-feedback").parentElement, app.get("delete-undo").parentElement);
+  const footer = app.get("action-feedback").parentElement;
+  assert.equal(footer.classList.contains("is-active"), false, "Idle status footer collapses");
+  app.get("action-feedback").classList.remove("is-hidden");
+  app.api.syncFeedbackFooter();
+  assert.equal(footer.classList.contains("is-active"), true, "Active status footer appears");
+  app.get("action-feedback").classList.add("is-hidden");
+  app.api.syncFeedbackFooter();
+  assert.equal(footer.classList.contains("is-active"), false, "Footer returns to collapsed when idle");
+  assert.equal(app.get("action-feedback").parentElement.tagName, "FOOTER");
   assert.equal(app.get("current-page-card").tagName, "DETAILS");
 });
 
