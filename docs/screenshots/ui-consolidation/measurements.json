@@ -1,0 +1,17 @@
+{
+  "baseline": "93621c6",
+  "before": {
+    "searchShift": 134.84375,
+    "widthShift": 15,
+    "countResize": 42.390625,
+    "flashcardsOverflow": 49,
+    "vaultFrameOverhang": 62.734375
+  },
+  "after": {
+    "searchShift": 0,
+    "widthShift": 0,
+    "countResize": 0,
+    "flashcardsOverflow": 0,
+    "vaultFrameOverhang": 0
+  }
+}

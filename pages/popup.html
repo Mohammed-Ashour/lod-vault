@@ -32,20 +32,52 @@
 
     <nav class="popup-tabs" aria-label="Popup sections" role="tablist">
       <button type="button" id="words-tab" class="popup-tab is-active" data-pane="words" role="tab" aria-selected="true" aria-controls="words-pane">Words</button>
-      <button type="button" id="stats-tab" class="popup-tab" data-pane="stats" role="tab" aria-selected="false" aria-controls="stats-pane">Stats &amp; data</button>
+      <button type="button" id="stats-tab" class="popup-tab" data-pane="stats" role="tab" tabindex="-1" aria-selected="false" aria-controls="stats-pane">Stats &amp; data</button>
     </nav>
 
     <section id="words-pane" class="popup-pane is-active" data-pane="words" role="tabpanel" aria-labelledby="words-tab">
 
-      <div id="current-page-card" class="capture-card is-empty">
+      <div class="search-source-switch" role="radiogroup" aria-label="Search source">
+        <button type="button" id="search-source-vault" class="is-active" role="radio" aria-checked="true" aria-controls="vault-search-results">My vault</button>
+        <button type="button" id="search-source-lod" role="radio" tabindex="-1" aria-checked="false" aria-controls="lod-search-results">Search LOD</button>
+      </div>
+
+      <div class="search-row">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="search-input" type="search" placeholder="Search words, type, translation, note…" autocomplete="off" aria-label="Search saved words">
+        </div>
+      </div>
+
+      <div class="search-meta-row">
+        <span id="search-status" class="search-status muted" aria-live="polite">Loading…</span>
+        <span id="search-local-hint" class="muted">On this device</span>
+      <div id="lod-search-language-row" class="lookup-language-row is-hidden">
+        <label for="lod-search-language">Search language</label>
+        <select id="lod-search-language" class="select">
+          <option value="all">All languages</option>
+          <option value="lb">Lëtzebuergesch</option>
+          <option value="en">English</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+          <option value="pt">Português</option>
+          <option value="nl">Nederlands</option>
+        </select>
+      </div>
+
+      </div>
+
+      <div id="words-scroll" class="words-scroll" tabindex="0" aria-label="Word results">
+      <details id="current-page-card" class="capture-card is-empty">
+        <summary class="capture-summary">
         <p class="capture-label">Currently open</p>
         <div class="word-head">
           <h2 id="current-word">—</h2>
-          <button type="button" id="current-audio" class="audio-btn" title="Play pronunciation" aria-label="Play pronunciation" style="display:none">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-          </button>
         </div>
         <p id="current-meta" class="capture-meta muted">Open a word on <code>lod.lu/artikel/…</code></p>
+        </summary>
+        <div class="capture-body">
+          <button type="button" id="current-audio" class="audio-btn" aria-label="Play pronunciation" title="Play pronunciation" style="display:none"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="m11 5-5 4H2v6h4l5 4V5ZM16 8a6 6 0 0 1 0 8"/></svg></button>
         <div id="current-meanings" class="item-meanings"></div>
         <div class="word-actions">
           <div class="word-toggles">
@@ -65,33 +97,8 @@
           <textarea id="current-note" class="note-input" placeholder="Save this word to add a note..." disabled></textarea>
           <p id="current-note-status" class="note-status muted" aria-live="polite">Open a word on lod.lu to add a note.</p>
         </div>
-      </div>
-
-      <div class="search-source-switch" role="radiogroup" aria-label="Search source">
-        <button type="button" id="search-source-vault" class="is-active" role="radio" aria-checked="true" aria-controls="vault-search-results">My vault</button>
-        <button type="button" id="search-source-lod" role="radio" aria-checked="false" aria-controls="lod-search-results">Search LOD</button>
-      </div>
-
-      <div class="search-row">
-        <div class="search-box">
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          <input id="search-input" type="search" placeholder="Search words, type, translation, note…" autocomplete="off" aria-label="Search saved words">
         </div>
-        <span id="search-status" class="search-status muted" aria-live="polite">Loading…</span>
-      </div>
-
-      <div id="lod-search-language-row" class="lookup-language-row is-hidden">
-        <label for="lod-search-language">Search language</label>
-        <select id="lod-search-language" class="select">
-          <option value="all">All languages</option>
-          <option value="lb">Lëtzebuergesch</option>
-          <option value="en">English</option>
-          <option value="fr">Français</option>
-          <option value="de">Deutsch</option>
-          <option value="pt">Português</option>
-          <option value="nl">Nederlands</option>
-        </select>
-      </div>
+      </details>
 
       <section id="lod-search-results" class="is-hidden" aria-label="LOD dictionary results" aria-busy="false">
         <div id="lod-results-list" class="lookup-results" aria-live="polite"></div>
@@ -108,6 +115,7 @@
           <h3>No matches</h3>
           <p>No saved words match. Try Search LOD to find a new word.</p>
         </div>
+      </div>
       </div>
     </section>
 
@@ -220,12 +228,15 @@
 
     <input id="import-json-file" type="file" accept="application/json,.json" hidden>
 
+    <footer class="popup-feedback" aria-label="Action status">
+    <p class="feedback-idle muted">Saved words stay on this device.</p>
     <div id="action-feedback" class="action-feedback is-hidden" role="status" aria-live="polite"></div>
 
     <div id="delete-undo" class="undo-toast is-hidden" role="status" aria-live="polite">
       <span id="delete-undo-message"></span>
       <button id="delete-undo-button" type="button">Undo</button>
     </div>
+    </footer>
   </main>
 
   <script src="../scripts/store-core.js"></script>

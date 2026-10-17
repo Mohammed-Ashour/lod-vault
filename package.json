@@ -6,6 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "test": "node --test",
+    "test:ui": "node scripts/verify-ui-layout.mjs",
+    "test:popup": "node scripts/verify-popup-window.mjs",
     "artifacts:webstore": "node media/webstore/render-webstore-images.mjs",
     "build:background": "node scripts/build-background.mjs",
     "package:release": "npm run build:background && bash scripts/build_release_zip.sh",

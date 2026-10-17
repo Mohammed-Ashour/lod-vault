@@ -22,7 +22,7 @@
 
 <img src="docs/screenshots/popup-blue-night.png" width="380" alt="LODVault popup — Blue Night redesign" /> <img src="docs/screenshots/popup-blue-night-light.png" width="380" alt="LODVault popup — Blue Night light mode" />
 
-The popup opens on a **Today** panel (due words + Start review), then splits into two tabs: **Words** (contextual capture card for the word open on lod.lu, search, saved-word list) and **Stats & data** (sync/backup/restore/export status on top, vault counters, Auto mode). Header links take you straight to Flashcards or the Vault, and the ☀/☾ button flips the whole product between navy night and cool paper day.
+The popup opens on a **Today** panel with due words and Start review, then splits into **Words** and **Stats & data**. Words keeps My vault / Search LOD, search and its metadata fixed above one scrolling area. Current-page details expand inside that area without moving search. Stats & data groups sync, backup, restore, exports, counters and Auto mode. Header links take you straight to Flashcards or the Vault, and the ☀/☾ button flips the whole product between navy night and cool paper day.
 
 <img src="docs/screenshots/popup-stats-blue-night.png" width="380" alt="LODVault popup — Stats & data tab" /> <img src="docs/screenshots/popup-stats-blue-night-light.png" width="380" alt="LODVault popup — Stats & data tab, light mode" />
 
@@ -146,7 +146,7 @@ The **LODVault** icon will appear in your browser toolbar.
 - Use **Import history** with a date range (7d / 30d / 90d / 365d / all time) to add missing LOD words
 - Review the import report and use **Backup JSON** before uninstalling or changing installations if you want a portable backup
 - **My vault** filters saved words without sending a dictionary request
-- **Search LOD** searches all supported languages by default, or a selected language. Results stay inside the popup. **Save to Favorites** fetches the full entry before saving; expand a result for translations, an example, Study, and notes
+- **Search LOD** searches all supported languages by default, or a selected language. Favorite and Study are available on each result and fetch the full entry before saving. Expand a result for translations, an example and notes
 - Dictionary searches send only the query text to LOD. Switching back to My vault keeps your local search
 - Play pronunciation audio, add notes, toggle lists, or delete saved words from there
 
@@ -181,6 +181,18 @@ LODVault includes a small automated test suite to keep the core behavior stable.
 npm install
 npm test
 ```
+
+### Check UI layout in Chrome
+
+```bash
+npm run test:ui
+# Check the actual extension action window in recent Chrome:
+npm run test:popup
+# Also regenerate the before/after screenshots:
+npm run test:ui -- --capture
+```
+
+Uses isolated browser/storage fixtures, not your real vault or live LOD requests. Set `CHROME_PATH` if Chrome is not in its default macOS location or Chromium is not on PATH. See [the before/after walkthrough](docs/ui-consolidation-before-after.html).
 
 ### Lint the Firefox package
 

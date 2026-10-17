@@ -11,6 +11,9 @@
     let requestId = 0;
     let timer = null;
     let destroyed = false;
+    let searchedQuery = null;
+    let searchedLanguage = null;
+    const scrollPositions = { vault: 0, lod: 0 };
     const entryRequests = new Map();
     const pending = new Set();
     const elements = {};
@@ -25,18 +28,17 @@
     }
 
     function saveMarkup(result) {
-      const busy = pending.has(result.id);
-      return savedEntry(result.id)
-        ? '<span class="lookup-saved">✓ In vault</span>'
-        : `<button type="button" class="btn-primary lookup-save" data-action="save" data-id="${escape(result.id)}" ${busy ? "disabled" : ""} aria-label="Save ${escape(result.word)} to Favorites">${busy ? "Saving…" : "Save to Favorites"}</button>`;
+      const saved = savedEntry(result.id);
+      return `<button type="button" class="toggle-pill toggle-fav" data-list="favorite" data-action="${saved ? "favorite" : "save"}" data-id="${escape(result.id)}" aria-pressed="false" aria-label="Favorite ${escape(result.word)}"><span class="toggle-pill-icon">☆</span>Favorite</button><button type="button" class="toggle-pill toggle-study" data-list="study" data-action="study" data-id="${escape(result.id)}" aria-pressed="false" aria-label="Study ${escape(result.word)}"><span class="toggle-pill-icon">○</span>Study</button><span class="lookup-saved${saved ? "" : " is-hidden"}">In vault</span>`;
     }
 
     function resultMarkup(result) {
       const translations = Object.entries(result.translations || {}).filter(([, value]) => value);
       return `<article class="lookup-result" data-id="${escape(result.id)}">
-        <div class="lookup-result-head"><div class="lookup-word"><a class="word-link" href="${escape(result.url)}" target="_blank" rel="noopener noreferrer" lang="lb">${escape(result.word)}</a><p class="item-meta">${escape(result.pos)}</p></div><div class="lookup-save-area">${saveMarkup(result)}</div></div>
+        <div class="lookup-result-head"><div class="lookup-word"><a class="word-link" href="${escape(result.url)}" target="_blank" rel="noopener noreferrer" lang="lb">${escape(result.word)}</a><p class="item-meta">${escape(result.pos)}</p></div></div>
+        <div class="lookup-save-area">${saveMarkup(result)}</div>
         ${translations.length ? `<div class="lookup-match-translations">${translations.map(([lang, text]) => `<p><span class="meaning-label">${escape(lang.toUpperCase())}</span><span lang="${escape(lang)}">${escape(text)}</span></p>`).join("")}</div>` : '<p class="lookup-source-label">Luxembourgish entry · LOD dictionary</p>'}
-        <details class="lookup-details"><summary>Translations, example & lists</summary><div class="lookup-entry-body"></div></details>
+        <details class="lookup-details"><summary>Translations, example & note</summary><div class="lookup-entry-body"></div></details>
       </article>`;
     }
 
@@ -63,13 +65,14 @@
       } else if (phase === "loading") {
         markup = '<p class="lookup-state-copy">Searching the LOD dictionary…</p>';
       } else if (phase === "error") {
-        markup = '<div class="empty-state lookup-state"><h3>LOD could not be reached</h3><p>Your saved words are still available in My vault.</p><button type="button" class="btn-ghost" data-action="retry">Try again</button></div>';
+        markup = '<div class="empty-state lookup-state"><h3>LOD could not be reached</h3><p>Your saved words are still available in My vault.</p><button type="button" class="btn-ghost" data-action="retry">Try again</button><button type="button" class="text-link" data-action="local">Go to My vault</button></div>';
       } else if (!results.length) {
         markup = `<div class="empty-state lookup-state"><h3>No dictionary matches</h3><p>No results for "${escape(query.trim())}". Try another spelling${language === "all" ? "." : " or search all languages."}</p>${language === "all" ? "" : '<button type="button" class="btn-ghost" data-action="all-languages">Search all languages</button>'}<a class="lookup-lod-link" href="${escape(lookup.buildSearchPageUrl(query, language === "all" ? "lb" : language))}" target="_blank" rel="noopener noreferrer">Open search on LOD</a></div>`;
       } else {
         markup = `<p class="lookup-results-label">LOD dictionary <span>${total} match${total === 1 ? "" : "es"}</span></p>${results.map(resultMarkup).join("")}${total > RESULT_LIMIT ? `<p class="list-overflow">Showing ${RESULT_LIMIT} of ${total} matches. Refine your search to narrow down.</p>` : ""}`;
       }
       store.setHtml(elements.results, markup);
+      refreshSavedState();
     }
 
     function invalidate() {
@@ -94,6 +97,8 @@
         return;
       }
       if (destroyed || currentRequest !== requestId || state.searchSource !== "lod") return;
+      searchedQuery = query;
+      searchedLanguage = language;
       results = [];
       total = 0;
       phase = normalized ? "loading" : "idle";
@@ -124,6 +129,7 @@
 
     function setSource(source) {
       if (source === state.searchSource) return;
+      scrollPositions[state.searchSource] = elements.scroller.scrollTop;
       invalidate();
       if (state.searchSource === "lod") query = elements.input.value;
       if (source === "lod" && !query) query = state.searchQuery;
@@ -133,19 +139,26 @@
       elements.lodSource.classList.toggle("is-active", isLod);
       elements.vaultSource.setAttribute("aria-checked", String(!isLod));
       elements.lodSource.setAttribute("aria-checked", String(isLod));
-      ctx.elements.currentPageCard.classList.toggle("is-lookup-context", isLod);
+      elements.vaultSource.tabIndex = isLod ? -1 : 0;
+      elements.lodSource.tabIndex = isLod ? 0 : -1;
+      elements.localHint.classList.toggle("is-hidden", isLod);
       elements.vaultPanel.classList.toggle("is-hidden", isLod);
       elements.panel.classList.toggle("is-hidden", !isLod);
       elements.languageRow.classList.toggle("is-hidden", !isLod);
       elements.input.value = isLod ? query : state.searchQuery;
       elements.input.placeholder = isLod ? "Search a word in LOD…" : "Search words, type, translation, note…";
       elements.input.setAttribute("aria-label", isLod ? "Search the LOD dictionary" : "Search saved words");
-      if (isLod) void searchNow();
-      else {
+      if (isLod) {
+        if (query === searchedQuery && language === searchedLanguage && phase !== "loading") {
+          elements.status.textContent = phase === "results" ? `${total} match${total === 1 ? "" : "es"}` : "";
+          refreshSavedState();
+        } else void searchNow();
+      } else {
         elements.panel.setAttribute("aria-busy", "false");
-        ctx.list.renderList();
+        const count = state.savedEntries.filter((entry) => store.buildSearchText(entry).includes(state.searchQuery.trim().toLowerCase())).length;
+        elements.status.textContent = ctx.list.formatSearchStatus(count, state.savedEntries.length);
       }
-      elements.input.focus();
+      elements.scroller.scrollTop = scrollPositions[source];
     }
 
     async function getFullEntry(result) {
@@ -171,7 +184,6 @@
       return `<div class="lookup-translations">${store.buildMeaningRowsMarkup(entry)}</div>
         ${entry.inflection ? `<p class="item-meta">${escape(entry.inflection)}</p>` : ""}
         ${entry.example ? `<p class="item-example" lang="lb">${escape(entry.example)}</p>` : ""}
-        <div class="word-toggles lookup-list-actions"><button type="button" class="toggle-pill toggle-fav" data-action="favorite" data-id="${escape(entry.id)}" aria-pressed="false"><span class="toggle-pill-icon">☆</span>Favorite</button><button type="button" class="toggle-pill toggle-study" data-action="study" data-id="${escape(entry.id)}" aria-pressed="false"><span class="toggle-pill-icon">○</span>Study</button></div>
         <div class="note-section"><label class="note-label" for="${escape(noteId)}">Note</label><textarea id="${escape(noteId)}" class="note-input" data-note-id="${escape(entry.id)}" data-lookup-note="true" data-saved-value="${escape(saved?.note || "")}" ${saved ? "" : "disabled"} placeholder="${saved ? "Add a note for this word…" : "Save this word to add a note…"}">${escape(saved?.note || "")}</textarea><p class="note-status muted" aria-live="polite">${saved ? "Notes save automatically." : "Favorite or Study saves the word."}</p><div class="lookup-draft-recovery is-hidden"><p class="helper-text">This word was removed from your vault. Save it again to keep your draft, or discard the draft.</p><div class="lookup-recovery-actions"><button type="button" class="btn-ghost" data-action="restore-note" data-id="${escape(entry.id)}">Save word again</button><button type="button" class="text-link" data-action="discard-note" data-id="${escape(entry.id)}">Discard draft</button></div></div></div>`;
     }
 
@@ -203,17 +215,15 @@
         if (!row) continue;
         const saved = savedEntry(result.id);
         const saveArea = row.querySelector(".lookup-save-area");
-        const saveButton = saveArea.querySelector("button");
-        if (!saved && saveButton) {
-          saveButton.disabled = pending.has(result.id);
-          saveButton.textContent = pending.has(result.id) ? "Saving…" : "Save to Favorites";
-        } else if (Boolean(saved) !== Boolean(saveArea.querySelector(".lookup-saved"))) {
-          const hadFocus = document.activeElement === saveButton;
-          store.setHtml(saveArea, saveMarkup(result));
-          if (hadFocus) row.querySelector("summary")?.focus({ preventScroll: true });
-        }
+        const favorite = saveArea.querySelector('[data-list="favorite"]');
+        favorite.dataset.action = saved ? "favorite" : "save";
+        const busy = pending.has(result.id);
+        row.setAttribute("aria-busy", String(busy));
+        const status = saveArea.querySelector(".lookup-saved");
+        status.classList.toggle("is-hidden", !saved && !busy);
+        status.textContent = busy ? "Saving…" : "In vault";
         for (const list of ["favorite", "study"]) {
-          const button = row.querySelector(`[data-action="${list}"]`);
+          const button = row.querySelector(`[data-list="${list}"]`);
           if (!button) continue;
           const enabled = Boolean(saved?.[list]);
           button.disabled = pending.has(result.id);
@@ -242,7 +252,16 @@
       if (!button || button.disabled) return;
       const action = button.dataset.action === "restore-note" ? "save" : button.dataset.action;
       const wasFocused = document.activeElement === button;
-      if (action === "retry") return searchNow();
+      if (action === "retry") {
+        await searchNow();
+        if (wasFocused && !destroyed) elements.input.focus({ preventScroll: true });
+        return;
+      }
+      if (action === "local") {
+        setSource("vault");
+        elements.vaultSource.focus();
+        return;
+      }
       if (action === "all-languages") {
         language = "all";
         elements.language.value = language;
@@ -268,7 +287,6 @@
       if (!["save", "favorite", "study"].includes(action) || pending.has(result.id)) return;
       pending.add(result.id);
       refreshSavedState();
-      let failed = false;
       try {
         // Always hydrate before saving: a search preview is not a full entry.
         const entry = await getFullEntry(result);
@@ -288,15 +306,12 @@
         }
         const enabled = Boolean(saved?.[action]);
         ctx.showActionFeedback(action === "save" ? `Saved ${entry.word} to Favorites.` : `${enabled ? "Added" : "Removed"} ${entry.word} ${enabled ? "to" : "from"} ${action === "study" ? "Study" : "Favorites"}.`);
-        const activeRow = rowFor(result.id);
-        if (action === "save" && document.activeElement === document.body) activeRow?.querySelector("summary")?.focus({ preventScroll: true });
       } catch {
-        failed = true;
         if (!destroyed) ctx.showActionFeedback("Could not save this word. Try again.", "error");
       } finally {
         pending.delete(result.id);
         refreshSavedState();
-        if (!destroyed && failed && wasFocused && button.isConnected && document.activeElement === document.body) button.focus({ preventScroll: true });
+        if (!destroyed && wasFocused && button.isConnected && document.activeElement === document.body) button.focus({ preventScroll: true });
       }
     }
 
@@ -335,8 +350,12 @@
       elements.results = document.getElementById("lod-results-list");
       elements.languageRow = document.getElementById("lod-search-language-row");
       elements.language = document.getElementById("lod-search-language");
+      elements.scroller = document.getElementById("words-scroll");
+      elements.localHint = document.getElementById("search-local-hint");
       elements.vaultSource.addEventListener("click", onVaultSource);
       elements.lodSource.addEventListener("click", onLodSource);
+      elements.vaultSource.addEventListener("keydown", onSourceKeyDown);
+      elements.lodSource.addEventListener("keydown", onSourceKeyDown);
       elements.language.addEventListener("change", onLanguageChange);
       elements.input.addEventListener("keydown", onKeyDown);
       elements.results.addEventListener("click", onClick);
@@ -344,6 +363,14 @@
       elements.results.addEventListener("input", ctx.list.onSavedListInput);
       elements.results.addEventListener("change", ctx.list.onSavedListChange);
       elements.results.addEventListener("focusout", ctx.list.onSavedListFocusOut);
+    }
+
+    function onSourceKeyDown(event) {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const source = event.key === "Home" ? "vault" : event.key === "End" ? "lod" : state.searchSource === "vault" ? "lod" : "vault";
+      setSource(source);
+      (source === "lod" ? elements.lodSource : elements.vaultSource).focus();
     }
 
     function onVaultSource() { setSource("vault"); }
@@ -355,6 +382,8 @@
       invalidate();
       elements.vaultSource?.removeEventListener("click", onVaultSource);
       elements.lodSource?.removeEventListener("click", onLodSource);
+      elements.vaultSource?.removeEventListener("keydown", onSourceKeyDown);
+      elements.lodSource?.removeEventListener("keydown", onSourceKeyDown);
       elements.language?.removeEventListener("change", onLanguageChange);
       elements.input?.removeEventListener("keydown", onKeyDown);
       elements.results?.removeEventListener("click", onClick);

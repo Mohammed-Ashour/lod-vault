@@ -16,7 +16,7 @@
   --blue:      #457b9d;
   --text:      #e4eef4;
   --text-2:    #b8cedb;
-  --muted:     #6a8da6;
+  --muted:     #96afc1;
   --line:      rgba(168, 218, 220, 0.09);
   --line-strong: rgba(168, 218, 220, 0.18);
   --ok:        #5ec48a;
@@ -52,7 +52,7 @@ html.light {
   --blue:      #457b9d;
   --text:      #13222e;
   --text-2:    #43586a;
-  --muted:     #6b7f90;
+  --muted:     #526a7c;
   --line:      rgba(18, 48, 74, 0.14);
   --line-strong: rgba(18, 48, 74, 0.22);
   --ok:        #2e9e66;
@@ -249,7 +249,7 @@ html.theme-switching *::after {
   max-width: 100%;
 }
 .select:hover { border-color: var(--accent); }
-.select:focus { outline: none; border-color: var(--accent); }
+.select:focus { border-color: var(--accent); }
 
 /* ── Switch ──────────────────────────────────────────── */
 .switch {
@@ -326,10 +326,16 @@ html.theme-switching *::after {
   padding: 2px 4px;
 }
 .action-feedback.is-error { background: var(--danger); color: #fff; }
+.action-feedback:has(+ .undo-toast:not(.is-hidden)) { bottom: 76px; }
 
 /* ── Responsive ──────────────────────────────────────── */
 @media (max-width: 640px) {
-  .appbar { padding: 10px 14px; gap: 10px; }
+  .appbar { padding: 10px 14px; gap: 10px; flex-wrap: wrap; }
+  .toolbar { width: 100%; margin-left: 0; position: relative; gap: 6px; }
+  .toolbar .menu-wrap { position: static; }
+  .toolbar .menu { max-width: 100%; }
+  .title-lockup, .status { min-width: 0; }
+  .status { white-space: normal; overflow-wrap: anywhere; }
   .title-lockup .wordmark { display: none; }
   .statline { grid-template-columns: repeat(3, 1fr); }
   .stat:nth-child(3) { border-right: 0; }
