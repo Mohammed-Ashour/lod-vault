@@ -192,7 +192,7 @@ npm run test:popup
 npm run test:ui -- --capture
 ```
 
-Uses isolated browser/storage fixtures, not your real vault or live LOD requests. Set `CHROME_PATH` if Chrome is not in its default macOS location or Chromium is not on PATH. See [the before/after walkthrough](docs/ui-consolidation-before-after.html).
+Uses isolated browser/storage fixtures, not your real vault or live LOD requests. Set `CHROME_PATH` if Chrome is not in its default macOS location or Chromium is not on PATH.
 
 ### Lint the Firefox package
 

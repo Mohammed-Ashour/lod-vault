@@ -1,4 +1,5 @@
-// Real-page geometry checks and before/after captures. No user profile or live LOD requests.
+// Real-page geometry checks, optionally with before/after captures for local review.
+// No user profile or live LOD requests.
 // CHROME_PATH=/path/to/chrome node scripts/verify-ui-layout.mjs [--capture]
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
@@ -10,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { stubSource, seed } from './screenshot-stub.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = path.join(root, 'docs/screenshots/ui-consolidation');
+const outDir = process.env.UI_SCREENSHOT_DIR || path.join(root, 'docs/screenshots/ui-consolidation');
 const baseline = '93621c6';
 const capture = process.argv.includes('--capture');
 const chromePath = process.env.CHROME_PATH || (process.platform === 'darwin'

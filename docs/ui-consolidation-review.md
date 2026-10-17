@@ -1,12 +1,11 @@
 # UI consolidation proposal
 
-Status: implemented on this branch after prototype approval. See [the actual before/after walkthrough](ui-consolidation-before-after.html). Scope is Popup, Vault and Flashcards. LOD Lens and the article banner are not redesigned or claimed audited here.
+Status: implemented on this branch. Scope is Popup, Vault and Flashcards. LOD Lens and the article banner are not redesigned or claimed audited here.
 
 - Branch: `feature/ui-consolidation-prototype`
 - Base: updated `main` / `origin/main`, `93621c6`
 - Review date: 2026-10-17
-- Open [the interactive prototype](ui-consolidation-prototype.html), or run `open docs/ui-consolidation-prototype.html` on macOS.
-- Decision: [AgDR-0001](agdr/AgDR-0001-ui-consolidation-preview.md)
+- Interactive prototype and before/after screenshots were reviewed during development and are intentionally not part of this PR.
 
 ## Direction
 
@@ -138,8 +137,7 @@ The user approved implementation on 2026-10-17. The fixed frame, search-first or
 - `npm run test:ui -- --capture`: 38 real-page Chrome checks passed. Covers fixed popup/search geometry; visible first-result actions; source/editor retention; loading/empty/offline/long content; light theme; separate Undo/status rows; 480px and 360px-tall windows; 360px, 375px and 1280px companion layouts; native Enter and Escape menu behavior.
 - `npm run lint`: Firefox package has zero errors, warnings or notices.
 - UI scanner: zero findings in production styles and the before/after HTML. Existing identity and type choices remain intentional.
-- [Exact before/after measurements](screenshots/ui-consolidation/measurements.json): search shift 134.8px to 0; source width change 15px to 0; count-induced input shrink 42.4px to 0; Flashcards overflow 49px to 0; Vault iframe overhang 62.7px to 0.
-- Screenshots render the real production page files with isolated fixtures. Baseline files come from `93621c6`; after files come from this branch. They are not recreated mockups.
+- Measured before/after differences: search shift 134.8px to 0; source width change 15px to 0; count-induced input shrink 42.4px to 0; Flashcards overflow 49px to 0; Vault iframe overhang 62.7px to 0. Screenshots were generated from the real production page files with isolated fixtures, then removed from the repository after review.
 - `npm run test:popup`: the extension loaded through Chrome's debugging-pipe `Extensions.loadUnpacked` API in a disposable profile. Its actual action window stayed 435 × 498px with 420px content across idle, populated, empty, error, loading and expanded settings. Chrome clamps the host height and adds gutter space in this headless environment. The check caught and prevented circular viewport-based root auto-sizing that page emulation missed.
 - Root dimensions establish Chrome's preferred size. Only the bounded inner app follows the available viewport. Root overflow is disabled for this frame contract, not to conceal overflowing result content. Separate checks assert content wrapping and reachable controls.
 - Firefox UI, screen-reader output and increased zoom remain manual checks. Package lint is not Firefox UI verification.
