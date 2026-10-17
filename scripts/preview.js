@@ -182,6 +182,7 @@ function injectPreviewStyles(doc) {
       gap: 6px;
     }
     .preview-toggle-pill {
+      min-height: 32px;
       display: inline-flex;
       align-items: center;
       gap: 5px;
@@ -556,7 +557,7 @@ function attachRemoveButtons(doc) {
     favBtn.type = "button";
     favBtn.className = "preview-toggle-pill" + (isFav ? " is-fav" : "");
     favBtn.title = isFav ? "Remove from favorites" : "Add to favorites";
-    LodVaultStore.setHtml(favBtn, '<span class="preview-toggle-pill-icon">' + (isFav ? "★" : "☆") + '</span><span class="preview-toggle-pill-label">Fav</span>');
+    LodVaultStore.setHtml(favBtn, '<span class="preview-toggle-pill-icon">' + (isFav ? "★" : "☆") + '</span><span class="preview-toggle-pill-label">Favorite</span>');
     favBtn.addEventListener("click", async () => {
       favBtn.disabled = true;
       try {
@@ -713,14 +714,24 @@ window.addEventListener("beforeunload", () => {
   const trigger = document.getElementById("export-trigger");
   const menu = document.getElementById("export-menu");
   if (trigger && menu) {
+    function setOpen(open) {
+      menu.classList.toggle("is-open", open);
+      trigger.setAttribute("aria-expanded", String(open));
+    }
     trigger.addEventListener("click", (event) => {
       event.stopPropagation();
-      menu.classList.toggle("is-open");
+      setOpen(!menu.classList.contains("is-open"));
     });
     document.addEventListener("click", (event) => {
-      if (!event.target.closest(".menu-wrap")) menu.classList.remove("is-open");
+      if (!event.target.closest(".menu-wrap")) setOpen(false);
     });
-    menu.addEventListener("click", () => menu.classList.remove("is-open"));
+    menu.addEventListener("click", () => setOpen(false));
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && menu.classList.contains("is-open")) {
+        setOpen(false);
+        trigger.focus();
+      }
+    });
   }
 
   const frame = document.getElementById("preview-frame");
