@@ -69,6 +69,34 @@ function buildSyncFillerData(targetBytes = 95000) {
   return data;
 }
 
+function buildWordEntries(count) {
+  const entries = {};
+
+  for (let index = 1; index <= count; index += 1) {
+    const id = `WORD${String(index).padStart(3, "0")}`;
+    entries[id] = makeLocalEntry({
+      id,
+      word: `Word ${index}`,
+      url: `https://lod.lu/artikel/${id}`,
+      example: `Example ${index}: ${"x".repeat(420)}`,
+      note: `Note ${index}: ${"y".repeat(120)}`,
+      updatedAt: `2025-01-${String((index % 28) + 1).padStart(2, "0")}T08:30:00.000Z`
+    });
+  }
+
+  return entries;
+}
+
+function spyOnSyncSet(fixture) {
+  const writtenKeyBatches = [];
+  const originalSet = fixture.chrome.storage.sync.set;
+  fixture.chrome.storage.sync.set = async (values) => {
+    writtenKeyBatches.push(Object.keys(values || {}));
+    return originalSet(values);
+  };
+  return writtenKeyBatches;
+}
+
 test("compactEntry filters synced translations and expandEntry restores the local shape", () => {
   const { sync } = loadSyncScript();
   const compact = sync.compactEntry(makeLocalEntry(), ["en", "de"]);
@@ -1091,4 +1119,101 @@ test("SyncAdapter.pushEntry handles compressed shard update", async () => {
   const updatedEntry = parsed.find((entry) => entry.i === "WORD005");
   assert.ok(updatedEntry);
   assert.equal(updatedEntry.n, "Updated via pushEntry with compression.");
+});
+
+test("SyncAdapter.pushAll skips shard and settings writes when nothing changed", async () => {
+  const fixture = loadSyncScript({
+    local: {
+      "lodVault.entries": buildWordEntries(24),
+      "lodVault.settings": { autoMode: false, syncLanguages: ["en", "fr", "de"] }
+    }
+  });
+
+  await fixture.sync.SyncAdapter.pushAll();
+  const shardKeys = Object.keys(fixture.syncStorageData).filter((key) => key.startsWith("lodVault.e."));
+  assert.ok(shardKeys.length > 1);
+
+  const writtenKeyBatches = spyOnSyncSet(fixture);
+  const result = await fixture.sync.SyncAdapter.pushAll();
+
+  assert.equal(result.ok, true);
+  const writtenShardKeys = writtenKeyBatches.flat().filter((key) => key.startsWith("lodVault.e."));
+  assert.deepEqual(writtenShardKeys, []);
+  for (const key of shardKeys) {
+    assert.ok(result.skippedKeys.includes(key));
+  }
+  assert.ok(result.skippedKeys.includes("lodVault.s"));
+});
+
+test("SyncAdapter.pushAll rewrites only the shards whose content changed", async () => {
+  const fixture = loadSyncScript({
+    local: {
+      "lodVault.entries": buildWordEntries(24),
+      "lodVault.settings": { autoMode: false, syncLanguages: ["en", "fr", "de"] }
+    }
+  });
+
+  await fixture.sync.SyncAdapter.pushAll();
+  const before = JSON.parse(JSON.stringify(fixture.syncStorageData));
+  const changedShardKey = Object.keys(before).find((key) => key.startsWith("lodVault.e.") && before[key].some((entry) => entry.i === "WORD010"));
+  const unchangedShardKeys = Object.keys(before).filter((key) => key.startsWith("lodVault.e.") && key !== changedShardKey);
+  assert.ok(changedShardKey);
+  assert.ok(unchangedShardKeys.length > 0);
+
+  // Same-length note swap keeps shard packing identical, so exactly one shard's bytes change.
+  fixture.storageData["lodVault.entries"].WORD010.note = `Changed: ${"z".repeat(120)}`;
+  fixture.storageData["lodVault.entries"].WORD010.updatedAt = "2025-02-02T00:00:00.000Z";
+
+  const writtenKeyBatches = spyOnSyncSet(fixture);
+  const result = await fixture.sync.SyncAdapter.pushAll();
+
+  assert.equal(result.ok, true);
+  const writtenShardKeys = writtenKeyBatches.flat().filter((key) => key.startsWith("lodVault.e."));
+  assert.deepEqual(writtenShardKeys, [changedShardKey]);
+  for (const key of unchangedShardKeys) {
+    assert.ok(result.skippedKeys.includes(key));
+    assert.deepEqual(fixture.syncStorageData[key], before[key]);
+  }
+  assert.equal(
+    fixture.syncStorageData[changedShardKey].find((entry) => entry.i === "WORD010").n,
+    `Changed: ${"z".repeat(120)}`
+  );
+});
+
+test("SyncAdapter.pushAll leaves unchanged compressed shards byte-identical", async () => {
+  const fixture = loadSyncScript({
+    local: {
+      "lodVault.entries": buildWordEntries(24),
+      "lodVault.settings": { autoMode: false, syncLanguages: ["en"] }
+    }
+  }, { enableCompression: true });
+
+  await fixture.sync.SyncAdapter.pushAll();
+  const before = { ...fixture.syncStorageData };
+  const shardKeys = Object.keys(before).filter((key) => key.startsWith("lodVault.e."));
+  assert.ok(shardKeys.length > 1);
+  assert.ok(shardKeys.every((key) => typeof before[key] === "string"));
+
+  fixture.storageData["lodVault.entries"].WORD010.note = `Changed: ${"z".repeat(120)}`;
+  fixture.storageData["lodVault.entries"].WORD010.updatedAt = "2025-02-02T00:00:00.000Z";
+
+  const writtenKeyBatches = spyOnSyncSet(fixture);
+  const result = await fixture.sync.SyncAdapter.pushAll();
+
+  assert.equal(result.ok, true);
+  const writtenShardKeys = writtenKeyBatches.flat().filter((key) => key.startsWith("lodVault.e."));
+  assert.equal(writtenShardKeys.length, 1);
+
+  const rewrittenShardKey = writtenShardKeys[0];
+  for (const key of shardKeys) {
+    if (key === rewrittenShardKey) {
+      assert.notEqual(fixture.syncStorageData[key], before[key]);
+    } else {
+      assert.equal(fixture.syncStorageData[key], before[key]);
+      assert.ok(result.skippedKeys.includes(key));
+    }
+  }
+
+  const decompressed = JSON.parse(await fixture.compress.decompress(fixture.syncStorageData[rewrittenShardKey]));
+  assert.equal(decompressed.find((entry) => entry.i === "WORD010").n, `Changed: ${"z".repeat(120)}`);
 });
