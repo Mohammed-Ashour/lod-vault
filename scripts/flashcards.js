@@ -1,7 +1,7 @@
 const state = {
   entries: [],
   deck: [],
-  filter: "study",
+  filter: "today",
   revealed: false,
   ratingInProgress: false,
   index: 0,
@@ -19,13 +19,12 @@ const state = {
   stats: { streak: 0, todayCount: 0, dueCount: 0, newCount: 0, learningCount: 0, masteredCount: 0 }
 };
 
-const FLASHCARD_SETTINGS_KEY = "lodVault.flashcardSettings";
+const FLASHCARD_SETTINGS_KEY = LodVaultStore.FLASHCARD_SETTINGS_KEY;
 const FLASHCARD_SESSION_KEY = "lodVault.flashcardSession";
-const DAILY_TARGETS = new Set([5, 10, 20]);
-const DECK_FILTERS = new Set(["due", "study", "favorites", "all"]);
+const DECK_FILTERS = new Set(["today", "due", "study", "favorites", "all"]);
 const ORDER_MODES = new Set(["smart", "shuffle", "sequential"]);
 const STUDY_MODES = new Set(["self", "mc"]);
-const DECK_LABELS = { due: "Due today", study: "Study list", favorites: "Favorites", all: "All saved" };
+const DECK_LABELS = { today: "Today", due: "Due today", study: "Study list", favorites: "Favorites", all: "All saved" };
 const elements = {};
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -39,6 +38,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.mcOptions = document.getElementById("mc-options");
   elements.cardHint = document.getElementById("card-hint");
   elements.emptyState = document.getElementById("empty-state");
+  elements.emptyTitle = document.getElementById("empty-title");
+  elements.emptyMessage = document.getElementById("empty-message");
+  elements.emptyStudyList = document.getElementById("empty-study-list");
+  elements.shortcutHint = document.getElementById("shortcut-hint");
   elements.cardShell = document.getElementById("card-shell");
   elements.progress = document.getElementById("progress");
   elements.sessionProgress = document.getElementById("session-progress");
@@ -86,6 +89,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.nextCard?.addEventListener("click", showNext);
   elements.ratingBar?.addEventListener("click", onRatingClick);
   elements.closeSummary?.addEventListener("click", closeSummary);
+  elements.emptyStudyList?.addEventListener("click", openStudyList);
   document.addEventListener("keydown", onKeyDown);
   elements.openPreview?.addEventListener("click", () => {
     chrome.tabs.create({ url: chrome.runtime.getURL("pages/preview.html") });
@@ -93,6 +97,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   chrome.storage?.onChanged?.addListener?.(handleStorageChange);
 
   await Promise.all([loadEntries(), loadFlashcardMeta(), loadFlashcardState()]);
+  chooseInitialDeck();
   computeStats();
   renderStats();
   renderResumeSession();
@@ -106,13 +111,21 @@ window.addEventListener("pagehide", () => {
 
 async function loadEntries() {
   state.entries = await LodVaultStore.getEntries();
+}
 
-  if (!state.entries.some((entry) => entry.study)) {
+function todayQueue() {
+  return LodVaultStore.buildTodayQueue(state.entries, state.flashcardMeta, {
+    dailyTarget: state.dailyTarget
+  });
+}
+
+function chooseInitialDeck() {
+  // Today is the default; a vault with nothing to feed it falls back to a deck
+  // that has cards. Deep links can request a specific deck and win over both.
+  if (!state.entries.some((entry) => entry.study) && !todayQueue().queue.length) {
     state.filter = state.entries.some((entry) => entry.favorite) ? "favorites" : "all";
   }
 
-  // Deep links (e.g. the popup's "Start review" banner) can request a
-  // specific deck; it wins over the fallback above.
   const urlDeck = new URLSearchParams(location.search).get("deck");
   if (urlDeck && DECK_FILTERS.has(urlDeck)) {
     state.filter = urlDeck;
@@ -136,8 +149,7 @@ async function loadFlashcardState() {
   if (!local) return;
 
   const saved = await local.get([FLASHCARD_SETTINGS_KEY, FLASHCARD_SESSION_KEY]);
-  const target = saved[FLASHCARD_SETTINGS_KEY]?.dailyTarget;
-  state.dailyTarget = DAILY_TARGETS.has(Number(target)) ? Number(target) : target === null ? 0 : 10;
+  state.dailyTarget = LodVaultStore.normalizeFlashcardDailyTarget(saved[FLASHCARD_SETTINGS_KEY]);
   state.resumableSession = saved[FLASHCARD_SESSION_KEY] || null;
   state.mode = STUDY_MODES.has(saved[FLASHCARD_SETTINGS_KEY]?.mode) ? saved[FLASHCARD_SETTINGS_KEY].mode : "self";
   if (elements.dailyTarget) elements.dailyTarget.value = state.dailyTarget ? String(state.dailyTarget) : "off";
@@ -151,7 +163,8 @@ async function saveSettings() {
 
 async function saveSession() {
   const local = chrome.storage?.local;
-  if (!local || !state.sessionActive) return;
+  // Today is rebuilt from the schedule on every visit, so it has nothing to resume.
+  if (!local || !state.sessionActive || state.filter === "today") return;
   await local.set({
     [FLASHCARD_SESSION_KEY]: {
       filter: state.filter,
@@ -255,10 +268,10 @@ function computeStats() {
     }
   }
 
-  const now = Date.now();
+  const now = new Date();
   for (const entry of state.entries) {
     const m = meta[entry.id];
-    if (!m || !m.totalReviews) {
+    if (entry.study && (!m || !m.totalReviews)) {
       newCount += 1;
     }
     if (isDue(entry, now)) {
@@ -318,9 +331,11 @@ async function onSessionSizeChange(event) {
 }
 
 async function onDailyTargetChange(event) {
-  state.dailyTarget = DAILY_TARGETS.has(Number(event.target.value)) ? Number(event.target.value) : 0;
+  const target = Number(event.target.value);
+  state.dailyTarget = LodVaultStore.FLASHCARD_DAILY_TARGETS.includes(target) ? target : 0;
   await saveSettings();
   renderStats();
+  if (state.filter === "today" && !state.sessionResults.length) rebuildDeck();
 }
 
 function onModeChange(event) {
@@ -341,6 +356,8 @@ async function handleStorageChange(changes, areaName) {
   await loadFlashcardMeta();
   computeStats();
   renderStats();
+  // A finished session stays on its summary until the learner closes it.
+  if (elements.summaryOverlay && !elements.summaryOverlay.classList.contains("is-hidden")) return;
   if (state.sessionActive) {
     renderDeck();
   } else {
@@ -403,14 +420,17 @@ function onKeyDown(event) {
   }
 }
 
-function isDue(entry, now = Date.now()) {
-  const dueAt = state.flashcardMeta[entry?.id]?.dueAt;
-  const dueTime = Date.parse(dueAt || "");
-  return Number.isFinite(dueTime) && dueTime <= now;
+function isDue(entry, now = new Date()) {
+  return LodVaultStore.isFlashcardDue(state.flashcardMeta[entry?.id], now);
 }
 
 function makeDeck(entries) {
   let base = [];
+  if (state.filter === "today") {
+    // The queue is already in study order: due cards before new words.
+    const { queue } = todayQueue();
+    return state.orderMode === "shuffle" ? shuffle(queue) : queue;
+  }
   if (state.filter === "due") {
     base = entries.filter((entry) => isDue(entry));
   } else if (state.filter === "study") {
@@ -475,12 +495,13 @@ function rebuildDeck() {
   const baseDeck = makeDeck(state.entries);
   const size = state.sessionSize === "all" ? baseDeck.length : Number(state.sessionSize);
   state.sessionCards = baseDeck.slice(0, Math.min(size, baseDeck.length));
-  state.sessionActive = state.sessionCards.length > 0 && state.sessionSize !== "all";
+  state.sessionActive = state.sessionCards.length > 0 && (state.sessionSize !== "all" || state.filter === "today");
   state.sessionIndex = 0;
   state.sessionResults = [];
   state.deck = state.sessionActive ? state.sessionCards : baseDeck;
   if (state.sessionActive) void saveSession();
-  state.index = Math.min(state.index, Math.max(state.deck.length - 1, 0));
+  // A session always starts at its first card, whatever the last one reached.
+  state.index = state.sessionActive ? 0 : Math.min(state.index, Math.max(state.deck.length - 1, 0));
   state.revealed = false;
   renderDeck();
 }
@@ -522,6 +543,7 @@ function renderDeck() {
   }
 
   if (!entry) {
+    renderEmptyState();
     elements.emptyState?.classList.remove("is-hidden");
     elements.cardShell?.classList.add("is-hidden");
     elements.summaryOverlay?.classList.add("is-hidden");
@@ -583,7 +605,8 @@ function renderDeck() {
   }
 
   if (elements.mcOptions) {
-    const mcKey = state.mode === "mc" ? `${entry.id}:${state.direction}` : "";
+    // The session position is part of the key: a retried card can follow itself.
+    const mcKey = state.mode === "mc" ? `${entry.id}:${state.direction}:${state.sessionActive ? state.sessionIndex : ""}` : "";
     if (state.mcKey !== mcKey) {
       state.mcKey = mcKey;
       state.mcLocked = false;
@@ -603,14 +626,50 @@ function renderDeck() {
     elements.cardHint.textContent = state.mode === "mc" ? "Choose the correct answer." : "Click Reveal to show the answer.";
   }
 
-  if (elements.prevCard) elements.prevCard.disabled = state.sessionActive || count <= 1;
-  if (elements.nextCard) elements.nextCard.disabled = state.sessionActive || count <= 1;
+  if (elements.prevCard) elements.prevCard.disabled = !canNavigate();
+  if (elements.nextCard) elements.nextCard.disabled = !canNavigate();
 
   if (state.revealed && count > 0) {
     elements.ratingBar?.classList.remove("is-hidden");
   } else {
     elements.ratingBar?.classList.add("is-hidden");
   }
+
+  if (elements.shortcutHint) {
+    const shortcuts = [
+      state.mode === "mc" ? "1–4 choose" : "Space reveal",
+      canNavigate() ? "← → navigate" : "",
+      state.mode === "mc" ? "" : "1 / 2 / 3 rate",
+      "R flip direction"
+    ];
+    elements.shortcutHint.textContent = shortcuts.filter(Boolean).join(" · ");
+  }
+}
+
+function renderEmptyState() {
+  // With no Study words and nothing ever reviewed, Today never had work to finish.
+  const finishedToday = state.filter === "today" && state.entries.some((entry) => (
+    entry.study || state.flashcardMeta[entry.id]?.totalReviews
+  ));
+  if (elements.emptyTitle) {
+    elements.emptyTitle.textContent = finishedToday ? "All done for today." : "Nothing due here.";
+  }
+  if (elements.emptyMessage) {
+    elements.emptyMessage.textContent = finishedToday
+      ? "Come back tomorrow. Extra practice won't push your words further out."
+      : "No words available for this flashcard deck yet.";
+  }
+  elements.emptyStudyList?.classList.toggle(
+    "is-hidden",
+    !finishedToday || !state.entries.some((entry) => entry.study)
+  );
+}
+
+function openStudyList() {
+  state.filter = "study";
+  state.index = 0;
+  if (elements.deckFilter) elements.deckFilter.value = "study";
+  rebuildDeck();
 }
 
 function buildMeaningMarkup(entry) {
@@ -679,16 +738,43 @@ function toggleReveal() {
   renderDeck();
 }
 
+function canNavigate() {
+  return state.sessionActive
+    ? state.sessionCards.length - state.sessionIndex > 1
+    : state.deck.length > 1;
+}
+
+// Rated cards stay before sessionIndex and unrated ones from it onwards, which
+// is what progress, resume and the end of a session rely on. So moving through
+// a session rotates the unrated cards rather than moving the position.
+function rotateSessionCards(step) {
+  const cards = state.sessionCards;
+  if (step > 0) {
+    cards.push(...cards.splice(state.sessionIndex, 1));
+  } else {
+    cards.splice(state.sessionIndex, 0, cards.pop());
+  }
+  void saveSession();
+}
+
 function showPrevious() {
-  if (state.deck.length <= 1) return;
-  state.index = (state.index - 1 + state.deck.length) % state.deck.length;
+  if (!canNavigate() || state.ratingInProgress) return;
+  if (state.sessionActive) {
+    rotateSessionCards(-1);
+  } else {
+    state.index = (state.index - 1 + state.deck.length) % state.deck.length;
+  }
   state.revealed = false;
   renderDeck();
 }
 
 function showNext() {
-  if (state.deck.length <= 1) return;
-  state.index = (state.index + 1) % state.deck.length;
+  if (!canNavigate() || (state.sessionActive && state.ratingInProgress)) return;
+  if (state.sessionActive) {
+    rotateSessionCards(1);
+  } else {
+    state.index = (state.index + 1) % state.deck.length;
+  }
   state.revealed = false;
   renderDeck();
 }
@@ -738,6 +824,12 @@ async function rateCard(rating) {
 }
 
 async function recordRating(entry, rating) {
+  // Studying Today moves on from an older saved session, whose cards may now
+  // have been reviewed here.
+  if (state.filter === "today" && state.resumableSession) {
+    await dismissResumableSession();
+  }
+
   if (typeof LodVaultStore.recordFlashcardReview === "function") {
     await LodVaultStore.recordFlashcardReview(entry.id, rating, state.direction);
     await loadFlashcardMeta();
@@ -748,6 +840,10 @@ async function recordRating(entry, rating) {
   state.sessionResults.push({ entryId: entry.id, rating, direction: state.direction });
 
   if (state.sessionActive) {
+    // A missed word comes back once before the session ends.
+    if (rating === 1 && state.sessionCards.filter((card) => card.id === entry.id).length === 1) {
+      state.sessionCards.push(entry);
+    }
     state.sessionIndex += 1;
     if (state.sessionIndex >= state.sessionCards.length) {
       await clearSavedSession();

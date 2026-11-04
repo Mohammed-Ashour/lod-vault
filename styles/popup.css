@@ -66,6 +66,7 @@ code {
   text-overflow: ellipsis;
 }
 .today-summary.is-empty { color: var(--muted); font-weight: 400; }
+.today-activity { margin-top: 2px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .today-panel .btn-primary { flex-shrink: 0; }
 
 .popup-tabs {
@@ -713,7 +714,7 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 
 @media (max-height: 480px) {
   .today-panel { padding-block: 8px; }
-  .today-label { display: none; }
+  .today-label, .today-activity { display: none; }
   .today-summary { font-size: 18px; }
   .popup-feedback { height: 48px; }
   .search-source-switch { margin-top: 8px; }

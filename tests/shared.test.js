@@ -1337,3 +1337,169 @@ test("buildAnkiExport skips entries without a word", () => {
   assert.equal(lines.length, 5); // 4 header lines + 1 data line
   assert.match(lines[4], /^Haus\t/);
 });
+
+test("scheduler: due reviews grow the interval from the start of the local day", () => {
+  const { store } = loadSharedStore();
+  const now = new Date(2026, 5, 10, 20, 30);
+  const first = store.computeFlashcardDueAt({}, 2, now);
+  assert.equal(first.interval, 1);
+  assert.equal(new Date(first.dueAt).getTime(), new Date(2026, 5, 11).getTime());
+
+  const easy = store.computeFlashcardDueAt({}, 3, now);
+  assert.equal(easy.interval, 2);
+
+  const due = { interval: 4, dueAt: new Date(2026, 5, 10).toISOString() };
+  assert.equal(store.computeFlashcardDueAt(due, 2, now).interval, 8);
+  assert.equal(store.computeFlashcardDueAt(due, 3, now).interval, 10);
+  assert.equal(store.computeFlashcardDueAt(due, 1, now).interval, 1);
+});
+
+test("scheduler: practising early leaves the schedule alone unless the word was missed", () => {
+  const { store } = loadSharedStore();
+  const now = new Date(2026, 5, 10, 9);
+  const card = { interval: 4, dueAt: new Date(2026, 5, 12).toISOString() };
+
+  assert.deepEqual({ ...store.computeFlashcardDueAt(card, 2, now) }, card);
+  assert.deepEqual({ ...store.computeFlashcardDueAt(card, 3, now) }, card);
+
+  const missed = store.computeFlashcardDueAt(card, 1, now);
+  assert.equal(missed.interval, 1);
+  assert.equal(new Date(missed.dueAt).getTime(), new Date(2026, 5, 11).getTime());
+});
+
+test("scheduler: intervals stop at the cap", () => {
+  const { store } = loadSharedStore();
+  const now = new Date(2026, 5, 10);
+  const card = { interval: 300, dueAt: new Date(2026, 5, 1).toISOString() };
+  assert.equal(store.computeFlashcardDueAt(card, 3, now).interval, store.FLASHCARD_MAX_INTERVAL_DAYS);
+});
+
+test("a card is due for the whole local day, including older timestamped schedules", () => {
+  const { store } = loadSharedStore();
+  const morning = new Date(2026, 5, 10, 9);
+  assert.equal(store.isFlashcardDue({ dueAt: new Date(2026, 5, 10, 20).toISOString() }, morning), true);
+  assert.equal(store.isFlashcardDue({ dueAt: new Date(2026, 5, 11).toISOString() }, morning), false);
+  assert.equal(store.isFlashcardDue({}, morning), false);
+});
+
+test("repeated reviews in one sitting don't inflate the interval", async () => {
+  const { store } = loadSharedStore();
+  for (let index = 0; index < 5; index += 1) {
+    await store.recordFlashcardReview("HAUS1", 2, "fwd");
+  }
+  const meta = await store.getFlashcardMeta();
+  assert.equal(meta.HAUS1.interval, 1);
+  assert.equal(meta.HAUS1.totalReviews, 5);
+});
+
+test("streak survives until a whole day has been missed", () => {
+  const { store } = loadSharedStore();
+  const daysAgo = (days) => {
+    const date = new Date();
+    date.setDate(date.getDate() - days);
+    return store.toLocalDateKey(date);
+  };
+  assert.equal(store.computeFlashcardStreak([daysAgo(0), daysAgo(1)]), 2);
+  assert.equal(store.computeFlashcardStreak([daysAgo(1), daysAgo(2)]), 2);
+  assert.equal(store.computeFlashcardStreak([daysAgo(2), daysAgo(3)]), 0);
+  assert.equal(store.computeFlashcardStreak([]), 0);
+});
+
+test("Today queue: due first by age, new Study words fill the rest of the target", () => {
+  const { store } = loadSharedStore();
+  const now = new Date(2026, 5, 10, 9);
+  const entry = (id, extra = {}) => ({ id, word: id, study: true, ...extra });
+  const entries = [
+    entry("NEW2", { createdAt: "2026-06-02T00:00:00.000Z" }),
+    entry("NEW1", { createdAt: "2026-06-01T00:00:00.000Z" }),
+    entry("NEW3", { createdAt: "2026-06-03T00:00:00.000Z" }),
+    entry("HIST", { study: false, history: true }),
+    entry("DUE_RECENT"),
+    entry("DUE_OLD", { study: false, favorite: true }),
+    entry("LATER")
+  ];
+  const meta = {
+    DUE_RECENT: { totalReviews: 1, reviews: [], dueAt: new Date(2026, 5, 9).toISOString() },
+    DUE_OLD: { totalReviews: 1, reviews: [], dueAt: new Date(2026, 5, 1).toISOString() },
+    LATER: { totalReviews: 1, reviews: [], dueAt: new Date(2026, 5, 20).toISOString() }
+  };
+
+  const ids = (queue) => Array.from(queue, (item) => item.id);
+  const target4 = store.buildTodayQueue(entries, meta, { dailyTarget: 4, now });
+  assert.deepEqual(ids(target4.queue), ["DUE_OLD", "DUE_RECENT", "NEW1", "NEW2"]);
+  assert.equal(target4.dueCount, 2);
+  assert.equal(target4.newCount, 2);
+
+  // Due cards are never cut by the target.
+  const target1 = store.buildTodayQueue(entries, meta, { dailyTarget: 1, now });
+  assert.deepEqual(ids(target1.queue), ["DUE_OLD", "DUE_RECENT"]);
+
+  // Off means every Study word, and reviews already done today use up the target.
+  assert.equal(store.buildTodayQueue(entries, meta, { dailyTarget: 0, now }).newCount, 3);
+  const reviewed = {
+    ...meta,
+    LATER: { ...meta.LATER, reviews: [{ date: now.toISOString(), rating: 2 }] }
+  };
+  const afterOne = store.buildTodayQueue(entries, reviewed, { dailyTarget: 4, now });
+  assert.equal(afterOne.reviewedToday, 1);
+  assert.equal(afterOne.newCount, 1);
+});
+
+test("synced progress: the latest review wins, totals and history survive, and re-applying is a no-op", async () => {
+  const { store } = loadSharedStore();
+  await store.recordFlashcardReview("HAUS1", 2, "fwd");
+  const local = (await store.getFlashcardMeta()).HAUS1;
+  const later = new Date(Date.parse(local.lastReviewedAt) + 3600e3).toISOString();
+  const remote = {
+    HAUS1: {
+      reviews: [{ date: later, rating: 3, direction: "rev" }],
+      totalReviews: 1,
+      easyCount: 1,
+      lastReviewedAt: later,
+      dueAt: "2030-01-01T00:00:00.000Z",
+      interval: 9
+    },
+    BEEM1: {
+      reviews: [],
+      totalReviews: 4,
+      lastReviewedAt: later,
+      dueAt: "2030-01-01T00:00:00.000Z",
+      interval: 3
+    },
+    GONE1: { reviews: [], totalReviews: 1, lastReviewedAt: later, interval: 1 }
+  };
+
+  const first = await store.applyRemoteFlashcardMeta(remote, { GONE1: later });
+  assert.equal(first.changed, true);
+  const merged = await store.getFlashcardMeta();
+  assert.equal(merged.HAUS1.interval, 9);
+  assert.equal(merged.HAUS1.dueAt, "2030-01-01T00:00:00.000Z");
+  assert.equal(merged.HAUS1.reviews.length, 2);
+  assert.equal(merged.BEEM1.totalReviews, 4);
+  assert.equal(merged.GONE1, undefined);
+
+  const second = await store.applyRemoteFlashcardMeta(remote, { GONE1: later });
+  assert.equal(second.changed, false);
+
+  // An older record from another device can't roll the schedule back.
+  const stale = { HAUS1: { ...remote.HAUS1, lastReviewedAt: "2020-01-01T00:00:00.000Z", interval: 1 } };
+  await store.applyRemoteFlashcardMeta(stale, {});
+  assert.equal((await store.getFlashcardMeta()).HAUS1.interval, 9);
+});
+
+test("merging keeps reviews made in the same second and re-applying writes nothing", async () => {
+  const review = (date) => ({ date, rating: 2, direction: "fwd" });
+  const reviews = [review("2026-06-10T10:00:10.200Z"), review("2026-06-10T10:00:10.700Z")];
+  const { store, storageData } = loadSharedStore({
+    "lodVault.flashcardMeta": {
+      HAUS1: { reviews, totalReviews: 2, goodCount: 2, lastReviewedAt: "2026-06-10T10:00:10.700Z", dueAt: "2026-06-11T00:00:00.000Z", interval: 1 }
+    }
+  });
+  const remote = {
+    HAUS1: { reviews: [review("2026-06-10T10:00:10.000Z")], totalReviews: 2, goodCount: 2, lastReviewedAt: "2026-06-10T10:00:10.000Z", dueAt: "2026-06-11T00:00:00.000Z", interval: 1 }
+  };
+
+  const result = await store.applyRemoteFlashcardMeta(remote, {});
+  assert.equal(result.changed, false);
+  assert.equal(storageData["lodVault.flashcardMeta"].HAUS1.reviews.length, 2);
+});

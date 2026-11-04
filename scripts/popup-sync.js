@@ -52,6 +52,7 @@
         || key === "lodVault.s"
         || key === "lodVault.d"
         || key.startsWith("lodVault.e.")
+        || key.startsWith("lodVault.p.")
       ));
       const shardKeyCount = keys.filter((key) => key.startsWith("lodVault.e.")).length;
 

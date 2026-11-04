@@ -207,6 +207,7 @@
           || key === "lodVault.s"
           || key === "lodVault.d"
           || key.startsWith("lodVault.e.")
+          || key.startsWith("lodVault.p.")
         ));
         if (hasSyncVaultChange) {
           await ctx.sync.refreshDataStatus();
@@ -231,8 +232,11 @@
       const hasFlashcardMetaChange = Boolean(
         store.FLASHCARD_META_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.FLASHCARD_META_KEY)
       );
+      const hasFlashcardSettingsChange = Boolean(
+        store.FLASHCARD_SETTINGS_KEY && Object.prototype.hasOwnProperty.call(changes || {}, store.FLASHCARD_SETTINGS_KEY)
+      );
 
-      if (!hasEntriesChange && !hasSettingsChange && !hasPortableBackupChange && !hasHistoryImportStateChange && !hasFlashcardMetaChange) {
+      if (!hasEntriesChange && !hasSettingsChange && !hasPortableBackupChange && !hasHistoryImportStateChange && !hasFlashcardMetaChange && !hasFlashcardSettingsChange) {
         return;
       }
 
@@ -249,6 +253,10 @@
 
       if (hasPortableBackupChange) {
         await ctx.backup.refreshPortableBackupMeta();
+      }
+
+      if (hasFlashcardSettingsChange) {
+        await ctx.study.refreshStudyCard();
       }
 
       if (hasFlashcardMetaChange) {
@@ -298,6 +306,7 @@
       elements.exportHtml = document.getElementById("export-html");
       elements.exportAnki = document.getElementById("export-anki");
       elements.studySummary = document.getElementById("study-summary");
+      elements.studyActivity = document.getElementById("study-activity");
       elements.startDueReview = document.getElementById("start-due-review");
       elements.backupWarning = document.getElementById("backup-warning");
       elements.backupWarningMessage = document.getElementById("backup-warning-message");

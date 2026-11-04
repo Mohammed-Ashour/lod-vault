@@ -1217,3 +1217,252 @@ test("SyncAdapter.pushAll leaves unchanged compressed shards byte-identical", as
   const decompressed = JSON.parse(await fixture.compress.decompress(fixture.syncStorageData[rewrittenShardKey]));
   assert.equal(decompressed.find((entry) => entry.i === "WORD010").n, `Changed: ${"z".repeat(120)}`);
 });
+
+function makeCard(overrides = {}) {
+  const lastReviewedAt = "2026-06-10T09:00:00.000Z";
+  return {
+    reviews: [{ date: lastReviewedAt, rating: 2, direction: "fwd" }],
+    totalReviews: 3,
+    goodCount: 3,
+    lastReviewedAt,
+    dueAt: "2026-06-12T00:00:00.000Z",
+    interval: 2,
+    ...overrides
+  };
+}
+
+function progressKeys(data) {
+  return Object.keys(data).filter((key) => key.startsWith("lodVault.p."));
+}
+
+test("review progress travels to another device", async () => {
+  for (const enableCompression of [false, true]) {
+    const laptop = loadSyncScript({
+      "lodVault.entries": { HAUS1: makeLocalEntry() },
+      "lodVault.flashcardMeta": { HAUS1: makeCard() }
+    }, { enableCompression });
+    await laptop.sync.SyncAdapter.pushAll();
+    assert.equal(progressKeys(laptop.syncStorageData).length, 1);
+
+    const desktop = loadSyncScript({ sync: laptop.syncStorageData }, { enableCompression });
+    await desktop.sync.SyncAdapter.init();
+
+    const card = (await desktop.store.getFlashcardMeta()).HAUS1;
+    assert.equal(card.interval, 2);
+    assert.equal(card.totalReviews, 3);
+    assert.equal(card.dueAt, "2026-06-12T00:00:00.000Z");
+    assert.equal(card.goodCount, 3);
+    assert.deepEqual({ ...card.reviews[0] }, { date: "2026-06-10T09:00:00.000Z", rating: 2, direction: "fwd" });
+  }
+});
+
+test("merging progress from another device settles without further writes", async () => {
+  const laptop = loadSyncScript({
+    "lodVault.entries": { HAUS1: makeLocalEntry() },
+    "lodVault.flashcardMeta": { HAUS1: makeCard() }
+  });
+  await laptop.sync.SyncAdapter.pushAll();
+
+  const desktop = loadSyncScript({
+    local: { "lodVault.entries": { HAUS1: makeLocalEntry() } },
+    sync: laptop.syncStorageData
+  });
+  await desktop.sync.SyncAdapter.pullAll({ repush: true });
+
+  let writes = 0;
+  const originalSet = desktop.chrome.storage.sync.set;
+  desktop.chrome.storage.sync.set = async (values) => {
+    writes += 1;
+    return originalSet(values);
+  };
+  const result = await desktop.sync.SyncAdapter.pullAll({ repush: true });
+
+  assert.equal(result.changed, false);
+  assert.equal(writes, 0);
+});
+
+test("a device with history pushes it during merge without writing the manifest", async () => {
+  const words = loadSyncScript({ "lodVault.entries": { HAUS1: makeLocalEntry() } });
+  await words.sync.SyncAdapter.pushAll();
+  const manifest = structuredClone(words.syncStorageData["lodVault.m"]);
+
+  const device = loadSyncScript({
+    local: {
+      "lodVault.entries": { HAUS1: makeLocalEntry() },
+      "lodVault.flashcardMeta": { HAUS1: makeCard() }
+    },
+    sync: words.syncStorageData
+  });
+  await device.sync.SyncAdapter.init();
+
+  assert.equal(progressKeys(device.syncStorageData).length, 1);
+  assert.deepEqual(device.syncStorageData["lodVault.m"], manifest);
+});
+
+test("reviewing one word rewrites one progress item", async () => {
+  const entries = {};
+  const meta = {};
+  for (let index = 0; index < 200; index += 1) {
+    const id = `WORD${index}`;
+    entries[id] = makeLocalEntry({ id, word: id, url: `https://lod.lu/artikel/${id}`, note: "", example: "" });
+    meta[id] = makeCard();
+  }
+  const device = loadSyncScript({ "lodVault.entries": entries, "lodVault.flashcardMeta": meta });
+  await device.sync.SyncAdapter.pushAll();
+  assert.ok(progressKeys(device.syncStorageData).length > 1);
+
+  meta.WORD7 = makeCard({ totalReviews: 4, interval: 4, lastReviewedAt: "2026-06-12T09:00:00.000Z" });
+  await device.chrome.storage.local.set({ "lodVault.flashcardMeta": meta });
+
+  const writes = [];
+  const originalSet = device.chrome.storage.sync.set;
+  device.chrome.storage.sync.set = async (values) => {
+    writes.push(...Object.keys(values));
+    return originalSet(values);
+  };
+  const result = await device.sync.SyncAdapter.pushProgress();
+
+  assert.equal(result.ok, true);
+  assert.equal(writes.length, 1);
+  assert.match(writes[0], /^lodVault\.p\./);
+});
+
+test("progress gives way to words when sync fills up, keeping the most recent reviews longest", async () => {
+  const note = "x".repeat(600);
+  const makeWord = (index) => {
+    const id = `WORD${String(index).padStart(3, "0")}`;
+    return makeLocalEntry({ id, word: id, url: `https://lod.lu/artikel/${id}`, note });
+  };
+  const entries = {};
+  const meta = {};
+  for (let index = 0; index < 90; index += 1) {
+    const word = makeWord(index);
+    entries[word.id] = word;
+    meta[word.id] = makeCard({ lastReviewedAt: new Date(Date.UTC(2026, 0, 1 + index)).toISOString() });
+  }
+
+  const device = loadSyncScript({ "lodVault.entries": entries, "lodVault.flashcardMeta": meta });
+  assert.equal((await device.sync.SyncAdapter.pushAll()).ok, true);
+  const syncedIds = () => JSON.stringify(progressKeys(device.syncStorageData).map((key) => device.syncStorageData[key]));
+  assert.match(syncedIds(), /WORD089/);
+  const before = progressKeys(device.syncStorageData).length;
+  assert.ok(before > 0);
+
+  // These words only fit if progress shrinks to make room.
+  for (let index = 90; index < 112; index += 1) {
+    const word = makeWord(index);
+    entries[word.id] = word;
+  }
+  await device.chrome.storage.local.set({ "lodVault.entries": entries });
+  const result = await device.sync.SyncAdapter.pushAll();
+
+  assert.equal(result.ok, true);
+  const stats = await device.sync.inspectSyncStorage();
+  assert.equal(stats.entryCount, 112);
+  assert.ok(stats.bytesUsed <= 100 * 1024);
+  const shrunk = syncedIds();
+  assert.ok(shrunk.length < 3 || /WORD089/.test(shrunk));
+  assert.doesNotMatch(shrunk, /WORD000/);
+});
+
+test("progress for deleted words isn't pushed or restored", async () => {
+  const deletedAt = "2026-06-11T00:00:00.000Z";
+  const laptop = loadSyncScript({
+    "lodVault.entries": { HAUS1: makeLocalEntry() },
+    "lodVault.flashcardMeta": { HAUS1: makeCard(), GONE1: makeCard() }
+  });
+  await laptop.sync.SyncAdapter.pushAll();
+  const device = loadSyncScript({ sync: laptop.syncStorageData });
+  await device.sync.SyncAdapter.pullAll({ repush: false });
+  assert.deepEqual(Object.keys(await device.store.getFlashcardMeta()), ["HAUS1"]);
+
+  const tombstoned = loadSyncScript({
+    local: { "lodVault.deleted": { HAUS1: deletedAt } },
+    sync: laptop.syncStorageData
+  });
+  await tombstoned.sync.SyncAdapter.pullAll({ repush: false });
+  assert.deepEqual(Object.keys(await tombstoned.store.getFlashcardMeta()), []);
+});
+
+test("sync capacity stats treat progress as space words can still use", async () => {
+  const entries = { HAUS1: makeLocalEntry() };
+  const plain = loadSyncScript({ "lodVault.entries": entries });
+  await plain.sync.SyncAdapter.pushAll();
+  const withProgress = loadSyncScript({
+    "lodVault.entries": entries,
+    "lodVault.flashcardMeta": { HAUS1: makeCard() }
+  });
+  await withProgress.sync.SyncAdapter.pushAll();
+
+  const plainStats = await plain.sync.inspectSyncStorage();
+  const progressStats = await withProgress.sync.inspectSyncStorage();
+  assert.ok(progressStats.bytesUsedVault > plainStats.bytesUsedVault);
+  assert.equal(progressStats.estimatedRemaining, plainStats.estimatedRemaining);
+});
+
+test("pushProgress doesn't decompress word shards", async () => {
+  const device = loadSyncScript({
+    "lodVault.entries": { HAUS1: makeLocalEntry() },
+    "lodVault.flashcardMeta": { HAUS1: makeCard() }
+  }, { enableCompression: true });
+  await device.sync.SyncAdapter.pushAll();
+
+  let decompressed = 0;
+  const original = device.compress.decompress;
+  device.compress.decompress = async (value) => {
+    decompressed += 1;
+    return original(value);
+  };
+  const result = await device.sync.SyncAdapter.pushProgress();
+
+  assert.equal(result.mode, "progress");
+  assert.equal(decompressed, 0);
+});
+
+test("progress bucket keys keep their number when a bucket between them is empty", async () => {
+  const hash = (id) => [...id].reduce((total, char) => (total * 31 + char.charCodeAt(0)) >>> 0, 0);
+  const padding = "x".repeat(2000);
+  const ids = { 0: [], 2: [] };
+  for (let index = 0; ids[0].length < 3 || ids[2].length < 3; index += 1) {
+    const id = `${padding}${index}`;
+    const bucket = hash(id) % 3;
+    if (ids[bucket] && ids[bucket].length < 3) ids[bucket].push(id);
+  }
+
+  const entries = {};
+  const meta = {};
+  for (const id of [...ids[0], ...ids[2]]) {
+    entries[id] = { id, word: "Word", url: "https://lod.lu/artikel/WORD", study: true };
+    meta[id] = makeCard();
+  }
+  const device = loadSyncScript({ "lodVault.entries": entries, "lodVault.flashcardMeta": meta });
+  await device.chrome.storage.sync.set({ "lodVault.m": { v: 4, n: 0 } });
+  await device.sync.SyncAdapter.pushProgress();
+
+  assert.deepEqual(progressKeys(device.syncStorageData).sort(), ["lodVault.p.0", "lodVault.p.2"]);
+});
+
+test("pulls don't rebuild progress for words dropped for size", async () => {
+  const entries = {};
+  const meta = {};
+  for (let index = 0; index < 500; index += 1) {
+    const id = `WORD${String(index).padStart(3, "0")}`;
+    entries[id] = makeLocalEntry({ id, word: id, url: `https://lod.lu/artikel/${id}`, note: "", example: "", visitCount: 1 });
+    meta[id] = makeCard({ lastReviewedAt: new Date(Date.UTC(2025, 0, 1 + index)).toISOString() });
+  }
+  const device = loadSyncScript({ "lodVault.entries": entries, "lodVault.flashcardMeta": meta });
+  await device.sync.SyncAdapter.pushAll();
+  const kept = Object.keys(device.syncStorageData).length;
+  assert.ok(kept > 1);
+
+  let pushes = 0;
+  const originalGet = device.chrome.storage.sync.get;
+  device.chrome.storage.sync.get = async (keys) => {
+    pushes += 1;
+    return originalGet(keys);
+  };
+  await device.sync.SyncAdapter.pullAll({ repush: true });
+
+  // One read for the pull's own state; a rebuild would read again.
+  assert.equal(pushes, 1);
+});

@@ -27,6 +27,7 @@
             <div class="field">
               <label for="deck-filter">Deck</label>
               <select id="deck-filter" class="select">
+                <option value="today">Today</option>
                 <option value="due">Due today</option>
                 <option value="study">Study list</option>
                 <option value="favorites">Favorites</option>
@@ -90,8 +91,9 @@
     </section>
 
     <section id="empty-state" class="empty-state is-hidden">
-      <h2>Nothing due here.</h2>
-      <p>No words available for this flashcard deck yet.</p>
+      <h2 id="empty-title">Nothing due here.</h2>
+      <p id="empty-message">No words available for this flashcard deck yet.</p>
+      <button id="empty-study-list" class="btn-ghost is-hidden" type="button">Practise the Study list</button>
     </section>
 
     <section id="card-shell" class="card-shell is-hidden">
@@ -133,6 +135,8 @@
         <button class="btn-ghost rating-button rating-good" data-rating="2" title="Good (2)">Good <small>2</small></button>
         <button class="btn-ghost rating-button rating-easy" data-rating="3" title="Easy (3)">Easy <small>3</small></button>
       </div>
+
+      <p id="shortcut-hint" class="shortcut-hint"></p>
     </section>
 
     <section id="summary-overlay" class="summary-overlay is-hidden">

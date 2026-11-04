@@ -15,6 +15,15 @@
   const SYNC_SETTINGS_KEY = "lodVault.s";
   const SYNC_DELETED_KEY = "lodVault.d";
   const SYNC_ENTRY_PREFIX = "lodVault.e.";
+  // Review progress lives in its own keys, outside the manifest and format
+  // version, so versions that don't know about it leave it alone. Each key is
+  // self-describing and only ever adds to what a device knows.
+  const SYNC_PROGRESS_PREFIX = "lodVault.p.";
+  // Words always win the quota. Progress takes what they leave, up to a limit,
+  // and keeps a margin so note edits don't immediately hit the ceiling.
+  const SYNC_PROGRESS_MAX_BYTES = 24 * 1024;
+  const SYNC_PROGRESS_RESERVE_BYTES = 8 * 1024;
+  const SYNC_PROGRESS_BUCKET_BYTES = 5000;
   const SYNC_SHARD_SOFT_LIMIT = 7000;
   const SYNC_ITEM_HARD_LIMIT = 8192;
   const SYNC_TOTAL_HARD_LIMIT = 100 * 1024;
@@ -295,6 +304,96 @@
     }
 
     return normalizeEntry(expanded);
+  }
+
+  function compactProgress(id, card) {
+    const lastReview = card.reviews[card.reviews.length - 1];
+    const compact = {
+      i: id,
+      n: card.totalReviews,
+      l: isoToUnix(card.lastReviewedAt),
+      d: isoToUnix(card.dueAt),
+      v: card.interval
+    };
+    if (card.hardCount) compact.h = card.hardCount;
+    if (card.goodCount) compact.g = card.goodCount;
+    if (card.easyCount) compact.e = card.easyCount;
+    // Only the latest review travels. That is enough for today's count and the
+    // streak on other devices without spending quota on the whole log.
+    if (lastReview) compact.r = [isoToUnix(lastReview.date), lastReview.rating, lastReview.direction === "rev" ? 1 : 0];
+    return compact;
+  }
+
+  function expandProgress(compact = {}) {
+    const lastReviewedAt = unixToIso(compact.l);
+    const review = Array.isArray(compact.r) && unixToIso(compact.r[0])
+      ? [{ date: unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd" }]
+      : [];
+    return store.normalizeFlashcardMeta({
+      reviews: review,
+      totalReviews: compact.n,
+      hardCount: compact.h,
+      goodCount: compact.g,
+      easyCount: compact.e,
+      lastReviewedAt,
+      dueAt: unixToIso(compact.d),
+      interval: compact.v
+    });
+  }
+
+  function bucketForId(id, bucketCount) {
+    let hash = 0;
+    for (let index = 0; index < id.length; index += 1) {
+      hash = (hash * 31 + id.charCodeAt(index)) >>> 0;
+    }
+    return hash % bucketCount;
+  }
+
+  // Buckets are keyed by a hash of the word id, so a review rewrites one sync
+  // item rather than shifting every item after it. Sync write limits are low.
+  // Empty buckets stay in place to keep each bucket's number, and so its key.
+  function bucketProgress(records) {
+    const totalBytes = getByteLength(records);
+    let bucketCount = Math.max(1, Math.ceil(totalBytes / SYNC_PROGRESS_BUCKET_BYTES));
+
+    for (;;) {
+      const buckets = Array.from({ length: bucketCount }, () => []);
+      for (const record of records) {
+        buckets[bucketForId(record.i, bucketCount)].push(record);
+      }
+      if (bucketCount >= records.length || buckets.every((bucket) => getByteLength(bucket) <= SYNC_SHARD_SOFT_LIMIT)) {
+        return buckets;
+      }
+      bucketCount += 1;
+    }
+  }
+
+  async function buildProgressPayload(flashcardMeta, entryMap, budgetBytes) {
+    const budget = Math.min(SYNC_PROGRESS_MAX_BYTES, budgetBytes);
+    if (budget <= 0) return {};
+
+    let records = Object.entries(flashcardMeta || {})
+      .filter(([id, card]) => entryMap?.[id] && card.totalReviews)
+      .sort(([leftId, left], [rightId, right]) => (
+        isoToUnix(right.lastReviewedAt) - isoToUnix(left.lastReviewedAt)
+        || leftId.localeCompare(rightId)
+      ))
+      .map(([id, card]) => compactProgress(id, card));
+
+    // Most recently studied words survive when progress doesn't all fit.
+    while (records.length) {
+      const sorted = [...records].sort((left, right) => left.i.localeCompare(right.i));
+      const payload = {};
+      const buckets = bucketProgress(sorted);
+      for (let index = 0; index < buckets.length; index += 1) {
+        if (!buckets[index].length) continue;
+        payload[`${SYNC_PROGRESS_PREFIX}${index}`] = await compressShard(buckets[index]);
+      }
+      const bytes = estimateSyncWriteSize(payload);
+      if (bytes <= budget) return payload;
+      records = records.slice(0, Math.floor(records.length * (budget / bytes) * 0.9));
+    }
+    return {};
   }
 
   function shardEntries(entryMap = {}, syncLanguages = DEFAULT_SETTINGS.syncLanguages) {
@@ -612,7 +711,7 @@
   }
 
   async function getLocalState() {
-    const data = await chrome.storage.local.get([STORAGE_KEY, LOCAL_SETTINGS_KEY, LOCAL_DELETED_KEY]);
+    const data = await chrome.storage.local.get([STORAGE_KEY, LOCAL_SETTINGS_KEY, LOCAL_DELETED_KEY, store.FLASHCARD_META_KEY]);
     const rawEntries = data[STORAGE_KEY] && typeof data[STORAGE_KEY] === "object" ? data[STORAGE_KEY] : {};
     const rawSettings = data[LOCAL_SETTINGS_KEY] && typeof data[LOCAL_SETTINGS_KEY] === "object" ? data[LOCAL_SETTINGS_KEY] : {};
     const settings = normalizeSettings(rawSettings);
@@ -623,7 +722,8 @@
       rawEntries: normalizeEntryMap(rawEntries),
       rawSettings,
       settings,
-      deletedMap
+      deletedMap,
+      flashcardMeta: store.normalizeFlashcardMetaMap(data[store.FLASHCARD_META_KEY])
     };
   }
 
@@ -685,6 +785,15 @@
       shards.push(await decompressShard(data[key]));
     }
 
+    const progressKeys = getProgressKeys(data);
+    const progress = {};
+    for (const key of progressKeys) {
+      for (const record of await decompressShard(data[key])) {
+        const id = cleanText(record?.i);
+        if (id) progress[id] = expandProgress(record);
+      }
+    }
+
     const extraShardKeys = presentShardKeys.filter((key) => !expectedShardKeys.includes(key));
     const rawShardEntries = flattenShardEntries(shards);
     const settings = normalizeSyncSettings(rawSettings, manifest);
@@ -728,6 +837,8 @@
       compactShards,
       entryShardMap,
       entries,
+      progressKeys,
+      progress,
       hasSyncData
     };
   }
@@ -798,7 +909,34 @@
       || key === SYNC_SETTINGS_KEY
       || key === SYNC_DELETED_KEY
       || key.startsWith(SYNC_ENTRY_PREFIX)
+      || key.startsWith(SYNC_PROGRESS_PREFIX)
     ));
+  }
+
+  function omitKeys(data = {}, keys = []) {
+    const remaining = { ...data };
+    for (const key of keys) delete remaining[key];
+    return remaining;
+  }
+
+  // Whatever the rest of sync storage leaves over, minus the safety margin.
+  function getProgressBudget(nonProgressData) {
+    return SYNC_TOTAL_HARD_LIMIT - SYNC_PROGRESS_RESERVE_BYTES - estimateSyncWriteSize(nonProgressData);
+  }
+
+  // Writes are checked against old and new data together, so progress that has
+  // to give way for words must be gone before the words are written.
+  async function removeStaleProgress(syncState, payload) {
+    const staleKeys = syncState.progressKeys.filter((key) => !(key in payload));
+    if (!staleKeys.length) return syncState.data;
+    try {
+      await chrome.storage.sync.remove(staleKeys);
+    } catch (error) {
+      if (!isRecoverableSyncError(error)) throw error;
+      console.warn("[LODVault] Could not clear old sync progress:", error);
+      return syncState.data;
+    }
+    return omitKeys(syncState.data, staleKeys);
   }
 
   async function getActualSyncBytesInUse(keys = null) {
@@ -985,13 +1123,22 @@
 
     Object.assign(nextSyncData, buildMetadataPayload(localState.settings, shards.length));
 
+    const untouchedData = omitKeys(syncState.data, [
+      ...syncState.progressKeys,
+      ...syncState.presentShardKeys,
+      ...Object.keys(nextSyncData)
+    ]);
+    const progressBudget = getProgressBudget({ ...untouchedData, ...nextSyncData });
+    Object.assign(nextSyncData, await buildProgressPayload(localState.flashcardMeta, localState.rawEntries, progressBudget));
+
     const removeKeys = syncState.presentShardKeys.filter((key) => !(key in nextSyncData));
     if (!nextSyncData[SYNC_DELETED_KEY] && syncState.data?.[SYNC_DELETED_KEY]) {
       removeKeys.push(SYNC_DELETED_KEY);
     }
 
+    const currentData = await removeStaleProgress(syncState, nextSyncData);
     const writeResult = await writeSyncPayload(nextSyncData, {
-      currentData: syncState.data,
+      currentData,
       removeKeys
     });
 
@@ -1001,6 +1148,63 @@
       shardCount: shards.length,
       mode: writeResult.ok ? "full" : "full-failed"
     };
+  }
+
+  // Touches only progress keys and leaves the manifest alone, so its writes
+  // don't wake other devices' full pull when nothing they hold has changed.
+  function getProgressKeys(data = {}) {
+    return Object.keys(data).filter((key) => key.startsWith(SYNC_PROGRESS_PREFIX));
+  }
+
+  // Runs after every review, and writes only its own keys, so it reads what it
+  // needs directly instead of decompressing every word shard.
+  async function pushProgress() {
+    const data = await chrome.storage.sync.get(null);
+    if (!data[SYNC_MANIFEST_KEY]) {
+      return pushAll();
+    }
+
+    const local = await chrome.storage.local.get([STORAGE_KEY, store.FLASHCARD_META_KEY]);
+    const progressKeys = getProgressKeys(data);
+    const budget = getProgressBudget(omitKeys(data, progressKeys));
+    const payload = await buildProgressPayload(
+      store.normalizeFlashcardMetaMap(local[store.FLASHCARD_META_KEY]),
+      local[STORAGE_KEY] || {},
+      budget
+    );
+    const currentData = await removeStaleProgress({ data, progressKeys }, payload);
+    const writeResult = await writeSyncPayload(payload, { currentData });
+
+    return {
+      ...writeResult,
+      mode: writeResult.ok ? "progress" : "progress-failed"
+    };
+  }
+
+  // When progress is at its size limit, words older than the oldest one kept were
+  // dropped for space. Pushing can't help them, so they don't count as unsynced.
+  function hasProgressToPush(localMeta, syncState, entryMap) {
+    const remoteProgress = syncState.progress || {};
+    const progressKeys = syncState.progressKeys || [];
+    const usedBytes = estimateSyncWriteSize(
+      Object.fromEntries(progressKeys.map((key) => [key, syncState.data[key]]))
+    );
+    const capacity = Math.min(
+      SYNC_PROGRESS_MAX_BYTES,
+      getProgressBudget(omitKeys(syncState.data, progressKeys))
+    );
+    const remoteTimes = Object.values(remoteProgress).map((card) => isoToUnix(card.lastReviewedAt));
+    const oldestKept = usedBytes >= capacity * 0.75
+      ? remoteTimes.reduce((oldest, time) => Math.min(oldest, time), Infinity)
+      : 0;
+
+    return Object.entries(localMeta || {}).some(([id, card]) => {
+      if (!entryMap?.[id] || !card.totalReviews) return false;
+      const remote = remoteProgress[id];
+      if (!remote) return isoToUnix(card.lastReviewedAt) > oldestKept;
+      return remote.totalReviews !== card.totalReviews
+        || isoToUnix(remote.lastReviewedAt) !== isoToUnix(card.lastReviewedAt);
+    });
   }
 
   async function pullAll(options = {}) {
@@ -1043,20 +1247,36 @@
         })();
 
     let pushResult = null;
+    const progressResult = await store.applyRemoteFlashcardMeta(
+      syncState.progress,
+      store.mergeDeletedMaps(localState.deletedMap, syncState.deletedMap)
+    );
+    const needsProgressPush = hasProgressToPush(
+      progressResult.meta,
+      syncState,
+      applyResult.entries || localState.rawEntries
+    );
+
     const shouldRepush = !syncState.partialRead && (applyResult.changed || syncState.needsMigration);
-    if (shouldRepush && options.repush !== false) {
+    if (options.repush !== false && (shouldRepush || (needsProgressPush && !syncState.partialRead))) {
       const repushDelayMs = Math.max(0, Number(options.repushDelayMs ?? DEFAULT_REPUSH_DELAY_MS) || 0);
       if (repushDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, repushDelayMs));
       }
-      pushResult = await pushAll();
+      // Progress is best effort and retried on later pushes, so its outcome says
+      // nothing about whether the vault itself is syncing.
+      if (shouldRepush) {
+        pushResult = await pushAll();
+      } else {
+        await pushProgress();
+      }
     }
 
     return {
       ok: true,
       ...(pushResult ? { pushed: true } : {}),
       ...(pushResult?.ok === false ? pushResult : {}),
-      changed: Boolean(applyResult.changed),
+      changed: Boolean(applyResult.changed || progressResult.changed),
       entryCount: Number(applyResult.entryCount) || 0,
       partialRead: syncState.partialRead,
       missingShardKeys: syncState.missingShardKeys,
@@ -1167,6 +1387,10 @@
       removeKeys
     });
 
+    if (writeResult.reason === "quota-exceeded" && syncState.progressKeys.length) {
+      return pushAll();
+    }
+
     return {
       ...writeResult,
       entryCount: Object.keys(localState.entries).length,
@@ -1190,6 +1414,10 @@
     const writeResult = await writeSyncPayload(payload, {
       currentData: syncState.data
     });
+
+    if (writeResult.reason === "quota-exceeded" && syncState.progressKeys.length) {
+      return pushAll();
+    }
 
     return {
       ...writeResult,
@@ -1223,6 +1451,9 @@
         ? measuredVaultBytesUsed
         : estimateSyncWriteSize(lodVaultData);
       const bytesUsedOther = Math.max(0, bytesUsedTotal - bytesUsedVault);
+      const bytesUsedProgress = estimateSyncWriteSize(
+        Object.fromEntries((syncState.progressKeys || []).map((key) => [key, syncState.data[key]]))
+      );
       const itemCountTotal = Object.keys(syncState.data || {}).length;
       const itemCountVault = lodVaultKeys.length;
       const itemCountOther = Math.max(0, itemCountTotal - itemCountVault);
@@ -1235,9 +1466,11 @@
       const langCount = Array.isArray(syncState.manifest?.l) ? syncState.manifest.l.length : 3;
 
       let estimatedRemaining = capacityByCount[Math.min(langCount, 3)] || 700;
-      if (entryCount > 0 && bytesUsedVault > 0) {
-        const avgBytesPerEntry = bytesUsedVault / entryCount;
-        estimatedRemaining = Math.floor(bytesRemaining / Math.max(1, avgBytesPerEntry));
+      // Progress gives way to words, so its space still counts as free for them.
+      const bytesUsedWords = bytesUsedVault - bytesUsedProgress;
+      if (entryCount > 0 && bytesUsedWords > 0) {
+        const avgBytesPerEntry = bytesUsedWords / entryCount;
+        estimatedRemaining = Math.floor((bytesRemaining + bytesUsedProgress) / Math.max(1, avgBytesPerEntry));
       }
 
       return {
@@ -1300,6 +1533,7 @@
     SYNC_SETTINGS_KEY,
     SYNC_DELETED_KEY,
     SYNC_ENTRY_PREFIX,
+    SYNC_PROGRESS_PREFIX,
     SYNC_SHARD_SOFT_LIMIT,
     SYNC_ITEM_HARD_LIMIT,
     SYNC_TOTAL_HARD_LIMIT,
@@ -1318,6 +1552,7 @@
       pullAll,
       pushEntry,
       pushSettings,
+      pushProgress,
       destroy
     }
   };

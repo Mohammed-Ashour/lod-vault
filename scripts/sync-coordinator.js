@@ -5,16 +5,21 @@
     const syncAdapter = options.syncAdapter || syncNamespace.SyncAdapter;
     const logger = options.logger || console;
     const pushDebounceMs = Math.max(0, Number(options.pushDebounceMs ?? globalThis.__LOD_SYNC_PUSH_DEBOUNCE_MS__ ?? 2000) || 0);
+    // A review session rates a card every few seconds, and sync allows only so
+    // many writes a minute. Short of the 30s after which a worker may be stopped.
+    const progressDebounceMs = pushDebounceMs * 5;
     const suppressWindowMs = Math.max(pushDebounceMs * 2, 50);
     const localSyncKeys = new Set([
       store.STORAGE_KEY,
       store.SETTINGS_KEY,
-      store.DELETED_KEY
+      store.DELETED_KEY,
+      store.FLASHCARD_META_KEY
     ]);
     const syncManifestKey = syncNamespace.SYNC_MANIFEST_KEY;
     const syncSettingsKey = syncNamespace.SYNC_SETTINGS_KEY;
     const syncDeletedKey = syncNamespace.SYNC_DELETED_KEY;
     const syncEntryPrefix = syncNamespace.SYNC_ENTRY_PREFIX;
+    const syncProgressPrefix = syncNamespace.SYNC_PROGRESS_PREFIX;
 
     let syncTaskQueue = Promise.resolve();
     let syncInitPromise = null;
@@ -60,6 +65,7 @@
         || key === syncSettingsKey
         || key === syncDeletedKey
         || key.startsWith(syncEntryPrefix)
+        || (syncProgressPrefix && key.startsWith(syncProgressPrefix))
       ));
     }
 
@@ -110,6 +116,10 @@
       const settingsChange = changes?.[store.SETTINGS_KEY];
       const deletedChange = changes?.[store.DELETED_KEY];
       const settingsKind = getSettingsChangeKind(settingsChange);
+
+      if (changes?.[store.FLASHCARD_META_KEY] && !entryChange && !deletedChange && (!settingsKind || settingsKind === "none")) {
+        return { type: "progress" };
+      }
 
       if (!entryChange && !deletedChange && settingsKind === "none") {
         return null;
@@ -265,7 +275,9 @@
         clearTimeout(pendingLocalPushTimer);
       }
 
-      const delayMs = pendingLocalPushPlan?.immediate ? 0 : pushDebounceMs;
+      const delayMs = pendingLocalPushPlan?.immediate
+        ? 0
+        : pendingLocalPushPlan?.type === "progress" ? progressDebounceMs : pushDebounceMs;
 
       pendingLocalPushTimer = setTimeout(() => {
         pendingLocalPushTimer = null;
@@ -295,8 +307,17 @@
             return syncAdapter.pushSettings();
           }
 
+          if (planToRun.type === "progress" && syncAdapter.pushProgress) {
+            return syncAdapter.pushProgress();
+          }
+
           return syncAdapter.pushAll();
-        }).then(recordSyncOutcome).catch(async (error) => {
+        }).then((result) => {
+          // Progress is best effort: a push of it can't vouch for the words, so
+          // it neither raises nor clears the "sync paused" state.
+          if (String(result?.mode || "").startsWith("progress")) return undefined;
+          return recordSyncOutcome(result);
+        }).catch(async (error) => {
           logSyncWarning("Sync push failed", error);
           await recordSyncOutcome({ ok: false, reason: "sync-failed" });
         });

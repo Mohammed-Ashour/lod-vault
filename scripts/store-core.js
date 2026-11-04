@@ -1249,15 +1249,42 @@
     return result;
   }
 
+  function toWholeSeconds(iso) {
+    const time = Date.parse(iso || "");
+    return Number.isFinite(time) ? Math.floor(time / 1000) : 0;
+  }
+
+  // Restoring a backup keeps the stronger record: more reviews beat a later date.
   function mergeFlashcardMetaRecord(existing, incoming) {
     if (!existing) return incoming;
     if (!incoming) return existing;
     if (incoming.totalReviews !== existing.totalReviews) {
       return incoming.totalReviews > existing.totalReviews ? incoming : existing;
     }
-    const existingTime = Date.parse(existing.lastReviewedAt) || 0;
-    const incomingTime = Date.parse(incoming.lastReviewedAt) || 0;
-    return incomingTime > existingTime ? incoming : existing;
+    return toWholeSeconds(incoming.lastReviewedAt) > toWholeSeconds(existing.lastReviewedAt) ? incoming : existing;
+  }
+
+  // Two live devices are different: the latest review decides the schedule, and
+  // the review log and total combine. Sync carries timestamps in whole seconds,
+  // so they are compared at that precision: the same review read back from sync
+  // must not look like news, and merging the same data again changes nothing.
+  function mergeSyncedFlashcardRecord(local, remote) {
+    if (!local) return remote;
+    const localTime = toWholeSeconds(local.lastReviewedAt);
+    const remoteTime = toWholeSeconds(remote.lastReviewedAt);
+    const remoteWins = remoteTime > localTime
+      || (remoteTime === localTime && remote.totalReviews > local.totalReviews);
+
+    const known = new Set(local.reviews.map((review) => `${toWholeSeconds(review.date)}:${review.rating}`));
+    const added = remote.reviews.filter((review) => !known.has(`${toWholeSeconds(review.date)}:${review.rating}`));
+
+    return {
+      ...(remoteWins ? remote : local),
+      reviews: [...local.reviews, ...added]
+        .sort((left, right) => Date.parse(left.date) - Date.parse(right.date))
+        .slice(-100),
+      totalReviews: Math.max(local.totalReviews, remote.totalReviews)
+    };
   }
 
   function mergeFlashcardMetaMaps(currentMap, incomingMap) {
@@ -2127,6 +2154,10 @@
   }
 
   const FLASHCARD_META_KEY = "lodVault.flashcardMeta";
+  const FLASHCARD_SETTINGS_KEY = "lodVault.flashcardSettings";
+  const FLASHCARD_DAILY_TARGETS = [5, 10, 20];
+  const FLASHCARD_DEFAULT_DAILY_TARGET = 10;
+  const FLASHCARD_MAX_INTERVAL_DAYS = 365;
 
   function normalizeFlashcardMeta(meta = {}) {
     const reviews = Array.isArray(meta.reviews) ? meta.reviews.slice(-100) : [];
@@ -2180,21 +2211,51 @@
     }
   }
 
-  function computeFlashcardDueAt(existing, rating) {
-    const normalizedRating = [1, 2, 3].includes(Number(rating)) ? Number(rating) : 2;
-    let interval = existing.interval || 0;
+  function normalizeFlashcardDailyTarget(settings) {
+    const target = settings?.dailyTarget;
+    if (FLASHCARD_DAILY_TARGETS.includes(Number(target))) return Number(target);
+    return target === null ? 0 : FLASHCARD_DEFAULT_DAILY_TARGET;
+  }
 
-    if (normalizedRating === 1) {
-      interval = 1;
-    } else if (normalizedRating === 2) {
-      interval = interval ? Math.ceil(interval * 2) : 1;
-    } else {
-      interval = interval ? Math.ceil(interval * 2.5) : 2;
+  async function getFlashcardDailyTarget() {
+    const data = await chrome.storage.local.get([FLASHCARD_SETTINGS_KEY]);
+    return normalizeFlashcardDailyTarget(data[FLASHCARD_SETTINGS_KEY]);
+  }
+
+  function getLocalDayStart(value = new Date(), offsetDays = 0) {
+    const day = new Date(value);
+    day.setHours(0, 0, 0, 0);
+    day.setDate(day.getDate() + offsetDays);
+    return day;
+  }
+
+  // A card is due for the whole local day it falls on, including schedules
+  // written with a time of day by older versions or in another time zone.
+  function isFlashcardDue(card, now = new Date()) {
+    const dueTime = Date.parse(card?.dueAt || "");
+    return Number.isFinite(dueTime) && dueTime < getLocalDayStart(now, 1).getTime();
+  }
+
+  function computeFlashcardDueAt(existing, rating, now = new Date()) {
+    const normalizedRating = [1, 2, 3].includes(Number(rating)) ? Number(rating) : 2;
+    const previous = existing.interval || 0;
+    const scheduled = previous > 0 && Number.isFinite(Date.parse(existing.dueAt || ""));
+
+    // Practising ahead of schedule is not evidence the word can wait longer, so
+    // only a Hard rating changes a card that isn't due yet.
+    if (normalizedRating !== 1 && scheduled && !isFlashcardDue(existing, now)) {
+      return { dueAt: existing.dueAt, interval: previous };
     }
 
-    const due = new Date();
-    due.setDate(due.getDate() + interval);
-    return { dueAt: due.toISOString(), interval };
+    let interval = 1;
+    if (normalizedRating === 2) {
+      interval = previous ? Math.ceil(previous * 2) : 1;
+    } else if (normalizedRating === 3) {
+      interval = previous ? Math.ceil(previous * 2.5) : 2;
+    }
+    interval = Math.min(interval, FLASHCARD_MAX_INTERVAL_DAYS);
+
+    return { dueAt: getLocalDayStart(now, interval).toISOString(), interval };
   }
 
   // Reviews are stored as UTC timestamps; days and streaks follow the learner's
@@ -2213,6 +2274,12 @@
     const checkDate = new Date();
     checkDate.setHours(0, 0, 0, 0);
 
+    // Today still counts as open: a streak only breaks once a whole day passes.
+    const todayKey = toLocalDateKey(checkDate);
+    if (!sortedDescDates.some((dateStr) => toLocalDateKey(dateStr) === todayKey)) {
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+
     let streak = 0;
 
     for (const dateStr of sortedDescDates) {
@@ -2230,39 +2297,119 @@
     return streak;
   }
 
+  // The one definition of "what should I study today", shared by the popup,
+  // the flashcards page and the toolbar badge. Every due card comes first,
+  // most overdue first. New Study-list words then fill what's left of the daily
+  // target; a target of 0 means the learner turned it off.
+  function buildTodayQueue(entries = [], meta = {}, options = {}) {
+    const now = options.now || new Date();
+    const dailyTarget = Math.max(0, Number(options.dailyTarget) || 0);
+    const todayKey = toLocalDateKey(now);
+    const due = [];
+    const fresh = [];
+    const reviewDays = new Set();
+    let reviewedToday = 0;
+
+    for (const card of Object.values(meta || {})) {
+      for (const review of Array.isArray(card?.reviews) ? card.reviews : []) {
+        const dateKey = toLocalDateKey(review?.date);
+        if (!dateKey) continue;
+        reviewDays.add(dateKey);
+        if (dateKey === todayKey) reviewedToday += 1;
+      }
+    }
+
+    for (const entry of entries) {
+      const card = meta?.[entry?.id];
+      if (card?.totalReviews) {
+        if (isFlashcardDue(card, now)) due.push(entry);
+      } else if (entry?.study) {
+        fresh.push(entry);
+      }
+    }
+
+    due.sort((left, right) => (
+      (Date.parse(meta[left.id].dueAt) - Date.parse(meta[right.id].dueAt))
+      || String(left.id).localeCompare(String(right.id))
+    ));
+    fresh.sort((left, right) => (
+      (Date.parse(left.createdAt || "") || 0) - (Date.parse(right.createdAt || "") || 0)
+      || String(left.id).localeCompare(String(right.id))
+    ));
+
+    const newSlots = dailyTarget
+      ? Math.max(0, dailyTarget - reviewedToday - due.length)
+      : fresh.length;
+    const newEntries = fresh.slice(0, newSlots);
+
+    return {
+      dueEntries: due,
+      newEntries,
+      queue: [...due, ...newEntries],
+      dueCount: due.length,
+      newCount: newEntries.length,
+      reviewedToday,
+      streak: computeFlashcardStreak(Array.from(reviewDays).sort().reverse())
+    };
+  }
+
   async function recordFlashcardReviewDirect(entryId, rating, direction) {
     if (!entryId) throw new Error("Missing entry id.");
-    const normalizedRating = [1, 2, 3].includes(Number(rating)) ? Number(rating) : 2;
-    const normalizedDirection = direction === "rev" ? "rev" : "fwd";
-    const meta = await getFlashcardMeta();
-    const existing = meta[entryId] || {};
+    return runVaultIo(async () => {
+      const normalizedRating = [1, 2, 3].includes(Number(rating)) ? Number(rating) : 2;
+      const normalizedDirection = direction === "rev" ? "rev" : "fwd";
+      const meta = await getFlashcardMeta();
+      const existing = meta[entryId] || {};
 
-    const reviews = Array.isArray(existing.reviews) ? existing.reviews : [];
-    reviews.push({
-      date: nowIso(),
-      rating: normalizedRating,
-      direction: normalizedDirection
+      const reviews = Array.isArray(existing.reviews) ? existing.reviews : [];
+      reviews.push({
+        date: nowIso(),
+        rating: normalizedRating,
+        direction: normalizedDirection
+      });
+
+      const trimmed = reviews.slice(-100);
+      const hardCount = trimmed.filter((r) => r.rating === 1).length;
+      const goodCount = trimmed.filter((r) => r.rating === 2).length;
+      const easyCount = trimmed.filter((r) => r.rating === 3).length;
+      const { dueAt, interval } = computeFlashcardDueAt(existing, normalizedRating);
+
+      meta[entryId] = {
+        reviews: trimmed,
+        totalReviews: (existing.totalReviews || 0) + 1,
+        hardCount,
+        goodCount,
+        easyCount,
+        lastReviewedAt: nowIso(),
+        dueAt,
+        interval
+      };
+
+      await saveFlashcardMeta(meta);
+      return meta[entryId];
     });
+  }
 
-    const trimmed = reviews.slice(-100);
-    const hardCount = trimmed.filter((r) => r.rating === 1).length;
-    const goodCount = trimmed.filter((r) => r.rating === 2).length;
-    const easyCount = trimmed.filter((r) => r.rating === 3).length;
-    const { dueAt, interval } = computeFlashcardDueAt(existing, normalizedRating);
+  async function applyRemoteFlashcardMetaDirect(remoteMap = {}, deletedMap = {}) {
+    return runVaultIo(async () => {
+      const local = await getFlashcardMeta();
+      const remote = normalizeFlashcardMetaMap(remoteMap);
+      const merged = { ...local };
+      let changed = false;
 
-    meta[entryId] = {
-      reviews: trimmed,
-      totalReviews: (existing.totalReviews || 0) + 1,
-      hardCount,
-      goodCount,
-      easyCount,
-      lastReviewedAt: nowIso(),
-      dueAt,
-      interval
-    };
+      for (const [id, record] of Object.entries(remote)) {
+        if (deletedMap?.[id]) continue;
+        merged[id] = mergeSyncedFlashcardRecord(local[id], record);
+        if (JSON.stringify(merged[id]) !== JSON.stringify(local[id])) changed = true;
+      }
 
-    await saveFlashcardMeta(meta);
-    return meta[entryId];
+      if (changed) await saveFlashcardMeta(merged);
+      return { changed, meta: merged };
+    });
+  }
+
+  async function applyRemoteFlashcardMeta(remoteMap, deletedMap) {
+    return runStoreMutation("applyRemoteFlashcardMeta", [remoteMap, deletedMap], applyRemoteFlashcardMetaDirect);
   }
 
   async function recordFlashcardReview(entryId, rating, direction) {
@@ -2342,6 +2489,9 @@
     isDamagedHistoryEntry,
     queueDamagedHistoryEntries,
     FLASHCARD_META_KEY,
+    FLASHCARD_SETTINGS_KEY,
+    FLASHCARD_DAILY_TARGETS,
+    FLASHCARD_MAX_INTERVAL_DAYS,
     DEFAULT_SETTINGS,
     EXPORT_VERSION,
     MAX_SYNC_LANGUAGES,
@@ -2400,10 +2550,18 @@
     resumeHistoryImportHydration,
     applyRemoteVaultStateDirect,
     normalizeFlashcardMeta,
+    normalizeFlashcardMetaMap,
+    normalizeFlashcardDailyTarget,
+    getFlashcardDailyTarget,
     getFlashcardMeta,
     saveFlashcardMeta,
     recordFlashcardReview,
+    applyRemoteFlashcardMeta,
     getFlashcardStats,
-    computeFlashcardStreak
+    computeFlashcardDueAt,
+    computeFlashcardStreak,
+    isFlashcardDue,
+    buildTodayQueue,
+    toLocalDateKey
   };
 })();
