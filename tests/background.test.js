@@ -902,3 +902,35 @@ test("a progress push leaves an existing sync issue in place", async () => {
   assert.ok(await background.context.LodVaultStore.getSyncIssue());
   assert.equal(background.badgeTexts.at(-1), "!");
 });
+
+test("store mutations are limited by who sends them", async () => {
+  const background = loadBackgroundScript();
+  const id = background.chrome.runtime.id;
+  const pageUrl = background.chrome.runtime.getURL("pages/flashcards.html");
+  const contentScript = { id, url: "https://example.com/article", tab: { id: 4 } };
+  const importMessage = { type: "lodvault:store-mutate", method: "importJson", args: ["[]"] };
+
+  const fromPage = await background.dispatchStoreMutation(
+    { type: "lodvault:store-mutate", method: "applyRemoteFlashcardMeta", args: [{}, {}] },
+    contentScript
+  );
+  assert.equal(fromPage.ok, false);
+  assert.match(fromPage.error, /not allowed/);
+
+  assert.equal((await background.dispatchStoreMutation(importMessage, contentScript)).ok, false);
+  assert.equal((await background.dispatchStoreMutation(importMessage, { id: "someone-else", url: pageUrl })).ok, false);
+  assert.equal((await background.dispatchStoreMutation(importMessage, null)).ok, false);
+
+  const saved = await background.dispatchStoreMutation({
+    type: "lodvault:store-mutate",
+    method: "toggleList",
+    args: [{ id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1" }, "study"]
+  }, contentScript);
+  assert.equal(saved.ok, true);
+
+  const review = await background.dispatchStoreMutation(
+    { type: "lodvault:store-mutate", method: "recordFlashcardReview", args: ["HAUS1", 2, "fwd"] },
+    { id, url: pageUrl, tab: { id: 9 } }
+  );
+  assert.equal(review.ok, true);
+});

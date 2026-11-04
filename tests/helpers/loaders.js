@@ -646,6 +646,8 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localSt
     computeFlashcardStreak: shared.store.computeFlashcardStreak,
     toLocalDateKey: shared.store.toLocalDateKey,
     isFlashcardDue: shared.store.isFlashcardDue,
+    normalizeFlashcardDailyTarget: shared.store.normalizeFlashcardDailyTarget,
+    FLASHCARD_DAILY_TARGETS: shared.store.FLASHCARD_DAILY_TARGETS,
     buildTodayQueue: shared.store.buildTodayQueue,
     FLASHCARD_SETTINGS_KEY: "lodVault.flashcardSettings",
     escapeHtml: shared.store.escapeHtml,
@@ -735,6 +737,7 @@ function loadBackgroundScript(initialStorage = {}) {
   const permissionsOnRemoved = createChromeEvent();
 
   chrome.runtime.getURL = (relativePath) => path.join(repoRoot, relativePath);
+  chrome.runtime.id = "lodvault-test";
   chrome.runtime.onInstalled = runtimeOnInstalled;
   chrome.runtime.onStartup = runtimeOnStartup;
   chrome.runtime.onMessage = runtimeOnMessage;
@@ -890,8 +893,8 @@ function loadBackgroundScript(initialStorage = {}) {
     permissionsOnAdded,
     permissionsOnRemoved,
     dispatchRuntimeMessage,
-    dispatchStoreMutation(message) {
-      return dispatchRuntimeMessage(message, null);
+    dispatchStoreMutation(message, sender = { id: chrome.runtime.id, url: chrome.runtime.getURL("pages/popup.html") }) {
+      return dispatchRuntimeMessage(message, sender);
     }
   };
 }

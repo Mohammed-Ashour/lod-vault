@@ -1,6 +1,7 @@
 (() => {
   let refreshToken = 0;
   let hasQueue = false;
+  let dailyTarget = 10;
 
   function createStudyModule(ctx) {
     const { store, chromeApi, state, elements } = ctx;
@@ -37,7 +38,7 @@
       const entries = state.savedEntries || [];
 
       let meta = {};
-      let dailyTarget = 0;
+      // A failed read keeps the last known target rather than reading as Off.
       try {
         [meta, dailyTarget] = await Promise.all([
           store.getFlashcardMeta(),

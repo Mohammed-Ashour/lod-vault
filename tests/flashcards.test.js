@@ -567,3 +567,58 @@ test("keyboard arrows follow Prev and Next, and skipped order survives a resume"
   await wait(resumed.dom);
   assert.equal(resumed.dom.window.document.getElementById("card-word").textContent, skippedTo);
 });
+
+test("a new session starts on its first card and rates each card once", async () => {
+  const entries = Array.from({ length: 25 }, (_, i) => makeEntry({
+    id: `W${String(i).padStart(2, "0")}`,
+    word: `W${String(i).padStart(2, "0")}`
+  }));
+  const { dom, reviews } = await loadWithReviews({
+    entries,
+    localStorage: { "lodVault.flashcardSettings": { dailyTarget: null, mode: "self" } }
+  });
+  const doc = dom.window.document;
+  const size = doc.getElementById("session-size");
+  size.value = "10";
+  size.dispatchEvent(new dom.window.Event("change"));
+  await wait(dom);
+
+  for (let index = 0; index < 10; index += 1) await revealAndRate(dom, 2);
+  doc.getElementById("close-summary").click();
+  await wait(dom);
+
+  const secondStart = reviews.length;
+  assert.equal(doc.getElementById("card-word").textContent, "W00");
+  for (let index = 0; index < 10; index += 1) await revealAndRate(dom, 2);
+
+  const second = reviews.slice(secondStart).map((review) => review.entryId);
+  assert.equal(new Set(second).size, 10);
+});
+
+test("rating a Today card clears an older saved session, but opening Today doesn't", async () => {
+  const entries = ["A", "B", "C", "D"].map((id) => makeEntry({ id, word: id }));
+  const saved = { filter: "study", orderMode: "smart", direction: "fwd", mode: "self", sessionSize: "10", cardIds: ["A", "B", "C", "D"], index: 1, results: [] };
+  const { dom, storageData } = await loadWithReviews({
+    entries,
+    localStorage: { "lodVault.flashcardSession": saved }
+  });
+  const doc = dom.window.document;
+  const resume = doc.getElementById("resume-session");
+  assert.equal(resume.classList.contains("is-hidden"), false);
+  assert.ok(storageData["lodVault.flashcardSession"]);
+
+  await revealAndRate(dom, 2);
+
+  assert.equal(resume.classList.contains("is-hidden"), true);
+  assert.equal(storageData["lodVault.flashcardSession"], undefined);
+});
+
+test("Today doesn't claim you finished when there was nothing to study", async () => {
+  const { dom } = await loadWithReviews({
+    entries: [makeEntry({ study: false, history: true })],
+    url: "https://extension.test/pages/flashcards.html?deck=today"
+  });
+  const doc = dom.window.document;
+  assert.equal(doc.getElementById("empty-title").textContent, "Nothing due here.");
+  assert.equal(doc.getElementById("empty-study-list").classList.contains("is-hidden"), true);
+});

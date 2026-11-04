@@ -1263,3 +1263,15 @@ test("popup Today shows streak and reviewed-today once there is activity", async
   const { dom: quiet } = await loadPopupScript({ entries: makeEntries(1), flashcardMeta: {} });
   assert.equal(quiet.window.document.getElementById("study-activity").classList.contains("is-hidden"), true);
 });
+
+test("popup Today keeps the default target when storage reads fail", async () => {
+  const { dom } = await loadPopupScript({
+    entries: makeEntries(30),
+    storeOverrides: {
+      async getFlashcardDailyTarget() {
+        throw new Error("storage unavailable");
+      }
+    }
+  });
+  assert.equal(dom.window.document.getElementById("study-summary").textContent, "10 new");
+});

@@ -1399,3 +1399,70 @@ test("sync capacity stats treat progress as space words can still use", async ()
   assert.ok(progressStats.bytesUsedVault > plainStats.bytesUsedVault);
   assert.equal(progressStats.estimatedRemaining, plainStats.estimatedRemaining);
 });
+
+test("pushProgress doesn't decompress word shards", async () => {
+  const device = loadSyncScript({
+    "lodVault.entries": { HAUS1: makeLocalEntry() },
+    "lodVault.flashcardMeta": { HAUS1: makeCard() }
+  }, { enableCompression: true });
+  await device.sync.SyncAdapter.pushAll();
+
+  let decompressed = 0;
+  const original = device.compress.decompress;
+  device.compress.decompress = async (value) => {
+    decompressed += 1;
+    return original(value);
+  };
+  const result = await device.sync.SyncAdapter.pushProgress();
+
+  assert.equal(result.mode, "progress");
+  assert.equal(decompressed, 0);
+});
+
+test("progress bucket keys keep their number when a bucket between them is empty", async () => {
+  const hash = (id) => [...id].reduce((total, char) => (total * 31 + char.charCodeAt(0)) >>> 0, 0);
+  const padding = "x".repeat(2000);
+  const ids = { 0: [], 2: [] };
+  for (let index = 0; ids[0].length < 3 || ids[2].length < 3; index += 1) {
+    const id = `${padding}${index}`;
+    const bucket = hash(id) % 3;
+    if (ids[bucket] && ids[bucket].length < 3) ids[bucket].push(id);
+  }
+
+  const entries = {};
+  const meta = {};
+  for (const id of [...ids[0], ...ids[2]]) {
+    entries[id] = { id, word: "Word", url: "https://lod.lu/artikel/WORD", study: true };
+    meta[id] = makeCard();
+  }
+  const device = loadSyncScript({ "lodVault.entries": entries, "lodVault.flashcardMeta": meta });
+  await device.chrome.storage.sync.set({ "lodVault.m": { v: 4, n: 0 } });
+  await device.sync.SyncAdapter.pushProgress();
+
+  assert.deepEqual(progressKeys(device.syncStorageData).sort(), ["lodVault.p.0", "lodVault.p.2"]);
+});
+
+test("pulls don't rebuild progress for words dropped for size", async () => {
+  const entries = {};
+  const meta = {};
+  for (let index = 0; index < 500; index += 1) {
+    const id = `WORD${String(index).padStart(3, "0")}`;
+    entries[id] = makeLocalEntry({ id, word: id, url: `https://lod.lu/artikel/${id}`, note: "", example: "", visitCount: 1 });
+    meta[id] = makeCard({ lastReviewedAt: new Date(Date.UTC(2025, 0, 1 + index)).toISOString() });
+  }
+  const device = loadSyncScript({ "lodVault.entries": entries, "lodVault.flashcardMeta": meta });
+  await device.sync.SyncAdapter.pushAll();
+  const kept = Object.keys(device.syncStorageData).length;
+  assert.ok(kept > 1);
+
+  let pushes = 0;
+  const originalGet = device.chrome.storage.sync.get;
+  device.chrome.storage.sync.get = async (keys) => {
+    pushes += 1;
+    return originalGet(keys);
+  };
+  await device.sync.SyncAdapter.pullAll({ repush: true });
+
+  // One read for the pull's own state; a rebuild would read again.
+  assert.equal(pushes, 1);
+});

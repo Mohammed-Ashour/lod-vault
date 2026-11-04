@@ -21,7 +21,6 @@ const state = {
 
 const FLASHCARD_SETTINGS_KEY = LodVaultStore.FLASHCARD_SETTINGS_KEY;
 const FLASHCARD_SESSION_KEY = "lodVault.flashcardSession";
-const DAILY_TARGETS = new Set([5, 10, 20]);
 const DECK_FILTERS = new Set(["today", "due", "study", "favorites", "all"]);
 const ORDER_MODES = new Set(["smart", "shuffle", "sequential"]);
 const STUDY_MODES = new Set(["self", "mc"]);
@@ -150,8 +149,7 @@ async function loadFlashcardState() {
   if (!local) return;
 
   const saved = await local.get([FLASHCARD_SETTINGS_KEY, FLASHCARD_SESSION_KEY]);
-  const target = saved[FLASHCARD_SETTINGS_KEY]?.dailyTarget;
-  state.dailyTarget = DAILY_TARGETS.has(Number(target)) ? Number(target) : target === null ? 0 : 10;
+  state.dailyTarget = LodVaultStore.normalizeFlashcardDailyTarget(saved[FLASHCARD_SETTINGS_KEY]);
   state.resumableSession = saved[FLASHCARD_SESSION_KEY] || null;
   state.mode = STUDY_MODES.has(saved[FLASHCARD_SETTINGS_KEY]?.mode) ? saved[FLASHCARD_SETTINGS_KEY].mode : "self";
   if (elements.dailyTarget) elements.dailyTarget.value = state.dailyTarget ? String(state.dailyTarget) : "off";
@@ -333,7 +331,8 @@ async function onSessionSizeChange(event) {
 }
 
 async function onDailyTargetChange(event) {
-  state.dailyTarget = DAILY_TARGETS.has(Number(event.target.value)) ? Number(event.target.value) : 0;
+  const target = Number(event.target.value);
+  state.dailyTarget = LodVaultStore.FLASHCARD_DAILY_TARGETS.includes(target) ? target : 0;
   await saveSettings();
   renderStats();
   if (state.filter === "today" && !state.sessionResults.length) rebuildDeck();
@@ -501,7 +500,8 @@ function rebuildDeck() {
   state.sessionResults = [];
   state.deck = state.sessionActive ? state.sessionCards : baseDeck;
   if (state.sessionActive) void saveSession();
-  state.index = Math.min(state.index, Math.max(state.deck.length - 1, 0));
+  // A session always starts at its first card, whatever the last one reached.
+  state.index = state.sessionActive ? 0 : Math.min(state.index, Math.max(state.deck.length - 1, 0));
   state.revealed = false;
   renderDeck();
 }
@@ -647,7 +647,10 @@ function renderDeck() {
 }
 
 function renderEmptyState() {
-  const finishedToday = state.filter === "today" && state.entries.length > 0;
+  // With no Study words and nothing ever reviewed, Today never had work to finish.
+  const finishedToday = state.filter === "today" && state.entries.some((entry) => (
+    entry.study || state.flashcardMeta[entry.id]?.totalReviews
+  ));
   if (elements.emptyTitle) {
     elements.emptyTitle.textContent = finishedToday ? "All done for today." : "Nothing due here.";
   }
@@ -821,6 +824,12 @@ async function rateCard(rating) {
 }
 
 async function recordRating(entry, rating) {
+  // Studying Today moves on from an older saved session, whose cards may now
+  // have been reviewed here.
+  if (state.filter === "today" && state.resumableSession) {
+    await dismissResumableSession();
+  }
+
   if (typeof LodVaultStore.recordFlashcardReview === "function") {
     await LodVaultStore.recordFlashcardReview(entry.id, rating, state.direction);
     await loadFlashcardMeta();

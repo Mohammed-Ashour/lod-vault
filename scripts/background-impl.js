@@ -49,6 +49,16 @@ const STORE_MUTATION_METHODS = new Set([
   "getFlashcardStats"
 ]);
 
+// Content scripts and the injected Lens run alongside page code, so a compromised
+// page context is limited to saving words. Everything else needs an extension page.
+const CONTENT_SCRIPT_MUTATION_METHODS = new Set([
+  "toggleList",
+  "addToList",
+  "recordAutoVisit",
+  "refreshEntryData",
+  "saveNote"
+]);
+
 let storeMutationQueue = Promise.resolve();
 let historyHydrationResumeTimer = null;
 
@@ -415,6 +425,12 @@ async function reloadLodTabs() {
   }
 }
 
+function isStoreMutationAllowed(method, sender) {
+  if (!sender || sender.id !== chrome.runtime.id) return false;
+  if (CONTENT_SCRIPT_MUTATION_METHODS.has(method)) return true;
+  return String(sender.url || "").startsWith(chrome.runtime.getURL(""));
+}
+
 function formatDueBadge(dueCount) {
   if (!dueCount) return "";
   return dueCount > 99 ? "99+" : String(dueCount);
@@ -620,6 +636,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (!STORE_MUTATION_METHODS.has(method) || typeof LodVaultStore?.[method] !== "function") {
     sendResponse({ ok: false, error: `Unsupported store mutation: ${method}` });
+    return;
+  }
+
+  if (!isStoreMutationAllowed(method, sender)) {
+    sendResponse({ ok: false, error: `Store mutation not allowed from this context: ${method}` });
     return;
   }
 

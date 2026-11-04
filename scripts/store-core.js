@@ -1249,15 +1249,42 @@
     return result;
   }
 
+  function toWholeSeconds(iso) {
+    const time = Date.parse(iso || "");
+    return Number.isFinite(time) ? Math.floor(time / 1000) : 0;
+  }
+
+  // Restoring a backup keeps the stronger record: more reviews beat a later date.
   function mergeFlashcardMetaRecord(existing, incoming) {
     if (!existing) return incoming;
     if (!incoming) return existing;
     if (incoming.totalReviews !== existing.totalReviews) {
       return incoming.totalReviews > existing.totalReviews ? incoming : existing;
     }
-    const existingTime = Date.parse(existing.lastReviewedAt) || 0;
-    const incomingTime = Date.parse(incoming.lastReviewedAt) || 0;
-    return incomingTime > existingTime ? incoming : existing;
+    return toWholeSeconds(incoming.lastReviewedAt) > toWholeSeconds(existing.lastReviewedAt) ? incoming : existing;
+  }
+
+  // Two live devices are different: the latest review decides the schedule, and
+  // the review log and total combine. Sync carries timestamps in whole seconds,
+  // so they are compared at that precision: the same review read back from sync
+  // must not look like news, and merging the same data again changes nothing.
+  function mergeSyncedFlashcardRecord(local, remote) {
+    if (!local) return remote;
+    const localTime = toWholeSeconds(local.lastReviewedAt);
+    const remoteTime = toWholeSeconds(remote.lastReviewedAt);
+    const remoteWins = remoteTime > localTime
+      || (remoteTime === localTime && remote.totalReviews > local.totalReviews);
+
+    const known = new Set(local.reviews.map((review) => `${toWholeSeconds(review.date)}:${review.rating}`));
+    const added = remote.reviews.filter((review) => !known.has(`${toWholeSeconds(review.date)}:${review.rating}`));
+
+    return {
+      ...(remoteWins ? remote : local),
+      reviews: [...local.reviews, ...added]
+        .sort((left, right) => Date.parse(left.date) - Date.parse(right.date))
+        .slice(-100),
+      totalReviews: Math.max(local.totalReviews, remote.totalReviews)
+    };
   }
 
   function mergeFlashcardMetaMaps(currentMap, incomingMap) {
@@ -2242,17 +2269,6 @@
     return `${date.getFullYear()}-${month}-${day}`;
   }
 
-  // Reviews are stored as UTC timestamps; days and streaks follow the learner's
-  // own calendar. Bare YYYY-MM-DD values are already day keys.
-  function toLocalDateKey(value = new Date()) {
-    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-    const date = new Date(value);
-    if (!Number.isFinite(date.getTime())) return "";
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${date.getFullYear()}-${month}-${day}`;
-  }
-
   function computeFlashcardStreak(sortedDescDates) {
     if (!sortedDescDates.length) return 0;
     const checkDate = new Date();
@@ -2374,35 +2390,6 @@
     });
   }
 
-  function toWholeSeconds(iso) {
-    const time = Date.parse(iso || "");
-    return Number.isFinite(time) ? Math.floor(time / 1000) : 0;
-  }
-
-  // Sync carries timestamps in whole seconds, so records are compared at that
-  // precision: the same review read back from sync must not look like news.
-  function mergeSyncedFlashcardRecord(local, remote) {
-    if (!local) return remote;
-    const localTime = toWholeSeconds(local.lastReviewedAt);
-    const remoteTime = toWholeSeconds(remote.lastReviewedAt);
-    const remoteWins = remoteTime > localTime
-      || (remoteTime === localTime && remote.totalReviews > local.totalReviews);
-    const winner = remoteWins ? remote : local;
-
-    const reviews = new Map();
-    for (const review of [...remote.reviews, ...local.reviews]) {
-      reviews.set(`${toWholeSeconds(review.date)}:${review.rating}`, review);
-    }
-
-    return {
-      ...winner,
-      reviews: Array.from(reviews.values())
-        .sort((left, right) => toWholeSeconds(left.date) - toWholeSeconds(right.date))
-        .slice(-100),
-      totalReviews: Math.max(local.totalReviews, remote.totalReviews)
-    };
-  }
-
   async function applyRemoteFlashcardMetaDirect(remoteMap = {}, deletedMap = {}) {
     return runVaultIo(async () => {
       const local = await getFlashcardMeta();
@@ -2503,6 +2490,7 @@
     queueDamagedHistoryEntries,
     FLASHCARD_META_KEY,
     FLASHCARD_SETTINGS_KEY,
+    FLASHCARD_DAILY_TARGETS,
     FLASHCARD_MAX_INTERVAL_DAYS,
     DEFAULT_SETTINGS,
     EXPORT_VERSION,

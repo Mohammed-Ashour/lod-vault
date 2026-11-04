@@ -1486,3 +1486,20 @@ test("synced progress: the latest review wins, totals and history survive, and r
   await store.applyRemoteFlashcardMeta(stale, {});
   assert.equal((await store.getFlashcardMeta()).HAUS1.interval, 9);
 });
+
+test("merging keeps reviews made in the same second and re-applying writes nothing", async () => {
+  const review = (date) => ({ date, rating: 2, direction: "fwd" });
+  const reviews = [review("2026-06-10T10:00:10.200Z"), review("2026-06-10T10:00:10.700Z")];
+  const { store, storageData } = loadSharedStore({
+    "lodVault.flashcardMeta": {
+      HAUS1: { reviews, totalReviews: 2, goodCount: 2, lastReviewedAt: "2026-06-10T10:00:10.700Z", dueAt: "2026-06-11T00:00:00.000Z", interval: 1 }
+    }
+  });
+  const remote = {
+    HAUS1: { reviews: [review("2026-06-10T10:00:10.000Z")], totalReviews: 2, goodCount: 2, lastReviewedAt: "2026-06-10T10:00:10.000Z", dueAt: "2026-06-11T00:00:00.000Z", interval: 1 }
+  };
+
+  const result = await store.applyRemoteFlashcardMeta(remote, {});
+  assert.equal(result.changed, false);
+  assert.equal(storageData["lodVault.flashcardMeta"].HAUS1.reviews.length, 2);
+});

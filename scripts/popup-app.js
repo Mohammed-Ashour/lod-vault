@@ -207,6 +207,7 @@
           || key === "lodVault.s"
           || key === "lodVault.d"
           || key.startsWith("lodVault.e.")
+          || key.startsWith("lodVault.p.")
         ));
         if (hasSyncVaultChange) {
           await ctx.sync.refreshDataStatus();

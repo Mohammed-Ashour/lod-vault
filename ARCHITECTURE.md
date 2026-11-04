@@ -51,7 +51,7 @@ flowchart TD
 2. Page controllers own UI events and rendering. Popup responsibilities remain split across `scripts/popup-*.js`.
 3. `scripts/shared.js`, `scripts/store-core.js`, `scripts/note-autosave.js` and `scripts/entry-presenter.js` provide storage contracts, autosave and presentation helpers.
 4. `scripts/lens-lookup.js` provides dictionary lookup and canonical entry retrieval.
-5. Background and sync modules coordinate mutations, extension messaging and replication.
+5. Background and sync modules coordinate mutations, extension messaging and replication. Store mutations are checked against the sender: content scripts and the injected Lens can only save words, and everything else needs an extension page.
 
 Dependencies point from page controllers toward these helpers. Layout changes must not change persistence semantics.
 
@@ -69,7 +69,7 @@ Dependencies point from page controllers toward these helpers. Layout changes mu
 3. Mutations update local entries. Storage refreshes update membership and presentation without replacing live lookup editors.
 4. The Vault renders generated export HTML inside an iframe, then adds live edit controls. Preview refreshes preserve its edit and scroll state.
 5. Flashcards reads entries and review metadata and persists review progress through the existing store. `buildTodayQueue` in `scripts/store-core.js` is the single definition of what is due today, shared by the popup, Flashcards and the toolbar badge.
-6. Review progress syncs in its own `lodVault.p.*` keys, outside the manifest and format version. Each key is a hash bucket, so one review rewrites one item. Words have priority over the quota: progress takes the space left after an 8 KB margin, up to 24 KB, and the most recently reviewed words are kept. Only the latest review per word travels, so older review history stays on the device that recorded it. The review log stays complete in JSON backups.
+6. Review progress syncs in its own `lodVault.p.*` keys, outside the manifest and format version. Each key is a hash bucket, so one review rewrites one item. Words have priority over the quota: progress takes the space left after an 8 KB margin, up to 24 KB, and the most recently reviewed words are kept. Only the latest review per word travels, so older review history stays on the device that recorded it. The review log stays complete in JSON backups. Builds before 2.4.0 count these keys against the quota but can't remove them, so a vault with more than about 76 KB of synced words can show sync as paused on an older build until it updates.
 
 ## Module ownership boundaries
 
