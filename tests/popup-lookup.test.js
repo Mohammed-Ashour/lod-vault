@@ -231,12 +231,18 @@ test("a cached entry still keeps a later query's Dutch translation", async (t) =
   assert.equal(app.saved.get("HAUS1").translations.nl, "huis");
 });
 
-test("dictionary source compacts current-page context and restores it on return", async (t) => {
-  const app = await setup(t);
+test("source switching leaves the current-word disclosure and editor intact", async (t) => {
+  const app = await setup(t, { currentEntry: fullEntry });
+  const card = app.doc.getElementById("current-page-card");
+  const note = app.doc.getElementById("current-note");
+  card.open = true;
   app.click("#search-source-lod");
-  assert.equal(app.doc.getElementById("current-page-card").classList.contains("is-lookup-context"), true);
+  assert.equal(card.classList.contains("is-lookup-context"), false);
+  assert.equal(card.open, true);
+  assert.equal(app.doc.getElementById("current-note"), note);
   app.click("#search-source-vault");
-  assert.equal(app.doc.getElementById("current-page-card").classList.contains("is-lookup-context"), false);
+  assert.equal(card.open, true);
+  assert.ok(app.doc.getElementById("words-scroll").contains(card));
 });
 
 test("double Save while hydrating cannot submit two mutations", async (t) => {
@@ -484,7 +490,7 @@ test("a pending save remains pinned to its original article when the query chang
   pending.resolve(fullEntry); await wait(30);
   assert.equal(app.saves[0].id, "HAUS1");
   assert.match(app.results.textContent, /Kaffi/);
-  assert.equal(app.results.querySelector(".lookup-saved"), null);
+  assert.equal(app.results.querySelector(".lookup-saved").classList.contains("is-hidden"), true);
 });
 
 test("destroy cancels debounced requests and ignores in-flight results", async (t) => {

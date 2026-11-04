@@ -557,6 +557,7 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
   renderSavedList: popupApp.renderSavedList,
   refreshCurrentPage: popupApp.refreshCurrentPage,
   formatSearchStatus: popupApp.formatSearchStatus,
+  syncFeedbackFooter: popupApp.syncFeedbackFooter,
   destroy: popupApp.destroy
 };`;
 
