@@ -5,6 +5,8 @@
   const PORTABLE_BACKUP_KEY = "lodVault.portableBackup";
   const DELETED_KEY = "lodVault.deleted";
   const HISTORY_IMPORT_STATE_KEY = "lodVault.historyImport";
+  const HISTORY_REPAIR_ATTEMPTS_KEY = "lodVault.historyRepairAttempts";
+  const SYNC_ISSUE_KEY = "lodVault.syncIssue";
   const DEFAULT_SETTINGS = {
     autoMode: false,
     syncLanguages: ["en", "fr", "de"],
@@ -42,6 +44,8 @@
   const HISTORY_HYDRATION_MAX_QUEUE = 120;
   const HISTORY_HYDRATION_DELAY_MS = 250;
   const HISTORY_HYDRATION_FETCH_TIMEOUT_MS = 8000;
+  const HISTORY_REPAIR_MAX_ATTEMPTS = 5;
+  const HISTORY_REPAIR_RETRY_MS = 24 * 60 * 60 * 1000;
 
   let storeCacheListenerInstalled = false;
   let cachedEntryMap = null;
@@ -412,6 +416,8 @@
 
   function normalizeEntry(entry = {}) {
     const id = cleanText(entry.id) || getIdFromUrl(entry.url);
+    const noteUpdatedAt = cleanText(entry.noteUpdatedAt);
+    const listsUpdatedAt = cleanText(entry.listsUpdatedAt);
     return {
       id,
       word: cleanWordLabel(entry.word),
@@ -427,7 +433,9 @@
       visitCount: normalizeVisitCount(entry.visitCount),
       lastVisitedAt: cleanText(entry.lastVisitedAt),
       createdAt: cleanText(entry.createdAt),
-      updatedAt: cleanText(entry.updatedAt)
+      updatedAt: cleanText(entry.updatedAt),
+      ...(noteUpdatedAt ? { noteUpdatedAt } : {}),
+      ...(listsUpdatedAt ? { listsUpdatedAt } : {})
     };
   }
 
@@ -512,7 +520,9 @@
       pos: next.pos || current.pos,
       inflection: next.inflection || current.inflection,
       example: next.example || current.example,
-      note: next.note || current.note,
+      // A caller's entry can predate a note edit or clear, so it only supplies
+      // the note for a word the vault doesn't have yet.
+      note: current.id ? current.note : next.note,
       translations: {
         ...current.translations,
         ...next.translations
@@ -525,6 +535,11 @@
       createdAt: current.createdAt || next.createdAt || nowIso(),
       updatedAt: nowIso()
     };
+
+    const noteUpdatedAt = current.noteUpdatedAt || next.noteUpdatedAt;
+    if (noteUpdatedAt) merged.noteUpdatedAt = noteUpdatedAt;
+    const listsUpdatedAt = current.listsUpdatedAt || next.listsUpdatedAt;
+    if (listsUpdatedAt) merged.listsUpdatedAt = listsUpdatedAt;
 
     if (!Object.keys(merged.translations).length) {
       delete merged.translations;
@@ -977,6 +992,7 @@
       merged.visitCount = normalizeVisitCount(existing?.visitCount);
       merged.lastVisitedAt = cleanText(existing?.lastVisitedAt);
       merged[listName] = toggle ? !merged[listName] : true;
+      merged.listsUpdatedAt = nowIso();
 
       if (!shouldKeepEntry(merged)) {
         delete entryMap[normalized.id];
@@ -1023,6 +1039,11 @@
       merged.favorite = Boolean(existing?.favorite);
       merged.study = true;
       merged.history = true;
+      // A repeat visit changes no list, so it must not outrank a removal made
+      // on another device.
+      if (!existing?.study || !existing?.history) {
+        merged.listsUpdatedAt = nowIso();
+      }
       merged.visitCount = normalizeVisitCount(existing?.visitCount) + 1;
       merged.lastVisitedAt = visitedAt;
       merged.updatedAt = visitedAt;
@@ -1054,6 +1075,7 @@
       merged.favorite = Boolean(existing.favorite);
       merged.study = Boolean(existing.study);
       merged.history = false;
+      merged.listsUpdatedAt = nowIso();
       delete merged.visitCount;
       delete merged.lastVisitedAt;
 
@@ -1130,6 +1152,7 @@
       const merged = mergeEntry(existing, existing);
 
       merged.note = cleanText(note);
+      merged.noteUpdatedAt = nowIso();
       merged.favorite = Boolean(existing.favorite);
       merged.study = Boolean(existing.study);
       merged.history = Boolean(existing.history);
@@ -1178,6 +1201,7 @@
         getDeletedMap()
       ]);
       restored.updatedAt = nowIso();
+      restored.listsUpdatedAt = restored.updatedAt;
       restored.createdAt = restored.createdAt || restored.updatedAt;
       entryMap[restored.id] = restored;
       delete deletedMap[restored.id];
@@ -1334,6 +1358,7 @@
         } else {
           newCount += 1;
         }
+        const previous = normalizeEntry(existing || {});
         const merged = mergeEntry(existing, incoming);
         merged.favorite = Boolean(existing?.favorite) || Boolean(incoming.favorite);
         merged.study = Boolean(existing?.study) || Boolean(incoming.study);
@@ -1343,6 +1368,15 @@
           : 0;
         merged.lastVisitedAt = incoming.lastVisitedAt || cleanText(existing?.lastVisitedAt);
         merged.note = incoming.note || merged.note;
+
+        // A restore is a new change, so it has to outrank older copies on
+        // other devices when it next syncs.
+        if (merged.note !== previous.note) {
+          merged.noteUpdatedAt = nowIso();
+        }
+        if (["favorite", "study", "history"].some((flag) => merged[flag] !== Boolean(previous[flag]))) {
+          merged.listsUpdatedAt = nowIso();
+        }
 
         if (!merged.visitCount) {
           delete merged.visitCount;
@@ -1494,10 +1528,7 @@
     return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
   }
 
-  async function fetchArticleHtml(url) {
-    const requestUrl = cleanText(url);
-    if (!requestUrl) return "";
-
+  async function fetchForHydration(url, init = {}) {
     const controller = typeof AbortController !== "undefined"
       ? new AbortController()
       : null;
@@ -1506,32 +1537,35 @@
       : null;
 
     try {
-      const response = await fetch(requestUrl, {
+      return await fetch(url, {
+        ...init,
         method: "GET",
         credentials: "omit",
         redirect: "follow",
-        signal: controller?.signal,
-        headers: {
-          Accept: "text/html,application/xhtml+xml"
-        }
+        signal: controller?.signal
       });
-
-      if (!response?.ok) {
-        throw new Error(`HTTP ${response?.status || 0}`);
-      }
-
-      return await response.text();
     } finally {
       if (timer) clearTimeout(timer);
     }
   }
 
-  function extractEntryFromHtml(html, url) {
-    const reader = globalThis.LodVaultArticleReader;
-    if (typeof reader?.extractEntryFromHtml === "function") {
-      return reader.extractEntryFromHtml(html, url);
-    }
-    return null;
+
+  // Earlier versions hydrated history imports by regex-scraping article HTML,
+  // which saved the article id as the word ("HAUS1") and mixed unrelated page
+  // text, with its line breaks, into translations. Imports whose hydration
+  // never ran keep the id-derived placeholder ("HAUS") with no part of speech.
+  function isDamagedHistoryEntry(entry) {
+    const normalized = normalizeEntry(entry);
+    if (!normalized.id || !normalized.word) return false;
+
+    const wordIsArticleId = normalized.word === normalized.id && /\d$/.test(normalized.id);
+    const wordIsPlaceholder = !normalized.pos
+      && normalized.word === normalized.id.replace(/\d+$/, "")
+      && normalized.word === normalized.word.toUpperCase();
+    const hasScrapedTranslations = Object.values(normalized.translations || {})
+      .some((value) => /[\r\n]/.test(String(value)));
+
+    return wordIsArticleId || wordIsPlaceholder || hasScrapedTranslations;
   }
 
   function shouldHydrateHistoryEntry(entry) {
@@ -1539,7 +1573,8 @@
     if (!normalized.id || !normalized.word || !shouldKeepEntry(normalized)) return false;
     if (!isLodArticleUrl(normalized.url)) return false;
 
-    return !normalized.pos
+    return isDamagedHistoryEntry(normalized)
+      || !normalized.pos
       || !normalized.inflection
       || !normalized.example
       || Object.keys(normalized.translations || {}).length === 0;
@@ -1547,6 +1582,10 @@
 
   function mergeHydratedHistoryEntry(existing, hydrated) {
     const merged = mergeEntry(existing, hydrated);
+    if (isDamagedHistoryEntry(existing)) {
+      // Merging would keep scraped text for any language the API doesn't return.
+      merged.translations = normalizeEntry(hydrated).translations;
+    }
     merged.favorite = Boolean(existing?.favorite);
     merged.study = Boolean(existing?.study);
     merged.history = Boolean(existing?.history);
@@ -1567,12 +1606,16 @@
     return normalizeEntry(merged);
   }
 
-  async function hydrateHistoryEntry(entry, settings) {
+  async function hydrateHistoryEntry(entry) {
     const normalized = normalizeEntry(entry);
     if (!shouldHydrateHistoryEntry(normalized)) return null;
 
-    const html = await fetchArticleHtml(normalized.url);
-    const extracted = extractEntryFromHtml(html, normalized.url);
+    const lookup = globalThis.LodVaultLensLookup;
+    if (typeof lookup?.fetchEntry !== "function") {
+      throw new Error("LOD lookup is unavailable.");
+    }
+
+    const extracted = await lookup.fetchEntry(normalized.id, { fetch: fetchForHydration });
     if (!extracted?.id || extracted.id !== normalized.id) {
       throw new Error("Hydrated article did not match the expected entry.");
     }
@@ -1589,6 +1632,47 @@
       createdAt: normalized.createdAt,
       updatedAt: nowIso()
     });
+  }
+
+  async function getHistoryRepairAttempts() {
+    const data = await chrome.storage.local.get([HISTORY_REPAIR_ATTEMPTS_KEY]);
+    const attempts = data[HISTORY_REPAIR_ATTEMPTS_KEY];
+    return attempts && typeof attempts === "object" ? attempts : {};
+  }
+
+  async function saveHistoryRepairAttempts(attempts) {
+    if (Object.keys(attempts).length) {
+      await chrome.storage.local.set({ [HISTORY_REPAIR_ATTEMPTS_KEY]: attempts });
+    } else {
+      await chrome.storage.local.remove(HISTORY_REPAIR_ATTEMPTS_KEY);
+    }
+  }
+
+  function recordHistoryRepairOutcome(id, outcome) {
+    return runVaultIo(async () => {
+      const attempts = await getHistoryRepairAttempts();
+      if (outcome === "repaired") {
+        if (!attempts[id]) return;
+        delete attempts[id];
+      } else {
+        attempts[id] = {
+          attempts: outcome === "gave-up"
+            ? HISTORY_REPAIR_MAX_ATTEMPTS
+            : (Number(attempts[id]?.attempts) || 0) + 1,
+          at: nowIso()
+        };
+      }
+      await saveHistoryRepairAttempts(attempts);
+    });
+  }
+
+  // A failure might be temporary, such as being offline at browser start, so
+  // it gets a limited number of daily retries. A missing article, or a word
+  // that still looks damaged after a good response, isn't worth asking about again.
+  function canRetryHistoryRepair(record) {
+    if (!record) return true;
+    if ((Number(record.attempts) || 0) >= HISTORY_REPAIR_MAX_ATTEMPTS) return false;
+    return !(Date.now() - Date.parse(record.at) < HISTORY_REPAIR_RETRY_MS);
   }
 
   async function resumeHistoryImportHydration() {
@@ -1612,23 +1696,26 @@
         }
 
         const nextId = state.queue[0];
-        await saveHistoryImportState({
-          ...state,
-          status: "running",
-          currentId: nextId,
-          updatedAt: nowIso()
+        await runVaultIo(async () => {
+          const latestState = await getHistoryImportState();
+          await saveHistoryImportState({
+            ...latestState,
+            status: "running",
+            currentId: nextId,
+            updatedAt: nowIso()
+          });
         });
 
         let hydrated = false;
+        let repairOutcome = "";
         try {
-          const [settings, existingEntry, deletedMap] = await Promise.all([
-            getSettings(),
+          const [existingEntry, deletedMap] = await Promise.all([
             getEntry(nextId),
             getDeletedMap()
           ]);
 
           if (existingEntry && !deletedMap[nextId] && shouldHydrateHistoryEntry(existingEntry)) {
-            const hydratedEntry = await hydrateHistoryEntry(existingEntry, settings);
+            const hydratedEntry = await hydrateHistoryEntry(existingEntry);
             hydrated = await runVaultIo(async () => {
               const [entryMap, latestDeletedMap] = await Promise.all([
                 getEntryMap(),
@@ -1639,37 +1726,47 @@
                 return false;
               }
 
-              entryMap[nextId] = mergeHydratedHistoryEntry(latestEntry, hydratedEntry);
+              const repairedEntry = mergeHydratedHistoryEntry(latestEntry, hydratedEntry);
+              entryMap[nextId] = repairedEntry;
               await persistVaultState({ entryMap, deletedMap: latestDeletedMap });
+              repairOutcome = isDamagedHistoryEntry(repairedEntry) ? "gave-up" : "repaired";
               return true;
             });
           }
-        } catch {
+        } catch (error) {
           hydrated = false;
+          repairOutcome = error?.status === 404 ? "gave-up" : "failed";
         }
 
-        const latestState = await getHistoryImportState();
-        let removed = false;
-        const nextQueue = latestState.queue.filter((id) => {
-          if (!removed && id === nextId) {
-            removed = true;
-            return false;
-          }
-          return true;
-        });
-        const nextFailedIds = hydrated
-          ? latestState.failedIds.filter((id) => id !== nextId)
-          : [...latestState.failedIds.filter((id) => id !== nextId), nextId].slice(-20);
+        if (repairOutcome) {
+          await recordHistoryRepairOutcome(nextId, repairOutcome);
+        }
 
-        await saveHistoryImportState({
-          ...latestState,
-          status: nextQueue.length ? "running" : "complete",
-          currentId: nextQueue.length ? "" : "",
-          updatedAt: nowIso(),
-          hydrated: latestState.hydrated + (hydrated ? 1 : 0),
-          failed: nextFailedIds.length,
-          failedIds: nextFailedIds,
-          queue: nextQueue
+        const nextQueue = await runVaultIo(async () => {
+          const latestState = await getHistoryImportState();
+          let removed = false;
+          const remainingQueue = latestState.queue.filter((id) => {
+            if (!removed && id === nextId) {
+              removed = true;
+              return false;
+            }
+            return true;
+          });
+          const nextFailedIds = hydrated
+            ? latestState.failedIds.filter((id) => id !== nextId)
+            : [...latestState.failedIds.filter((id) => id !== nextId), nextId].slice(-20);
+
+          await saveHistoryImportState({
+            ...latestState,
+            status: remainingQueue.length ? "running" : "complete",
+            currentId: "",
+            updatedAt: nowIso(),
+            hydrated: latestState.hydrated + (hydrated ? 1 : 0),
+            failed: nextFailedIds.length,
+            failedIds: nextFailedIds,
+            queue: remainingQueue
+          });
+          return remainingQueue;
         });
 
         if (nextQueue.length) {
@@ -1679,6 +1776,48 @@
     } finally {
       historyHydrationRunning = false;
     }
+  }
+
+  function queueDamagedHistoryEntries() {
+    return runVaultIo(async () => {
+      const [entryMap, deletedMap, state, attempts] = await Promise.all([
+        getEntryMap(),
+        getDeletedMap(),
+        getHistoryImportState(),
+        getHistoryRepairAttempts()
+      ]);
+
+      // Records only matter while a word is still damaged.
+      const liveAttempts = Object.fromEntries(Object.entries(attempts).filter(
+        ([id]) => entryMap[id] && !deletedMap[id] && isDamagedHistoryEntry(entryMap[id])
+      ));
+      if (Object.keys(liveAttempts).length !== Object.keys(attempts).length) {
+        await saveHistoryRepairAttempts(liveAttempts);
+      }
+
+      const nextQueue = [...state.queue];
+      for (const [id, entry] of Object.entries(entryMap)) {
+        if (nextQueue.length >= HISTORY_HYDRATION_MAX_QUEUE) break;
+        if (nextQueue.includes(id) || deletedMap[id]) continue;
+        if (!canRetryHistoryRepair(liveAttempts[id])) continue;
+        if (isDamagedHistoryEntry(entry) && shouldHydrateHistoryEntry(entry)) {
+          nextQueue.push(id);
+        }
+      }
+
+      const added = nextQueue.length - state.queue.length;
+      if (!added) return 0;
+
+      await saveHistoryImportState({
+        ...state,
+        status: historyHydrationRunning ? "running" : "queued",
+        startedAt: state.startedAt || nowIso(),
+        updatedAt: nowIso(),
+        queued: state.queued + added,
+        queue: nextQueue
+      });
+      return added;
+    });
   }
 
   function assertBrowserHistoryApiAvailable() {
@@ -1829,7 +1968,25 @@
       ? secondary
       : primary;
 
-    const hasHistory = Boolean(primary.history || secondary.history);
+    // Lists and notes carry their own timestamps, so an unrelated update on a
+    // device that missed a change can't undo it, while an explicit removal or
+    // clear still sticks. When neither copy has a timestamp, as with data saved
+    // before they existed, the union keeps everything. A timestamped copy beats
+    // an untimestamped one: its updatedAt can't be used instead, because a page
+    // visit bumps it too and would undo removals.
+    const newerByField = (field) => {
+      const primaryTime = Date.parse(primary[field]) || 0;
+      const secondaryTime = Date.parse(secondary[field]) || 0;
+      if (primaryTime === secondaryTime) return null;
+      return secondaryTime > primaryTime ? secondary : primary;
+    };
+    const listsSource = newerByField("listsUpdatedAt");
+    const noteSource = newerByField("noteUpdatedAt");
+    // Both devices have to settle on the same note, whichever one is merging.
+    const noteTied = !noteSource && primary.noteUpdatedAt && secondary.noteUpdatedAt;
+    const flagFrom = (flag) => Boolean(listsSource ? listsSource[flag] : (primary[flag] || secondary[flag]));
+
+    const hasHistory = flagFrom("history");
     const latestVisitedAt = [primary.lastVisitedAt, secondary.lastVisitedAt]
       .map((value) => cleanText(value))
       .filter(Boolean)
@@ -1853,14 +2010,18 @@
       pos: newest.pos || primary.pos || secondary.pos,
       inflection: newest.inflection || primary.inflection || secondary.inflection,
       example: newest.example || primary.example || secondary.example,
-      note: newest.note || primary.note || secondary.note,
+      note: noteSource
+        ? noteSource.note
+        : (noteTied
+            ? [primary.note || "", secondary.note || ""].sort().pop()
+            : (newest.note || primary.note || secondary.note)),
       translations: {
         ...(secondary.translations || {}),
         ...(primary.translations || {}),
         ...(newest.translations || {})
       },
-      favorite: Boolean(primary.favorite || secondary.favorite),
-      study: Boolean(primary.study || secondary.study),
+      favorite: flagFrom("favorite"),
+      study: flagFrom("study"),
       history: hasHistory,
       visitCount: hasHistory
         ? Math.max(normalizeVisitCount(primary.visitCount), normalizeVisitCount(secondary.visitCount), 1)
@@ -1869,6 +2030,9 @@
       createdAt: createdCandidates[0] || nowIso(),
       updatedAt: updatedCandidates[0] || nowIso()
     };
+
+    if (noteSource) merged.noteUpdatedAt = noteSource.noteUpdatedAt;
+    if (listsSource) merged.listsUpdatedAt = listsSource.listsUpdatedAt;
 
     if (!Object.keys(merged.translations || {}).length) {
       delete merged.translations;
@@ -2033,21 +2197,31 @@
     return { dueAt: due.toISOString(), interval };
   }
 
+  // Reviews are stored as UTC timestamps; days and streaks follow the learner's
+  // own calendar. Bare YYYY-MM-DD values are already day keys.
+  function toLocalDateKey(value = new Date()) {
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return "";
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${date.getFullYear()}-${month}-${day}`;
+  }
+
   function computeFlashcardStreak(sortedDescDates) {
     if (!sortedDescDates.length) return 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const checkDate = new Date();
+    checkDate.setHours(0, 0, 0, 0);
 
     let streak = 0;
-    let checkDate = new Date(today);
 
     for (const dateStr of sortedDescDates) {
-      const d = new Date(dateStr);
-      d.setHours(0, 0, 0, 0);
-      if (d.getTime() === checkDate.getTime()) {
+      const dateKey = toLocalDateKey(dateStr);
+      const checkKey = toLocalDateKey(checkDate);
+      if (dateKey === checkKey) {
         streak += 1;
         checkDate.setDate(checkDate.getDate() - 1);
-      } else if (d.getTime() === checkDate.getTime() + 86400000) {
+      } else if (dateKey > checkKey) {
         continue;
       } else {
         break;
@@ -2095,9 +2269,29 @@
     return runStoreMutation("recordFlashcardReview", [entryId, rating, direction], recordFlashcardReviewDirect);
   }
 
+  async function getSyncIssue() {
+    const data = await chrome.storage.local.get([SYNC_ISSUE_KEY]);
+    const issue = data[SYNC_ISSUE_KEY];
+    return issue && typeof issue === "object" ? issue : null;
+  }
+
+  async function setSyncIssue(issue = {}) {
+    await chrome.storage.local.set({
+      [SYNC_ISSUE_KEY]: {
+        reason: cleanText(issue.reason) || "sync-failed",
+        maxItemsExceeded: Boolean(issue.maxItemsExceeded),
+        at: nowIso()
+      }
+    });
+  }
+
+  async function clearSyncIssue() {
+    await chrome.storage.local.remove(SYNC_ISSUE_KEY);
+  }
+
   async function getFlashcardStatsDirect() {
     const meta = await getFlashcardMeta();
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayKey = toLocalDateKey();
     let todayCount = 0;
     let learningCount = 0;
     let masteredCount = 0;
@@ -2107,11 +2301,11 @@
       const m = normalizeFlashcardMeta(data);
       if (!m.totalReviews) continue;
 
-      const dateSet = new Set(m.reviews.map((r) => r.date.slice(0, 10)));
+      const dateSet = new Set(m.reviews.map((r) => toLocalDateKey(r.date)));
       for (const d of dateSet) reviewDates.add(d);
 
       const last = m.reviews[m.reviews.length - 1];
-      if (last && last.date.slice(0, 10) === todayIso) {
+      if (last && toLocalDateKey(last.date) === todayKey) {
         todayCount += 1;
       }
 
@@ -2139,6 +2333,14 @@
     PORTABLE_BACKUP_KEY,
     DELETED_KEY,
     HISTORY_IMPORT_STATE_KEY,
+    HISTORY_REPAIR_ATTEMPTS_KEY,
+    SYNC_ISSUE_KEY,
+    getSyncIssue,
+    setSyncIssue,
+    clearSyncIssue,
+    toLocalDateKey,
+    isDamagedHistoryEntry,
+    queueDamagedHistoryEntries,
     FLASHCARD_META_KEY,
     DEFAULT_SETTINGS,
     EXPORT_VERSION,

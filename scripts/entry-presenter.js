@@ -646,6 +646,12 @@
 </html>`;
   }
 
+  // Tabs and line breaks separate Anki's columns and rows, so they can't appear
+  // inside a field. The export declares #html:true, so <br> keeps the break.
+  function toAnkiField(value) {
+    return String(value ?? "").replace(/\r\n|\r|\n/g, "<br>").replace(/\t/g, " ");
+  }
+
   function buildAnkiExport(entries) {
     const normalized = entries.map(normalizeEntry).filter((e) => e.word);
     const lines = [
@@ -673,7 +679,7 @@
         example,
         note,
         url
-      ].join("\t"));
+      ].map(toAnkiField).join("\t"));
     }
 
     return lines.join("\n");

@@ -194,7 +194,8 @@ function loadSharedStore(initialStorage = {}, options = {}) {
     "scripts/note-autosave.js",
     "scripts/entry-presenter.js",
     "scripts/shared.js",
-    "scripts/lod-article.js"
+    "scripts/lod-article.js",
+    "scripts/lens-lookup.js"
   ]);
 
   return {
@@ -243,6 +244,7 @@ function loadSyncScript(initialStorage = {}, options = {}) {
     "scripts/entry-presenter.js",
     "scripts/shared.js",
     "scripts/lod-article.js",
+    "scripts/lens-lookup.js",
     "scripts/compress.js",
     "scripts/sync.js"
   ]);
@@ -636,6 +638,7 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localSt
     TRANSLATION_LANGUAGE_LABELS: { ...shared.store.TRANSLATION_LANGUAGE_LABELS },
     normalizeFlashcardMeta: shared.store.normalizeFlashcardMeta,
     computeFlashcardStreak: shared.store.computeFlashcardStreak,
+    toLocalDateKey: shared.store.toLocalDateKey,
     escapeHtml: shared.store.escapeHtml,
     setHtml: shared.store.setHtml,
     buildMeaningRowsMarkup: shared.store.buildMeaningRowsMarkup,

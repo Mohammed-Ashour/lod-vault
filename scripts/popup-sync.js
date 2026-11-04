@@ -212,6 +212,12 @@
       if (state.syncNowInProgress || state.syncPullInProgress) return;
 
       try {
+        const syncIssue = await store.getSyncIssue?.();
+        if (syncIssue) {
+          setSyncHealthStatus(`${describeSyncFailure(syncIssue)} Your words are safe on this device.`, "error");
+          return;
+        }
+
         const remoteState = snapshot || await inspectSyncRemoteState();
         const localCount = Number(state.savedEntries?.length || 0);
 
@@ -356,6 +362,10 @@
         remoteState = await inspectSyncRemoteState();
         await renderSyncCapacity(remoteState);
         scheduleSyncCapacityRefresh();
+
+        if (result?.ok !== false) {
+          await store.clearSyncIssue?.();
+        }
 
         if (result?.ok === false) {
           setSyncNowStatus(describeSyncFailure(result), "error", "push");

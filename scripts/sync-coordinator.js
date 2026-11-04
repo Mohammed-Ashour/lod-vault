@@ -221,6 +221,37 @@
       logger.warn(`[LODVault] ${label}:`, error);
     }
 
+    // Automatic sync runs unattended, so a failure is stored for the popup and
+    // the toolbar badge instead of only reaching the console.
+    async function recordSyncOutcome(result) {
+      try {
+        if (result?.ok === false) {
+          await store.setSyncIssue?.(result);
+        } else {
+          await store.clearSyncIssue?.();
+        }
+      } catch (error) {
+        logSyncWarning("Could not record sync status", error);
+      }
+    }
+
+    // A pull doesn't prove pushes work, so a clean pull that pushed nothing
+    // only clears an earlier pull failure.
+    async function recordPullOutcome(result) {
+      if (result?.ok === false || result?.pushed) {
+        await recordSyncOutcome(result);
+        return;
+      }
+      try {
+        const issue = await store.getSyncIssue?.();
+        if (issue?.reason === "pull-failed") {
+          await store.clearSyncIssue?.();
+        }
+      } catch (error) {
+        logSyncWarning("Could not record sync status", error);
+      }
+    }
+
     function scheduleLocalPush(plan = { type: "all" }) {
       if (!plan) return;
 
@@ -246,8 +277,9 @@
           // a redundant pull that would immediately follow.
           if (!syncInitialized) {
             suppressSyncPull();
+            // Init only re-pushes when the merge changed something, so it can't
+            // be relied on to upload the edit that woke this worker.
             await initializeSync("local-change");
-            return;
           }
 
           // Prevent a pull from immediately running after the push —
@@ -264,8 +296,9 @@
           }
 
           return syncAdapter.pushAll();
-        }).catch((error) => {
+        }).then(recordSyncOutcome).catch(async (error) => {
           logSyncWarning("Sync push failed", error);
+          await recordSyncOutcome({ ok: false, reason: "sync-failed" });
         });
       }, delayMs);
     }
@@ -276,27 +309,29 @@
       enqueueSyncTask(async () => {
         if (!syncInitialized) {
           suppressLocalPush();
-          await initializeSync("sync-change");
-          return;
+          return initializeSync("sync-change");
         }
 
         suppressLocalPush();
         suppressSyncPull();
-        await syncAdapter.pullAll({ repush: true });
-      }).catch((error) => {
+        return syncAdapter.pullAll({ repush: true });
+      }).then(recordPullOutcome).catch(async (error) => {
         logSyncWarning("Sync pull failed", error);
+        await recordSyncOutcome({ ok: false, reason: "pull-failed" });
       });
     }
 
     async function handleInstalled(reason = "onInstalled") {
-      return enqueueSyncTask(() => initializeSync(reason)).catch((error) => {
+      return enqueueSyncTask(() => initializeSync(reason)).then(recordPullOutcome).catch(async (error) => {
         logSyncWarning("Initial sync failed", error);
+        await recordSyncOutcome({ ok: false, reason: "pull-failed" });
       });
     }
 
     async function handleStartup(reason = "onStartup") {
-      return enqueueSyncTask(() => initializeSync(reason)).catch((error) => {
+      return enqueueSyncTask(() => initializeSync(reason)).then(recordPullOutcome).catch(async (error) => {
         logSyncWarning("Startup sync failed", error);
+        await recordSyncOutcome({ ok: false, reason: "pull-failed" });
       });
     }
 

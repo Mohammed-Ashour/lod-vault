@@ -297,63 +297,6 @@
     };
   }
 
-  function decodeHtmlText(value) {
-    return cleanWord(String(value || "")
-      .replace(/&nbsp;/gi, " ")
-      .replace(/&amp;/gi, "&")
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;/gi, "'")
-      .replace(/&lt;/gi, "<")
-      .replace(/&gt;/gi, ">"));
-  }
-
-  function extractEntryFromHtmlWithRegex(html, url) {
-    const source = String(html || "");
-    const id = getIdFromUrl(url);
-    if (!id) return null;
-
-    const headingMatch = source.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-    const headingText = decodeHtmlText((headingMatch?.[1] || "").replace(/<[^>]+>/g, " "));
-    const word = sanitizeHeading(headingText) || cleanWord(id);
-    if (!wordMatchesUrlId(word, id)) return null;
-
-    const posMatch = source.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i);
-    const translations = {};
-    for (const lang of ["de", "fr", "en", "pt", "nl"]) {
-      const pattern = new RegExp(`<div[^>]+class=["'][^"']*${lang}[^"']*["'][^>]*>([\\s\\S]*?)<\\/div>`, "ig");
-      let match = null;
-      while ((match = pattern.exec(source))) {
-        const value = decodeHtmlText(String(match[1] || "").replace(/<[^>]+>/g, " "));
-        addTranslationValue(translations, lang, value);
-      }
-    }
-
-    return {
-      id,
-      word,
-      url,
-      pos: sanitizePos(decodeHtmlText(posMatch?.[1] || "")),
-      inflection: "",
-      example: "",
-      translations
-    };
-  }
-
-  function extractEntryFromHtml(html, url) {
-    if (typeof DOMParser !== "undefined") {
-      try {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(String(html || ""), "text/html");
-        const parsed = extractEntryFromDocument(doc, url);
-        if (parsed) return parsed;
-      } catch {
-        // Fall through to regex extraction.
-      }
-    }
-
-    return extractEntryFromHtmlWithRegex(html, url);
-  }
-
   function infoTextFull(entry) {
     const parts = [];
     if (entry?.pos) parts.push(entry.pos);
@@ -410,7 +353,6 @@
     extractTranslations,
     extractCurrentEntry,
     extractEntryFromDocument,
-    extractEntryFromHtml,
     infoText,
     infoTextFull
   };
