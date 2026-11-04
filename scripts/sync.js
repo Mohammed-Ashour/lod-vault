@@ -87,6 +87,27 @@
     return compact;
   }
 
+  // Deletion records live in one sync item. Past the item limit, keep the newest
+  // ones rather than failing every push: only a device offline long enough to
+  // miss a dropped record could bring that old deletion back.
+  function limitDeletedMapForSync(compact = {}) {
+    if (getSyncItemSize(SYNC_DELETED_KEY, compact) <= SYNC_ITEM_HARD_LIMIT) return compact;
+
+    const newestFirst = Object.entries(compact).sort((left, right) => right[1] - left[1]);
+    let low = 0;
+    let high = newestFirst.length;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      const candidate = Object.fromEntries(newestFirst.slice(0, middle));
+      if (getSyncItemSize(SYNC_DELETED_KEY, candidate) <= SYNC_ITEM_HARD_LIMIT) {
+        low = middle;
+      } else {
+        high = middle - 1;
+      }
+    }
+    return Object.fromEntries(newestFirst.slice(0, low));
+  }
+
   function expandDeletedMap(value = {}) {
     const expanded = {};
     for (const [id, deletedAt] of Object.entries(value || {})) {
@@ -193,6 +214,10 @@
     if (entry.inflection) compact.f = entry.inflection;
     if (entry.example) compact.e = entry.example;
     if (entry.note) compact.n = entry.note;
+    const noteUpdatedAt = isoToUnix(entry.noteUpdatedAt);
+    if (noteUpdatedAt) compact.m = noteUpdatedAt;
+    const listsUpdatedAt = isoToUnix(entry.listsUpdatedAt);
+    if (listsUpdatedAt) compact.g = listsUpdatedAt;
 
     const translations = compactTranslations(entry.translations, syncLanguages);
     if (Object.keys(translations).length) {
@@ -232,6 +257,8 @@
       inflection: cleanText(syncEntry.f),
       example: cleanText(syncEntry.e),
       note: cleanText(syncEntry.n),
+      noteUpdatedAt: unixToIso(syncEntry.m),
+      listsUpdatedAt: unixToIso(syncEntry.g),
       translations: expandTranslations(syncEntry.t, existing.translations),
       favorite: Boolean(flags.fav),
       study: Boolean(flags.study),
@@ -940,7 +967,7 @@
     }
 
     if (Object.keys(localState.deletedMap || {}).length) {
-      nextSyncData[SYNC_DELETED_KEY] = compactDeletedMap(localState.deletedMap);
+      nextSyncData[SYNC_DELETED_KEY] = limitDeletedMapForSync(compactDeletedMap(localState.deletedMap));
     }
 
     Object.assign(nextSyncData, buildMetadataPayload(localState.settings, shards.length));

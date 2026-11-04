@@ -6,6 +6,7 @@
 //   store-core.js
 //   shared.js
 //   lod-article.js
+//   lens-lookup.js
 //   compress.js
 //   sync.js
 //   sync-coordinator.js
@@ -21,6 +22,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   const PORTABLE_BACKUP_KEY = "lodVault.portableBackup";
   const DELETED_KEY = "lodVault.deleted";
   const HISTORY_IMPORT_STATE_KEY = "lodVault.historyImport";
+  const SYNC_ISSUE_KEY = "lodVault.syncIssue";
   const DEFAULT_SETTINGS = {
     autoMode: false,
     syncLanguages: ["en", "fr", "de"],
@@ -428,6 +430,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
   function normalizeEntry(entry = {}) {
     const id = cleanText(entry.id) || getIdFromUrl(entry.url);
+    const noteUpdatedAt = cleanText(entry.noteUpdatedAt);
+    const listsUpdatedAt = cleanText(entry.listsUpdatedAt);
     return {
       id,
       word: cleanWordLabel(entry.word),
@@ -443,7 +447,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       visitCount: normalizeVisitCount(entry.visitCount),
       lastVisitedAt: cleanText(entry.lastVisitedAt),
       createdAt: cleanText(entry.createdAt),
-      updatedAt: cleanText(entry.updatedAt)
+      updatedAt: cleanText(entry.updatedAt),
+      ...(noteUpdatedAt ? { noteUpdatedAt } : {}),
+      ...(listsUpdatedAt ? { listsUpdatedAt } : {})
     };
   }
 
@@ -541,6 +547,11 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       createdAt: current.createdAt || next.createdAt || nowIso(),
       updatedAt: nowIso()
     };
+
+    const noteUpdatedAt = current.noteUpdatedAt || next.noteUpdatedAt;
+    if (noteUpdatedAt) merged.noteUpdatedAt = noteUpdatedAt;
+    const listsUpdatedAt = current.listsUpdatedAt || next.listsUpdatedAt;
+    if (listsUpdatedAt) merged.listsUpdatedAt = listsUpdatedAt;
 
     if (!Object.keys(merged.translations).length) {
       delete merged.translations;
@@ -993,6 +1004,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       merged.visitCount = normalizeVisitCount(existing?.visitCount);
       merged.lastVisitedAt = cleanText(existing?.lastVisitedAt);
       merged[listName] = toggle ? !merged[listName] : true;
+      merged.listsUpdatedAt = nowIso();
 
       if (!shouldKeepEntry(merged)) {
         delete entryMap[normalized.id];
@@ -1039,6 +1051,11 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       merged.favorite = Boolean(existing?.favorite);
       merged.study = true;
       merged.history = true;
+      // A repeat visit changes no list, so it must not outrank a removal made
+      // on another device.
+      if (!existing?.study || !existing?.history) {
+        merged.listsUpdatedAt = nowIso();
+      }
       merged.visitCount = normalizeVisitCount(existing?.visitCount) + 1;
       merged.lastVisitedAt = visitedAt;
       merged.updatedAt = visitedAt;
@@ -1070,6 +1087,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       merged.favorite = Boolean(existing.favorite);
       merged.study = Boolean(existing.study);
       merged.history = false;
+      merged.listsUpdatedAt = nowIso();
       delete merged.visitCount;
       delete merged.lastVisitedAt;
 
@@ -1146,6 +1164,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       const merged = mergeEntry(existing, existing);
 
       merged.note = cleanText(note);
+      merged.noteUpdatedAt = nowIso();
       merged.favorite = Boolean(existing.favorite);
       merged.study = Boolean(existing.study);
       merged.history = Boolean(existing.history);
@@ -1194,6 +1213,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         getDeletedMap()
       ]);
       restored.updatedAt = nowIso();
+      restored.listsUpdatedAt = restored.updatedAt;
       restored.createdAt = restored.createdAt || restored.updatedAt;
       entryMap[restored.id] = restored;
       delete deletedMap[restored.id];
@@ -1510,10 +1530,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
   }
 
-  async function fetchArticleHtml(url) {
-    const requestUrl = cleanText(url);
-    if (!requestUrl) return "";
-
+  async function fetchForHydration(url, init = {}) {
     const controller = typeof AbortController !== "undefined"
       ? new AbortController()
       : null;
@@ -1522,32 +1539,35 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       : null;
 
     try {
-      const response = await fetch(requestUrl, {
+      return await fetch(url, {
+        ...init,
         method: "GET",
         credentials: "omit",
         redirect: "follow",
-        signal: controller?.signal,
-        headers: {
-          Accept: "text/html,application/xhtml+xml"
-        }
+        signal: controller?.signal
       });
-
-      if (!response?.ok) {
-        throw new Error(`HTTP ${response?.status || 0}`);
-      }
-
-      return await response.text();
     } finally {
       if (timer) clearTimeout(timer);
     }
   }
 
-  function extractEntryFromHtml(html, url) {
-    const reader = globalThis.LodVaultArticleReader;
-    if (typeof reader?.extractEntryFromHtml === "function") {
-      return reader.extractEntryFromHtml(html, url);
-    }
-    return null;
+
+  // Earlier versions hydrated history imports by regex-scraping article HTML,
+  // which saved the article id as the word ("HAUS1") and mixed unrelated page
+  // text, with its line breaks, into translations. Imports whose hydration
+  // never ran keep the id-derived placeholder ("HAUS") with no part of speech.
+  function isDamagedHistoryEntry(entry) {
+    const normalized = normalizeEntry(entry);
+    if (!normalized.id || !normalized.word) return false;
+
+    const wordIsArticleId = normalized.word === normalized.id && /\d$/.test(normalized.id);
+    const wordIsPlaceholder = !normalized.pos
+      && normalized.word === normalized.id.replace(/\d+$/, "")
+      && normalized.word === normalized.word.toUpperCase();
+    const hasScrapedTranslations = Object.values(normalized.translations || {})
+      .some((value) => /[\r\n]/.test(String(value)));
+
+    return wordIsArticleId || wordIsPlaceholder || hasScrapedTranslations;
   }
 
   function shouldHydrateHistoryEntry(entry) {
@@ -1555,7 +1575,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     if (!normalized.id || !normalized.word || !shouldKeepEntry(normalized)) return false;
     if (!isLodArticleUrl(normalized.url)) return false;
 
-    return !normalized.pos
+    return isDamagedHistoryEntry(normalized)
+      || !normalized.pos
       || !normalized.inflection
       || !normalized.example
       || Object.keys(normalized.translations || {}).length === 0;
@@ -1563,6 +1584,10 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
   function mergeHydratedHistoryEntry(existing, hydrated) {
     const merged = mergeEntry(existing, hydrated);
+    if (isDamagedHistoryEntry(existing)) {
+      // Merging would keep scraped text for any language the API doesn't return.
+      merged.translations = normalizeEntry(hydrated).translations;
+    }
     merged.favorite = Boolean(existing?.favorite);
     merged.study = Boolean(existing?.study);
     merged.history = Boolean(existing?.history);
@@ -1583,12 +1608,16 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return normalizeEntry(merged);
   }
 
-  async function hydrateHistoryEntry(entry, settings) {
+  async function hydrateHistoryEntry(entry) {
     const normalized = normalizeEntry(entry);
     if (!shouldHydrateHistoryEntry(normalized)) return null;
 
-    const html = await fetchArticleHtml(normalized.url);
-    const extracted = extractEntryFromHtml(html, normalized.url);
+    const lookup = globalThis.LodVaultLensLookup;
+    if (typeof lookup?.fetchEntry !== "function") {
+      throw new Error("LOD lookup is unavailable.");
+    }
+
+    const extracted = await lookup.fetchEntry(normalized.id, { fetch: fetchForHydration });
     if (!extracted?.id || extracted.id !== normalized.id) {
       throw new Error("Hydrated article did not match the expected entry.");
     }
@@ -1637,14 +1666,13 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
         let hydrated = false;
         try {
-          const [settings, existingEntry, deletedMap] = await Promise.all([
-            getSettings(),
+          const [existingEntry, deletedMap] = await Promise.all([
             getEntry(nextId),
             getDeletedMap()
           ]);
 
           if (existingEntry && !deletedMap[nextId] && shouldHydrateHistoryEntry(existingEntry)) {
-            const hydratedEntry = await hydrateHistoryEntry(existingEntry, settings);
+            const hydratedEntry = await hydrateHistoryEntry(existingEntry);
             hydrated = await runVaultIo(async () => {
               const [entryMap, latestDeletedMap] = await Promise.all([
                 getEntryMap(),
@@ -1695,6 +1723,35 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     } finally {
       historyHydrationRunning = false;
     }
+  }
+
+  async function queueDamagedHistoryEntries() {
+    const [entryMap, deletedMap, state] = await Promise.all([
+      getEntryMap(),
+      getDeletedMap(),
+      getHistoryImportState()
+    ]);
+    const nextQueue = [...state.queue];
+    for (const [id, entry] of Object.entries(entryMap)) {
+      if (nextQueue.length >= HISTORY_HYDRATION_MAX_QUEUE) break;
+      if (nextQueue.includes(id) || deletedMap[id]) continue;
+      if (isDamagedHistoryEntry(entry) && shouldHydrateHistoryEntry(entry)) {
+        nextQueue.push(id);
+      }
+    }
+
+    const added = nextQueue.length - state.queue.length;
+    if (!added) return 0;
+
+    await saveHistoryImportState({
+      ...state,
+      status: historyHydrationRunning ? "running" : "queued",
+      startedAt: state.startedAt || nowIso(),
+      updatedAt: nowIso(),
+      queued: state.queued + added,
+      queue: nextQueue
+    });
+    return added;
   }
 
   function assertBrowserHistoryApiAvailable() {
@@ -1845,7 +1902,21 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       ? secondary
       : primary;
 
-    const hasHistory = Boolean(primary.history || secondary.history);
+    // Lists and notes carry their own timestamps, so an unrelated update on a
+    // device that missed a change can't undo it, while an explicit removal or
+    // clear still sticks. Data saved before these timestamps existed has none,
+    // and keeps the union so nothing is lost.
+    const newerByField = (field) => {
+      const primaryTime = Date.parse(primary[field]) || 0;
+      const secondaryTime = Date.parse(secondary[field]) || 0;
+      if (primaryTime === secondaryTime) return null;
+      return secondaryTime > primaryTime ? secondary : primary;
+    };
+    const listsSource = newerByField("listsUpdatedAt");
+    const noteSource = newerByField("noteUpdatedAt");
+    const flagFrom = (flag) => Boolean(listsSource ? listsSource[flag] : (primary[flag] || secondary[flag]));
+
+    const hasHistory = flagFrom("history");
     const latestVisitedAt = [primary.lastVisitedAt, secondary.lastVisitedAt]
       .map((value) => cleanText(value))
       .filter(Boolean)
@@ -1869,14 +1940,14 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       pos: newest.pos || primary.pos || secondary.pos,
       inflection: newest.inflection || primary.inflection || secondary.inflection,
       example: newest.example || primary.example || secondary.example,
-      note: newest.note || primary.note || secondary.note,
+      note: noteSource ? noteSource.note : (newest.note || primary.note || secondary.note),
       translations: {
         ...(secondary.translations || {}),
         ...(primary.translations || {}),
         ...(newest.translations || {})
       },
-      favorite: Boolean(primary.favorite || secondary.favorite),
-      study: Boolean(primary.study || secondary.study),
+      favorite: flagFrom("favorite"),
+      study: flagFrom("study"),
       history: hasHistory,
       visitCount: hasHistory
         ? Math.max(normalizeVisitCount(primary.visitCount), normalizeVisitCount(secondary.visitCount), 1)
@@ -1885,6 +1956,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       createdAt: createdCandidates[0] || nowIso(),
       updatedAt: updatedCandidates[0] || nowIso()
     };
+
+    if (noteSource) merged.noteUpdatedAt = noteSource.noteUpdatedAt;
+    if (listsSource) merged.listsUpdatedAt = listsSource.listsUpdatedAt;
 
     if (!Object.keys(merged.translations || {}).length) {
       delete merged.translations;
@@ -2049,21 +2123,31 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return { dueAt: due.toISOString(), interval };
   }
 
+  // Reviews are stored as UTC timestamps; days and streaks follow the learner's
+  // own calendar. Bare YYYY-MM-DD values are already day keys.
+  function toLocalDateKey(value = new Date()) {
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return "";
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${date.getFullYear()}-${month}-${day}`;
+  }
+
   function computeFlashcardStreak(sortedDescDates) {
     if (!sortedDescDates.length) return 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const checkDate = new Date();
+    checkDate.setHours(0, 0, 0, 0);
 
     let streak = 0;
-    let checkDate = new Date(today);
 
     for (const dateStr of sortedDescDates) {
-      const d = new Date(dateStr);
-      d.setHours(0, 0, 0, 0);
-      if (d.getTime() === checkDate.getTime()) {
+      const dateKey = toLocalDateKey(dateStr);
+      const checkKey = toLocalDateKey(checkDate);
+      if (dateKey === checkKey) {
         streak += 1;
         checkDate.setDate(checkDate.getDate() - 1);
-      } else if (d.getTime() === checkDate.getTime() + 86400000) {
+      } else if (dateKey > checkKey) {
         continue;
       } else {
         break;
@@ -2111,9 +2195,29 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return runStoreMutation("recordFlashcardReview", [entryId, rating, direction], recordFlashcardReviewDirect);
   }
 
+  async function getSyncIssue() {
+    const data = await chrome.storage.local.get([SYNC_ISSUE_KEY]);
+    const issue = data[SYNC_ISSUE_KEY];
+    return issue && typeof issue === "object" ? issue : null;
+  }
+
+  async function setSyncIssue(issue = {}) {
+    await chrome.storage.local.set({
+      [SYNC_ISSUE_KEY]: {
+        reason: cleanText(issue.reason) || "sync-failed",
+        maxItemsExceeded: Boolean(issue.maxItemsExceeded),
+        at: nowIso()
+      }
+    });
+  }
+
+  async function clearSyncIssue() {
+    await chrome.storage.local.remove(SYNC_ISSUE_KEY);
+  }
+
   async function getFlashcardStatsDirect() {
     const meta = await getFlashcardMeta();
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayKey = toLocalDateKey();
     let todayCount = 0;
     let learningCount = 0;
     let masteredCount = 0;
@@ -2123,11 +2227,11 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       const m = normalizeFlashcardMeta(data);
       if (!m.totalReviews) continue;
 
-      const dateSet = new Set(m.reviews.map((r) => r.date.slice(0, 10)));
+      const dateSet = new Set(m.reviews.map((r) => toLocalDateKey(r.date)));
       for (const d of dateSet) reviewDates.add(d);
 
       const last = m.reviews[m.reviews.length - 1];
-      if (last && last.date.slice(0, 10) === todayIso) {
+      if (last && toLocalDateKey(last.date) === todayKey) {
         todayCount += 1;
       }
 
@@ -2155,6 +2259,13 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     PORTABLE_BACKUP_KEY,
     DELETED_KEY,
     HISTORY_IMPORT_STATE_KEY,
+    SYNC_ISSUE_KEY,
+    getSyncIssue,
+    setSyncIssue,
+    clearSyncIssue,
+    toLocalDateKey,
+    isDamagedHistoryEntry,
+    queueDamagedHistoryEntries,
     FLASHCARD_META_KEY,
     DEFAULT_SETTINGS,
     EXPORT_VERSION,
@@ -2550,63 +2661,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     };
   }
 
-  function decodeHtmlText(value) {
-    return cleanWord(String(value || "")
-      .replace(/&nbsp;/gi, " ")
-      .replace(/&amp;/gi, "&")
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;/gi, "'")
-      .replace(/&lt;/gi, "<")
-      .replace(/&gt;/gi, ">"));
-  }
-
-  function extractEntryFromHtmlWithRegex(html, url) {
-    const source = String(html || "");
-    const id = getIdFromUrl(url);
-    if (!id) return null;
-
-    const headingMatch = source.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-    const headingText = decodeHtmlText((headingMatch?.[1] || "").replace(/<[^>]+>/g, " "));
-    const word = sanitizeHeading(headingText) || cleanWord(id);
-    if (!wordMatchesUrlId(word, id)) return null;
-
-    const posMatch = source.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i);
-    const translations = {};
-    for (const lang of ["de", "fr", "en", "pt", "nl"]) {
-      const pattern = new RegExp(`<div[^>]+class=["'][^"']*${lang}[^"']*["'][^>]*>([\\s\\S]*?)<\\/div>`, "ig");
-      let match = null;
-      while ((match = pattern.exec(source))) {
-        const value = decodeHtmlText(String(match[1] || "").replace(/<[^>]+>/g, " "));
-        addTranslationValue(translations, lang, value);
-      }
-    }
-
-    return {
-      id,
-      word,
-      url,
-      pos: sanitizePos(decodeHtmlText(posMatch?.[1] || "")),
-      inflection: "",
-      example: "",
-      translations
-    };
-  }
-
-  function extractEntryFromHtml(html, url) {
-    if (typeof DOMParser !== "undefined") {
-      try {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(String(html || ""), "text/html");
-        const parsed = extractEntryFromDocument(doc, url);
-        if (parsed) return parsed;
-      } catch {
-        // Fall through to regex extraction.
-      }
-    }
-
-    return extractEntryFromHtmlWithRegex(html, url);
-  }
-
   function infoTextFull(entry) {
     const parts = [];
     if (entry?.pos) parts.push(entry.pos);
@@ -2663,9 +2717,505 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     extractTranslations,
     extractCurrentEntry,
     extractEntryFromDocument,
-    extractEntryFromHtml,
     infoText,
     infoTextFull
+  };
+})();
+
+
+// ── lens-lookup.js ──────────────────────────────────────────────
+(() => {
+  const API_LOCALE = "lb";
+  const API_ROOT = `https://lod.lu/api/${API_LOCALE}`;
+  const SEARCH_LANGUAGES = Object.freeze(["lb", "en", "fr", "de", "pt", "nl"]);
+  const DEFAULT_SENTENCE_LOOKUP_CONCURRENCY = 6;
+
+  function cleanText(value) {
+    return String(value ?? "").replace(/\s+/g, " ").trim();
+  }
+
+  const cleanDictionaryText = globalThis.LodVaultStoreCore?.cleanDictionaryText || cleanText;
+
+  function normalizeSelection(value) {
+    return cleanText(value)
+      .replace(/^[\s'"„“”‚‘’«»()[\]{}<>.,;:!?/\\|]+/, "")
+      .replace(/[\s'"„“”‚‘’«»()[\]{}<>.,;:!?/\\|]+$/, "")
+      .trim();
+  }
+
+  function normalizeComparable(value) {
+    return cleanText(value)
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/ß/g, "ss");
+  }
+
+  function buildSearchUrl(query, language = API_LOCALE) {
+    if (!SEARCH_LANGUAGES.includes(language)) throw new Error("Unsupported search language.");
+    const url = new URL(`${API_ROOT}/search`);
+    url.searchParams.set("lang", language);
+    url.searchParams.set("query", normalizeSelection(query));
+    return url.toString();
+  }
+
+  function buildEntryUrl(id) {
+    return `${API_ROOT}/entry/${encodeURIComponent(cleanText(id))}`;
+  }
+
+  function buildSuggestionUrl(query) {
+    const url = new URL(`${API_ROOT}/suggest`);
+    url.searchParams.set("query", normalizeSelection(query));
+    return url.toString();
+  }
+
+  function buildSearchPageUrl(query, language = API_LOCALE) {
+    if (!SEARCH_LANGUAGES.includes(language)) throw new Error("Unsupported search language.");
+    return `https://lod.lu/search/${encodeURIComponent(normalizeSelection(query))}/${language}`;
+  }
+
+  function stripDiacritics(value) {
+    return cleanText(value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  }
+
+  async function runtimeProxyFetch(url, options = {}) {
+    const runtime = globalThis.chrome?.runtime;
+    if (typeof runtime?.sendMessage !== "function") {
+      throw new Error("Runtime proxy fetch is unavailable.");
+    }
+
+    const response = await runtime.sendMessage({
+      type: "lodvault:lens-fetch",
+      url: String(url || "")
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || `LOD request failed (${response?.status || 0}).`);
+    }
+
+    return {
+      ok: true,
+      status: response.status,
+      json: async () => response.json,
+      text: async () => response.text || ""
+    };
+  }
+
+  function getFetchImplementation(preferredFetch) {
+    if (typeof preferredFetch === "function") {
+      return preferredFetch;
+    }
+
+    if (typeof globalThis.chrome?.runtime?.sendMessage === "function") {
+      return runtimeProxyFetch;
+    }
+
+    if (typeof globalThis.fetch === "function") {
+      return globalThis.fetch.bind(globalThis);
+    }
+
+    return null;
+  }
+
+  async function fetchJson(url, fetchImpl) {
+    const resolvedFetch = getFetchImplementation(fetchImpl);
+    if (typeof resolvedFetch !== "function") {
+      throw new Error("Fetch is unavailable.");
+    }
+
+    const response = await resolvedFetch(url, {
+      headers: {
+        Accept: "application/json"
+      }
+    });
+
+    if (!response?.ok) {
+      throw new Error(`LOD request failed (${response?.status || 0}).`);
+    }
+
+    return response.json();
+  }
+
+  function mapCandidate(result = {}, language = API_LOCALE) {
+    const id = cleanText(result.article_id || result.id);
+    return {
+      id,
+      articleId: id,
+      word: cleanDictionaryText(result.word_lb || result.lemma),
+      pos: cleanDictionaryText(result.pos),
+      matches: Array.isArray(result.matches) ? result.matches.slice() : [],
+      translations: language === "lb" ? {} : {
+        [language]: [...new Set((result.meanings || []).map((meaning) => cleanDictionaryText(meaning.translation)).filter(Boolean))].join(" · ")
+      },
+      url: id ? `https://lod.lu/artikel/${encodeURIComponent(id)}` : ""
+    };
+  }
+
+  function partsToText(parts) {
+    if (!Array.isArray(parts)) return "";
+
+    return parts.reduce((result, part) => {
+      const nested = Array.isArray(part?.parts) ? partsToText(part.parts) : cleanText(part?.content);
+      if (!nested) return result;
+      if (!result) return nested;
+      if (/^[,.;:!?)]/.test(nested) || result.endsWith("'") || result.endsWith("’")) {
+        return `${result}${nested}`;
+      }
+      return `${result} ${nested}`;
+    }, "");
+  }
+
+  function appendTranslationValue(translations, language, value) {
+    const text = cleanText(value);
+    if (!language || !text) return;
+
+    const existing = translations[language] ? translations[language].split(" · ") : [];
+    if (!existing.includes(text)) {
+      existing.push(text);
+      translations[language] = existing.join(" · ");
+    }
+  }
+
+  function extractTranslations(apiEntry = {}) {
+    const translations = {};
+
+    for (const micro of apiEntry.microStructures || []) {
+      for (const unit of micro.grammaticalUnits || []) {
+        for (const meaning of unit.meanings || []) {
+          for (const [language, definition] of Object.entries(meaning.targetLanguages || {})) {
+            appendTranslationValue(translations, language, partsToText(definition?.parts));
+          }
+        }
+      }
+    }
+
+    return translations;
+  }
+
+  function extractInflection(apiEntry = {}) {
+    for (const micro of apiEntry.microStructures || []) {
+      for (const unit of micro.grammaticalUnits || []) {
+        for (const meaning of unit.meanings || []) {
+          const forms = Array.isArray(meaning?.inflection?.forms)
+            ? meaning.inflection.forms.map((form) => cleanText(form?.content)).filter(Boolean)
+            : [];
+          if (forms.length) return forms.join(" · ");
+        }
+      }
+    }
+
+    return "";
+  }
+
+  function extractExample(apiEntry = {}) {
+    for (const micro of apiEntry.microStructures || []) {
+      for (const unit of micro.grammaticalUnits || []) {
+        for (const meaning of unit.meanings || []) {
+          for (const example of meaning.examples || []) {
+            const text = partsToText(example?.parts);
+            if (text) return text;
+          }
+        }
+      }
+    }
+
+    return "";
+  }
+
+  function normalizeEntryFromApi(apiEntry = {}) {
+    const id = cleanText(apiEntry.lod_id);
+    const word = cleanDictionaryText(apiEntry.lemma);
+
+    if (!id || !word) {
+      return null;
+    }
+
+    const entry = {
+      id,
+      word,
+      url: `https://lod.lu/artikel/${encodeURIComponent(id)}`,
+      pos: cleanText(apiEntry.partOfSpeechLabel || apiEntry.partOfSpeech),
+      inflection: extractInflection(apiEntry),
+      example: extractExample(apiEntry),
+      translations: extractTranslations(apiEntry)
+    };
+    const normalizeEntry = globalThis.LodVaultStoreCore?.normalizeEntry;
+    return typeof normalizeEntry === "function" ? normalizeEntry(entry) : entry;
+  }
+
+  async function search(query, options = {}) {
+    const normalizedQuery = normalizeSelection(query);
+    if (!normalizedQuery) {
+      return { query: "", candidates: [] };
+    }
+
+    const languages = options.language === "all" ? SEARCH_LANGUAGES : [options.language || API_LOCALE];
+    const responses = await Promise.all(languages.map(async (language) => {
+      const data = await fetchJson(buildSearchUrl(normalizedQuery, language), options.fetch);
+      if (!Array.isArray(data?.results)) throw new Error("Invalid LOD search response.");
+      return data.results.map((result) => mapCandidate(result, language)).filter((candidate) => candidate.id && candidate.word);
+    }));
+    const merged = new Map();
+    for (const candidates of responses) {
+      for (const candidate of candidates) {
+        const existing = merged.get(candidate.id);
+        if (existing) {
+          Object.assign(existing.translations, candidate.translations);
+        } else {
+          merged.set(candidate.id, candidate);
+        }
+      }
+    }
+    return { query: normalizedQuery, candidates: [...merged.values()] };
+  }
+
+  async function fetchEntry(id, options = {}) {
+    const data = await fetchJson(buildEntryUrl(id), options.fetch);
+    return normalizeEntryFromApi(data?.entry || {});
+  }
+
+  async function suggest(query, options = {}) {
+    const normalizedQuery = normalizeSelection(query);
+    if (!normalizedQuery) return [];
+
+    const suggestionQueries = [...new Set([
+      normalizedQuery,
+      normalizedQuery.toLowerCase(),
+      stripDiacritics(normalizedQuery).toLowerCase()
+    ].filter(Boolean))];
+
+    const suggestions = [];
+    for (const suggestionQuery of suggestionQueries) {
+      const data = await fetchJson(buildSuggestionUrl(suggestionQuery), options.fetch);
+      const items = Array.isArray(data?.items) ? data.items : [];
+      for (const item of items) {
+        const word = normalizeSelection(cleanDictionaryText(item?.word || item?.lemma || item));
+        if (!word || suggestions.some((suggestion) => suggestion.word === word)) {
+          continue;
+        }
+
+        suggestions.push({
+          word,
+          type: cleanText(item?.type),
+          url: buildSearchPageUrl(word)
+        });
+
+        if (suggestions.length >= 5) {
+          return suggestions;
+        }
+      }
+    }
+
+    for (const suggestion of suggestions) {
+      try {
+        const result = await search(suggestion.word, options);
+        const exactCandidate = result.candidates.find((candidate) => scoreCandidate(candidate, suggestion.word) >= 4);
+        if (exactCandidate?.id) {
+          suggestion.entryId = exactCandidate.id;
+          suggestion.url = exactCandidate.url || suggestion.url;
+        }
+      } catch {
+        // Leave this suggestion as a search-page fallback.
+      }
+    }
+
+    return suggestions;
+  }
+
+  function scoreCandidate(candidate, query) {
+    const word = normalizeComparable(candidate?.word);
+    const normalizedQuery = normalizeComparable(query);
+    const matches = Array.isArray(candidate?.matches)
+      ? candidate.matches.map((value) => normalizeComparable(String(value).replace(/<[^>]+>/g, ""))).filter(Boolean)
+      : [];
+    if (!word || !normalizedQuery) return 0;
+    if (word === normalizedQuery) return 5;
+    if (matches.some((value) => value === normalizedQuery)) return 4;
+    if (word.startsWith(normalizedQuery)) return 3;
+    if (word.includes(normalizedQuery) || matches.some((value) => value.includes(normalizedQuery))) return 2;
+    return 1;
+  }
+
+  async function lookup(query, options = {}) {
+    const result = await search(query, options);
+    const { candidates } = result;
+
+    if (!candidates.length) {
+      return {
+        ...result,
+        status: "not-found",
+        entry: null,
+        suggestions: await suggest(result.query, options)
+      };
+    }
+
+    const exactCandidates = candidates.filter((candidate) => scoreCandidate(candidate, result.query) >= 4);
+
+    if (candidates.length === 1 && exactCandidates.length === 1) {
+      return {
+        ...result,
+        status: "resolved",
+        entry: await fetchEntry(candidates[0].id, options)
+      };
+    }
+
+    if (exactCandidates.length === 1) {
+      return {
+        ...result,
+        status: "resolved",
+        entry: await fetchEntry(exactCandidates[0].id, options)
+      };
+    }
+
+    return {
+      ...result,
+      status: "ambiguous",
+      entry: null,
+      candidates: [...candidates].sort((left, right) => scoreCandidate(right, result.query) - scoreCandidate(left, result.query))
+    };
+  }
+
+  async function mapWithConcurrency(items, limit, mapper) {
+    const normalizedLimit = Math.max(1, Math.floor(Number(limit) || 1));
+    const results = new Array(items.length);
+    let nextIndex = 0;
+
+    async function worker() {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(normalizedLimit, items.length) }, () => worker())
+    );
+
+    return results;
+  }
+
+  function cloneLookupWordResult(result = {}, tokenText = result.text || "") {
+    return {
+      text: tokenText,
+      word: cleanText(result.word),
+      status: cleanText(result.status) || "error",
+      entry: result.entry
+        ? {
+            ...result.entry,
+            translations: { ...(result.entry.translations || {}) }
+          }
+        : null,
+      candidates: Array.isArray(result.candidates)
+        ? result.candidates.map((candidate) => ({
+            ...candidate,
+            matches: Array.isArray(candidate.matches) ? candidate.matches.slice() : []
+          }))
+        : [],
+      suggestions: Array.isArray(result.suggestions)
+        ? result.suggestions.map((suggestion) => ({ ...suggestion }))
+        : []
+    };
+  }
+
+  function isSentence(text) {
+    const normalized = normalizeSelection(text);
+    if (!normalized) return false;
+    const words = normalized.split(/\s+/).filter(Boolean);
+    return words.length > 1;
+  }
+
+  function splitSentence(text) {
+    const normalized = normalizeSelection(text);
+    if (!normalized) return [];
+    return normalized
+      .split(/(\s+)/)
+      .filter((chunk) => chunk.length > 0)
+      .map((chunk) => ({
+        text: chunk,
+        isWord: Boolean(normalizeSelection(chunk))
+      }));
+  }
+
+  async function lookupSentence(text, options = {}) {
+    const normalizedQuery = normalizeSelection(text);
+    if (!normalizedQuery) {
+      return { words: [], query: "" };
+    }
+
+    const tokens = splitSentence(normalizedQuery);
+    const wordTokens = tokens.filter((t) => t.isWord);
+    const uniqueWords = [...new Set(wordTokens.map((token) => normalizeSelection(token.text)).filter(Boolean))];
+    const lookupByWord = new Map();
+
+    await mapWithConcurrency(
+      uniqueWords,
+      options.sentenceConcurrency || DEFAULT_SENTENCE_LOOKUP_CONCURRENCY,
+      async (word) => {
+        try {
+          const result = await lookup(word, options);
+          lookupByWord.set(word, {
+            text: word,
+            word: result.query,
+            status: result.status,
+            entry: result.entry || null,
+            candidates: result.candidates || [],
+            suggestions: result.suggestions || []
+          });
+        } catch {
+          lookupByWord.set(word, {
+            text: word,
+            word,
+            status: "error",
+            entry: null,
+            candidates: [],
+            suggestions: []
+          });
+        }
+      }
+    );
+
+    const wordResults = wordTokens.map((token) => {
+      const word = normalizeSelection(token.text);
+      if (!word) {
+        return { text: token.text, word, status: "skipped", entry: null, candidates: [], suggestions: [] };
+      }
+
+      return cloneLookupWordResult(lookupByWord.get(word), token.text);
+    });
+
+    return {
+      query: normalizedQuery,
+      tokens,
+      words: wordResults
+    };
+  }
+
+  globalThis.LodVaultLensLookup = {
+    API_ROOT,
+    SEARCH_LANGUAGES,
+    normalizeSelection,
+    buildSearchUrl,
+    buildEntryUrl,
+    mapCandidate,
+    extractTranslations,
+    extractInflection,
+    extractExample,
+    normalizeEntryFromApi,
+    search,
+    fetchEntry,
+    suggest,
+    lookup,
+    lookupSentence,
+    isSentence,
+    splitSentence,
+    buildSuggestionUrl,
+    buildSearchPageUrl,
+    runtimeProxyFetch,
+    getFetchImplementation,
+    mapWithConcurrency
   };
 })();
 
@@ -2978,6 +3528,27 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return compact;
   }
 
+  // Deletion records live in one sync item. Past the item limit, keep the newest
+  // ones rather than failing every push: only a device offline long enough to
+  // miss a dropped record could bring that old deletion back.
+  function limitDeletedMapForSync(compact = {}) {
+    if (getSyncItemSize(SYNC_DELETED_KEY, compact) <= SYNC_ITEM_HARD_LIMIT) return compact;
+
+    const newestFirst = Object.entries(compact).sort((left, right) => right[1] - left[1]);
+    let low = 0;
+    let high = newestFirst.length;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      const candidate = Object.fromEntries(newestFirst.slice(0, middle));
+      if (getSyncItemSize(SYNC_DELETED_KEY, candidate) <= SYNC_ITEM_HARD_LIMIT) {
+        low = middle;
+      } else {
+        high = middle - 1;
+      }
+    }
+    return Object.fromEntries(newestFirst.slice(0, low));
+  }
+
   function expandDeletedMap(value = {}) {
     const expanded = {};
     for (const [id, deletedAt] of Object.entries(value || {})) {
@@ -3084,6 +3655,10 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     if (entry.inflection) compact.f = entry.inflection;
     if (entry.example) compact.e = entry.example;
     if (entry.note) compact.n = entry.note;
+    const noteUpdatedAt = isoToUnix(entry.noteUpdatedAt);
+    if (noteUpdatedAt) compact.m = noteUpdatedAt;
+    const listsUpdatedAt = isoToUnix(entry.listsUpdatedAt);
+    if (listsUpdatedAt) compact.g = listsUpdatedAt;
 
     const translations = compactTranslations(entry.translations, syncLanguages);
     if (Object.keys(translations).length) {
@@ -3123,6 +3698,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       inflection: cleanText(syncEntry.f),
       example: cleanText(syncEntry.e),
       note: cleanText(syncEntry.n),
+      noteUpdatedAt: unixToIso(syncEntry.m),
+      listsUpdatedAt: unixToIso(syncEntry.g),
       translations: expandTranslations(syncEntry.t, existing.translations),
       favorite: Boolean(flags.fav),
       study: Boolean(flags.study),
@@ -3831,7 +4408,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     }
 
     if (Object.keys(localState.deletedMap || {}).length) {
-      nextSyncData[SYNC_DELETED_KEY] = compactDeletedMap(localState.deletedMap);
+      nextSyncData[SYNC_DELETED_KEY] = limitDeletedMapForSync(compactDeletedMap(localState.deletedMap));
     }
 
     Object.assign(nextSyncData, buildMetadataPayload(localState.settings, shards.length));
@@ -4395,6 +4972,20 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       logger.warn(`[LODVault] ${label}:`, error);
     }
 
+    // Automatic sync runs unattended, so a failure is stored for the popup and
+    // the toolbar badge instead of only reaching the console.
+    async function recordSyncOutcome(result) {
+      try {
+        if (result?.ok === false) {
+          await store.setSyncIssue?.(result);
+        } else {
+          await store.clearSyncIssue?.();
+        }
+      } catch (error) {
+        logSyncWarning("Could not record sync status", error);
+      }
+    }
+
     function scheduleLocalPush(plan = { type: "all" }) {
       if (!plan) return;
 
@@ -4420,8 +5011,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
           // a redundant pull that would immediately follow.
           if (!syncInitialized) {
             suppressSyncPull();
+            // Init only re-pushes when the merge changed something, so it can't
+            // be relied on to upload the edit that woke this worker.
             await initializeSync("local-change");
-            return;
           }
 
           // Prevent a pull from immediately running after the push —
@@ -4438,8 +5030,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
           }
 
           return syncAdapter.pushAll();
-        }).catch((error) => {
+        }).then(recordSyncOutcome).catch(async (error) => {
           logSyncWarning("Sync push failed", error);
+          await recordSyncOutcome({ ok: false, reason: "sync-failed" });
         });
       }, delayMs);
     }
@@ -4922,6 +5515,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     reloadLodTabs();
     void syncSelectionTriggerRegistration();
     syncCoordinator.handleInstalled("onInstalled");
+    repairDamagedHistoryEntries();
     scheduleHistoryHydrationResume(50);
   }
 });
@@ -4930,6 +5524,7 @@ chrome.runtime.onStartup?.addListener(() => {
   registerContextMenus();
   void syncSelectionTriggerRegistration();
   syncCoordinator.handleStartup("onStartup");
+  repairDamagedHistoryEntries();
   scheduleHistoryHydrationResume(50);
 });
 
@@ -4966,14 +5561,34 @@ chrome.commands?.onCommand?.addListener(async (command) => {
   }
 });
 
+function renderSyncIssueBadge(issue) {
+  chrome.action?.setBadgeText?.({ text: issue ? "!" : "" });
+  chrome.action?.setBadgeBackgroundColor?.({ color: "#b3261e" });
+  chrome.action?.setTitle?.({
+    title: issue ? "LODVault: sync is paused. Open Stats for details." : "LODVault"
+  });
+}
+
+function refreshSyncIssueBadge() {
+  LodVaultStore.getSyncIssue?.().then(renderSyncIssueBadge).catch(() => {});
+}
+
+function repairDamagedHistoryEntries() {
+  LodVaultStore.queueDamagedHistoryEntries?.().catch(() => {});
+}
+
 chrome.storage.onChanged?.addListener((changes, areaName) => {
   syncCoordinator.handleStorageChanged(changes, areaName);
+  if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.SYNC_ISSUE_KEY)) {
+    renderSyncIssueBadge(changes[LodVaultStore.SYNC_ISSUE_KEY]?.newValue || null);
+  }
   if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
     scheduleHistoryHydrationResume(25);
   }
 });
 
 scheduleHistoryHydrationResume(50);
+refreshSyncIssueBadge();
 registerContextMenus();
 void syncSelectionTriggerRegistration();
 chrome.permissions?.onAdded?.addListener(() => {

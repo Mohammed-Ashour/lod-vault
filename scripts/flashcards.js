@@ -3,6 +3,7 @@ const state = {
   deck: [],
   filter: "study",
   revealed: false,
+  ratingInProgress: false,
   index: 0,
   orderMode: "smart",
   direction: "fwd",
@@ -229,7 +230,7 @@ const computeStreak = LodVaultStore.computeFlashcardStreak;
 
 function computeStats() {
   const meta = state.flashcardMeta;
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayKey = LodVaultStore.toLocalDateKey();
   let todayCount = 0;
   let dueCount = 0;
   let newCount = 0;
@@ -241,11 +242,11 @@ function computeStats() {
     const m = normalizeFlashcardMeta(data);
     if (!m.totalReviews) continue;
 
-    const dateSet = new Set(m.reviews.map((r) => r.date.slice(0, 10)));
+    const dateSet = new Set(m.reviews.map((r) => LodVaultStore.toLocalDateKey(r.date)));
     for (const d of dateSet) reviewDates.add(d);
 
     const last = m.reviews[m.reviews.length - 1];
-    todayCount += m.reviews.filter((review) => review.date.slice(0, 10) === todayIso).length;
+    todayCount += m.reviews.filter((review) => LodVaultStore.toLocalDateKey(review.date) === todayKey).length;
 
     if (m.easyCount >= 3 && last && last.rating === 3) {
       masteredCount += 1;
@@ -722,10 +723,21 @@ function onMcOptionClick(event) {
 }
 
 async function rateCard(rating) {
-  if (!state.revealed || !state.deck.length) return;
+  // The review is saved asynchronously, so a double click or repeated key would
+  // otherwise record it twice and skip the next card.
+  if (state.ratingInProgress || !state.revealed || !state.deck.length) return;
   const entry = currentEntry();
   if (!entry) return;
 
+  state.ratingInProgress = true;
+  try {
+    await recordRating(entry, rating);
+  } finally {
+    state.ratingInProgress = false;
+  }
+}
+
+async function recordRating(entry, rating) {
   if (typeof LodVaultStore.recordFlashcardReview === "function") {
     await LodVaultStore.recordFlashcardReview(entry.id, rating, state.direction);
     await loadFlashcardMeta();

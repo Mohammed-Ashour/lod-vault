@@ -472,6 +472,22 @@ test("importBrowserHistory can re-import entries that were manually deleted", as
   assert.equal(storageData[store.DELETED_KEY], undefined);
 });
 
+const BEEM_API_ENTRY = {
+  lod_id: "BEEM1",
+  lemma: "Beem",
+  partOfSpeechLabel: "Substantiv",
+  microStructures: [{
+    grammaticalUnits: [{
+      meanings: [{
+        targetLanguages: {
+          en: { parts: [{ type: "translation", content: "tree" }] },
+          fr: { parts: [{ type: "translation", content: "arbre" }] }
+        }
+      }]
+    }]
+  }]
+};
+
 test("importBrowserHistory queues safe hydration and records visible progress", async () => {
   const { store, storageData, chrome, context } = loadSharedStore();
 
@@ -488,31 +504,11 @@ test("importBrowserHistory queues safe hydration and records visible progress", 
     }
   };
 
-  context.fetch = async () => ({
-    ok: true,
-    async text() {
-      return `
-        <!doctype html>
-        <html lang="en">
-          <head>
-            <meta name="description" content="noun">
-            <meta property="og:title" content="Beem - LOD">
-          </head>
-          <body>
-            <main>
-              <h1>Beem kopéiert</h1>
-              <section class="microstructures">
-                <div class="targetLanguages">
-                  <div class="en"><span class="content">tree</span></div>
-                  <div class="fr"><span class="content">arbre</span></div>
-                </div>
-              </section>
-            </main>
-          </body>
-        </html>
-      `;
-    }
-  });
+  const requestedUrls = [];
+  context.fetch = async (url) => {
+    requestedUrls.push(String(url));
+    return { ok: true, async json() { return { entry: BEEM_API_ENTRY }; } };
+  };
 
   const result = await store.importBrowserHistory({ maxResults: 20 });
   assert.equal(result.imported, 1);
@@ -520,11 +516,13 @@ test("importBrowserHistory queues safe hydration and records visible progress", 
 
   await store.resumeHistoryImportHydration();
 
+  assert.deepEqual(requestedUrls, ["https://lod.lu/api/lb/entry/BEEM1"]);
+  assert.equal(storageData[store.STORAGE_KEY].BEEM1.word, "Beem");
   assert.deepEqual(storageData[store.STORAGE_KEY].BEEM1.translations, {
     en: "tree",
     fr: "arbre"
   });
-  assert.equal(storageData[store.STORAGE_KEY].BEEM1.pos, "noun");
+  assert.equal(storageData[store.STORAGE_KEY].BEEM1.pos, "Substantiv");
 
   const importState = await store.getHistoryImportState();
   assert.equal(importState.hydrated, 1);

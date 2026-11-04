@@ -14,6 +14,7 @@ const IIFE_SCRIPTS = [
   "store-core.js",
   "shared.js",
   "lod-article.js",
+  "lens-lookup.js",
   "compress.js",
   "sync.js",
   "sync-coordinator.js",

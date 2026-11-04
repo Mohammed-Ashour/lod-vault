@@ -417,6 +417,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     reloadLodTabs();
     void syncSelectionTriggerRegistration();
     syncCoordinator.handleInstalled("onInstalled");
+    repairDamagedHistoryEntries();
     scheduleHistoryHydrationResume(50);
   }
 });
@@ -425,6 +426,7 @@ chrome.runtime.onStartup?.addListener(() => {
   registerContextMenus();
   void syncSelectionTriggerRegistration();
   syncCoordinator.handleStartup("onStartup");
+  repairDamagedHistoryEntries();
   scheduleHistoryHydrationResume(50);
 });
 
@@ -461,14 +463,34 @@ chrome.commands?.onCommand?.addListener(async (command) => {
   }
 });
 
+function renderSyncIssueBadge(issue) {
+  chrome.action?.setBadgeText?.({ text: issue ? "!" : "" });
+  chrome.action?.setBadgeBackgroundColor?.({ color: "#b3261e" });
+  chrome.action?.setTitle?.({
+    title: issue ? "LODVault: sync is paused. Open Stats for details." : "LODVault"
+  });
+}
+
+function refreshSyncIssueBadge() {
+  LodVaultStore.getSyncIssue?.().then(renderSyncIssueBadge).catch(() => {});
+}
+
+function repairDamagedHistoryEntries() {
+  LodVaultStore.queueDamagedHistoryEntries?.().catch(() => {});
+}
+
 chrome.storage.onChanged?.addListener((changes, areaName) => {
   syncCoordinator.handleStorageChanged(changes, areaName);
+  if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.SYNC_ISSUE_KEY)) {
+    renderSyncIssueBadge(changes[LodVaultStore.SYNC_ISSUE_KEY]?.newValue || null);
+  }
   if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
     scheduleHistoryHydrationResume(25);
   }
 });
 
 scheduleHistoryHydrationResume(50);
+refreshSyncIssueBadge();
 registerContextMenus();
 void syncSelectionTriggerRegistration();
 chrome.permissions?.onAdded?.addListener(() => {

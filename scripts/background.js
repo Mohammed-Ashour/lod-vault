@@ -5,6 +5,7 @@ importScripts(
   chrome.runtime.getURL("scripts/entry-presenter.js"),
   chrome.runtime.getURL("scripts/shared.js"),
   chrome.runtime.getURL("scripts/lod-article.js"),
+  chrome.runtime.getURL("scripts/lens-lookup.js"),
   chrome.runtime.getURL("scripts/compress.js"),
   chrome.runtime.getURL("scripts/sync.js"),
   chrome.runtime.getURL("scripts/sync-coordinator.js"),
