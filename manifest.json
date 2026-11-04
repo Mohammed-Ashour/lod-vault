@@ -9,7 +9,8 @@
     "tabs",
     "activeTab",
     "scripting",
-    "contextMenus"
+    "contextMenus",
+    "alarms"
   ],
   "optional_permissions": [
     "history"

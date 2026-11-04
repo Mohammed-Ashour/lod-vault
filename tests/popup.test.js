@@ -1005,7 +1005,7 @@ test("popup study row adapts when nothing is due and when the vault is empty", a
   const summary = dom.window.document.getElementById("study-summary");
   const button = dom.window.document.getElementById("start-due-review");
 
-  assert.equal(summary.textContent, "Nothing due right now");
+  assert.equal(summary.textContent, "All done for today");
   assert.equal(summary.classList.contains("is-empty"), true);
   assert.equal(button.textContent, "Study cards");
 
@@ -1013,7 +1013,7 @@ test("popup study row adapts when nothing is due and when the vault is empty", a
   assert.equal(emptyDom.window.document.getElementById("study-summary").textContent, "Nothing due right now");
 });
 
-test("popup Start review deep-links to the due deck when cards are due", async () => {
+test("popup Start review deep-links to the Today deck when cards are due", async () => {
   const entries = makeEntries(2);
   const flashcardMeta = makeFlashcardMeta(["WORD1"], ["WORD1"]);
   const { dom, createdTabs } = await loadPopupScript({ entries, flashcardMeta });
@@ -1021,7 +1021,7 @@ test("popup Start review deep-links to the due deck when cards are due", async (
   dom.window.document.getElementById("start-due-review").click();
 
   assert.equal(createdTabs.length, 1);
-  assert.equal(createdTabs[0], "chrome-extension://test/pages/flashcards.html?deck=due");
+  assert.equal(createdTabs[0], "chrome-extension://test/pages/flashcards.html?deck=today");
 });
 
 test("popup Study cards opens the plain flashcards page when nothing is due", async () => {
@@ -1231,4 +1231,35 @@ test("popup study banner ignores stale out-of-order flashcard-meta reads", async
 
   assert.equal(summary.textContent, "1 due");
   assert.equal(dom.window.document.getElementById("start-due-review").textContent, "Start review");
+});
+
+test("popup Today counts only what the queue will serve", async () => {
+  const entries = [
+    ...makeEntries(8),
+    { id: "OLD1", word: "Old", url: "https://lod.lu/artikel/OLD1", history: true, visitCount: 1 }
+  ];
+  const { dom } = await loadPopupScript({ entries, flashcardMeta: {}, dailyTarget: 5 });
+
+  // Five new words fit the target. The other Study words and the history-only word wait.
+  assert.equal(dom.window.document.getElementById("study-summary").textContent, "5 new");
+  assert.equal(dom.window.document.getElementById("start-due-review").textContent, "Start review");
+});
+
+test("popup Today shows streak and reviewed-today once there is activity", async () => {
+  const yesterday = new Date(Date.now() - 86400e3).toISOString();
+  const flashcardMeta = {
+    WORD1: {
+      totalReviews: 2,
+      reviews: [{ date: yesterday, rating: 2 }, { date: new Date().toISOString(), rating: 2 }],
+      interval: 2,
+      dueAt: new Date(Date.now() + 2 * 86400e3).toISOString()
+    }
+  };
+  const { dom } = await loadPopupScript({ entries: makeEntries(1), flashcardMeta });
+  const activity = dom.window.document.getElementById("study-activity");
+  assert.equal(activity.textContent, "2-day streak · 1 reviewed today");
+  assert.equal(activity.classList.contains("is-hidden"), false);
+
+  const { dom: quiet } = await loadPopupScript({ entries: makeEntries(1), flashcardMeta: {} });
+  assert.equal(quiet.window.document.getElementById("study-activity").classList.contains("is-hidden"), true);
 });

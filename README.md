@@ -22,7 +22,7 @@
 
 <img src="docs/screenshots/popup-blue-night.png" width="380" alt="LODVault popup — Blue Night redesign" /> <img src="docs/screenshots/popup-blue-night-light.png" width="380" alt="LODVault popup — Blue Night light mode" />
 
-The popup opens on a **Today** panel with due words and Start review, then splits into **Words** and **Stats & data**. Words keeps My vault / Search LOD, search and its metadata fixed above one scrolling area. Current-page details expand inside that area without moving search. Stats & data groups sync, backup, restore, exports, counters and Auto mode. Header links take you straight to Flashcards or the Vault, and the ☀/☾ button flips the whole product between navy night and cool paper day.
+The popup opens on a **Today** panel with today's due and new words, your streak and Start review, then splits into **Words** and **Stats & data**. Words keeps My vault / Search LOD, search and its metadata fixed above one scrolling area. Current-page details expand inside that area without moving search. Stats & data groups sync, backup, restore, exports, counters and Auto mode. Header links take you straight to Flashcards or the Vault, and the ☀/☾ button flips the whole product between navy night and cool paper day.
 
 <img src="docs/screenshots/popup-stats-blue-night.png" width="380" alt="LODVault popup — Stats & data tab" /> <img src="docs/screenshots/popup-stats-blue-night-light.png" width="380" alt="LODVault popup — Stats & data tab, light mode" />
 
@@ -70,12 +70,13 @@ All session setup (deck, order, size, mode, daily target) is grouped behind one 
 | 📝 **Notes** | Write your own note for each saved word (auto-saved) |
 | 🔎 **LOD Lens** | Select Luxembourgish text on supported pages to translate it in a floating overlay, then save it straight to your vault |
 | 🔍 **Search** | Switch between My vault and Search LOD in the popup. Look up Luxembourgish, English, French, German, Portuguese, or Dutch words and save the Luxembourgish entry to Favorites or Study |
-| 🃏 **Flashcards** | Review your saved words with a simple flashcard mode |
+| 🃏 **Flashcards** | Review a daily queue of due words plus new Study words up to your daily target. Missed words come back once in the same session |
+| 🔔 **Due badge** | See how many words are due on the toolbar icon, updated at local midnight |
 | 👁 **Preview** | Browse your full word list in a clean page — no download needed |
 | 📤 **Export HTML / Anki** | Download standalone HTML or Anki-ready text export |
 | 📦 **Backup / Restore JSON** | Back up and restore your vocabulary, flashcard review progress, and supported settings with a portable file |
 | 🕘 **Optional browser history import** | On demand, import missing `lod.lu/artikel/*` words from history (add-only), with selectable date range and import report |
-| ☁️ **Optional browser sync** | Sync a compact copy across Chrome profiles with configurable language selection, capacity indicator, and manual **Sync now** (helpful, but not an uninstall-safe backup) |
+| ☁️ **Optional browser sync** | Sync a compact copy of your words and review progress across Chrome profiles with configurable language selection, capacity indicator, and manual **Sync now** (helpful, but not an uninstall-safe backup) |
 | 🔒 **Local-first** | `chrome.storage.local` stays authoritative; sync is only a compact replica |
 
 <h2 id="install">Install</h2>
@@ -151,9 +152,10 @@ The **LODVault** icon will appear in your browser toolbar.
 - Play pronunciation audio, add notes, toggle lists, or delete saved words from there
 
 ### Study with flashcards
-- Click **Flashcards** in the popup
-- Choose a deck: Study list, Favorites, or All saved
+- Click **Start review** or **Flashcards** in the popup to open **Today**: every due word, then new Study words up to your daily target
+- Change the daily target or pick another deck (Due today, Study list, Favorites, All saved) under **Session**
 - Click the card or **Reveal** to show the full meaning
+- Practising a word before it's due doesn't push it further out. Rating it Hard brings it back tomorrow
 
 ### Use LOD Lens on other sites
 - Select a Luxembourgish word or short phrase on a supported page
@@ -214,6 +216,7 @@ Builds the release zips and runs `web-ext lint` on the Firefox artifact (`dist/l
 - injected banner rendering, messaging, and saved-entry enrichment
 - Lens trigger heuristics plus stale-session protection for async sentence actions
 - compact sync serialization, merge behavior, sharding, and quota fallback logic
+- review scheduling, the Today queue, the due badge, and review-progress sync
 
 ---
 

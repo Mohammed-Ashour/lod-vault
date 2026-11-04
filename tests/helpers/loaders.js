@@ -372,6 +372,7 @@ async function loadPopupScript({
   syncLanguages = ["en", "fr", "de"],
   portableBackupMeta = null,
   flashcardMeta = {},
+  dailyTarget = 10,
   popupHtml,
   storeOverrides = {},
   lookupOverrides = null,
@@ -481,6 +482,11 @@ async function loadPopupScript({
     async getFlashcardMeta() {
       return structuredClone(flashcardMeta);
     },
+    async getFlashcardDailyTarget() {
+      return dailyTarget;
+    },
+    buildTodayQueue: shared.store.buildTodayQueue,
+    FLASHCARD_SETTINGS_KEY: "lodVault.flashcardSettings",
     buildJsonExport(entriesToExport, options) {
       return shared.store.buildJsonExport(entriesToExport, options);
     },
@@ -639,6 +645,9 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localSt
     normalizeFlashcardMeta: shared.store.normalizeFlashcardMeta,
     computeFlashcardStreak: shared.store.computeFlashcardStreak,
     toLocalDateKey: shared.store.toLocalDateKey,
+    isFlashcardDue: shared.store.isFlashcardDue,
+    buildTodayQueue: shared.store.buildTodayQueue,
+    FLASHCARD_SETTINGS_KEY: "lodVault.flashcardSettings",
     escapeHtml: shared.store.escapeHtml,
     setHtml: shared.store.setHtml,
     buildMeaningRowsMarkup: shared.store.buildMeaningRowsMarkup,
@@ -756,6 +765,22 @@ function loadBackgroundScript(initialStorage = {}) {
   chrome.commands = {
     onCommand: commandsOnCommand
   };
+  const badgeTexts = [];
+  const createdAlarms = [];
+  const alarmsOnAlarm = createChromeEvent();
+  chrome.action = {
+    async setBadgeText(details) {
+      badgeTexts.push(details.text);
+    },
+    async setBadgeBackgroundColor() {},
+    async setTitle() {}
+  };
+  chrome.alarms = {
+    onAlarm: alarmsOnAlarm,
+    create(name, details) {
+      createdAlarms.push({ name, ...details });
+    }
+  };
   chrome.scripting = {
     async insertCSS(details) {
       insertedCss.push(structuredClone(details));
@@ -845,6 +870,9 @@ function loadBackgroundScript(initialStorage = {}) {
     syncStorageData: data.sync,
     fullStorageData: data,
     context,
+    badgeTexts,
+    createdAlarms,
+    alarmsOnAlarm,
     runtimeOnInstalled,
     runtimeOnStartup,
     runtimeOnMessage,

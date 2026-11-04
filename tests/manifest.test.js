@@ -76,3 +76,8 @@ test("manifest declares Firefox data-collection and stays Chrome-loadable", () =
   assert.equal(manifest.background?.service_worker, "scripts/background-bundle.js");
   assert.equal(manifest.background?.scripts, undefined, "Chrome rejects background.scripts in MV3; the release build adds it to the Firefox artifact");
 });
+
+test("manifest can wake the worker to refresh the due badge at midnight", () => {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  assert.ok(manifest.permissions.includes("alarms"));
+});

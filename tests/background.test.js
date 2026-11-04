@@ -798,3 +798,107 @@ test("background rejects non-whitelisted lens proxy URLs before fetching", async
 
   assert.equal(fetchCalls, 0);
 });
+
+function dueCard(days = -1) {
+  return {
+    totalReviews: 1,
+    reviews: [],
+    interval: 1,
+    dueAt: new Date(Date.now() + days * 86400e3).toISOString()
+  };
+}
+
+const badgeEntry = (id) => ({ id, word: id, url: `https://lod.lu/artikel/${id}`, study: true });
+
+test("toolbar badge shows the due count and follows review changes", async () => {
+  const background = loadBackgroundScript({
+    "lodVault.entries": { A: badgeEntry("A"), B: badgeEntry("B"), C: badgeEntry("C") },
+    "lodVault.flashcardMeta": { A: dueCard(), B: dueCard(), C: dueCard(5) }
+  });
+  await wait(5);
+  assert.equal(background.badgeTexts.at(-1), "2");
+
+  await background.chrome.storage.local.set({
+    "lodVault.flashcardMeta": { A: dueCard(5), B: dueCard(5), C: dueCard(5) }
+  });
+  await wait(5);
+  assert.equal(background.badgeTexts.at(-1), "");
+});
+
+test("toolbar badge refreshes at local midnight and schedules the next one", async () => {
+  const background = loadBackgroundScript();
+  await wait(5);
+
+  const first = background.createdAlarms.at(-1);
+  assert.equal(first.name, "lodvault-due-badge");
+  const midnight = new Date(first.when);
+  assert.deepEqual([midnight.getHours(), midnight.getMinutes()], [0, 0]);
+  assert.ok(first.when > Date.now());
+
+  const scheduled = background.createdAlarms.length;
+  const updates = background.badgeTexts.length;
+  background.alarmsOnAlarm.dispatch({ name: "lodvault-due-badge" });
+  await wait(5);
+  assert.equal(background.createdAlarms.length, scheduled + 1);
+  assert.equal(background.badgeTexts.length, updates + 1);
+});
+
+test("review changes reach sync on their own debounce, without a full push", async () => {
+  const background = loadBackgroundScript({
+    "lodVault.entries": { A: badgeEntry("A") }
+  });
+  background.runtimeOnInstalled.dispatch({ reason: "install" });
+  await wait(150);
+  const before = (await background.chrome.storage.sync.get("lodVault.m"))["lodVault.m"];
+  assert.ok(before);
+
+  await background.chrome.storage.local.set({
+    "lodVault.flashcardMeta": {
+      A: { totalReviews: 1, reviews: [], interval: 1, lastReviewedAt: new Date().toISOString(), dueAt: new Date().toISOString() }
+    }
+  });
+  await wait(150);
+
+  const stored = await background.chrome.storage.sync.get(null);
+  assert.ok(Object.keys(stored).some((key) => key.startsWith("lodVault.p.")));
+  assert.deepEqual(stored["lodVault.m"], before);
+});
+
+test("a sync issue outranks the due count on the toolbar badge, and the count returns after", async () => {
+  const background = loadBackgroundScript({
+    "lodVault.entries": { A: badgeEntry("A") },
+    "lodVault.flashcardMeta": { A: dueCard() }
+  });
+  await wait(5);
+  assert.equal(background.badgeTexts.at(-1), "1");
+
+  await background.context.LodVaultStore.setSyncIssue({ ok: false, reason: "quota-exceeded" });
+  await wait(5);
+  assert.equal(background.badgeTexts.at(-1), "!");
+
+  // Due-count changes must not hide the sync problem.
+  await background.chrome.storage.local.set({ "lodVault.flashcardMeta": { A: dueCard(5) } });
+  await wait(5);
+  assert.equal(background.badgeTexts.at(-1), "!");
+
+  await background.context.LodVaultStore.clearSyncIssue();
+  await wait(5);
+  assert.equal(background.badgeTexts.at(-1), "");
+});
+
+test("a progress push leaves an existing sync issue in place", async () => {
+  const background = loadBackgroundScript({ "lodVault.entries": { A: badgeEntry("A") } });
+  background.runtimeOnInstalled.dispatch({ reason: "install" });
+  await wait(150);
+  await background.context.LodVaultStore.setSyncIssue({ ok: false, reason: "quota-exceeded" });
+
+  await background.chrome.storage.local.set({
+    "lodVault.flashcardMeta": {
+      A: { totalReviews: 1, reviews: [], interval: 1, lastReviewedAt: new Date().toISOString(), dueAt: new Date().toISOString() }
+    }
+  });
+  await wait(150);
+
+  assert.ok(await background.context.LodVaultStore.getSyncIssue());
+  assert.equal(background.badgeTexts.at(-1), "!");
+});

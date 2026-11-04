@@ -51,7 +51,7 @@ LODVault has no analytics or tracking service and no extension-operated backend.
 
 ## Data storage and deletion
 
-All data is stored in `chrome.storage.local` on your device. If you use the extension's sync feature, a compact replica may also be stored in `chrome.storage.sync`. You can delete your data at any time by:
+All data is stored in `chrome.storage.local` on your device. If you use the extension's sync feature, a compact replica of your words and review progress may also be stored in `chrome.storage.sync`. You can delete your data at any time by:
 
 - Removing individual words from the popup
 - Uninstalling the extension (this deletes all stored local data, and in Chrome it may also remove the extension's sync data)

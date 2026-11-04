@@ -26,6 +26,9 @@ const SELECTION_TRIGGER_SCRIPT_FILES = ["scripts/selection-trigger.js"];
 const SELECTION_TRIGGER_STYLE_FILES = ["styles/selection-trigger.css"];
 const SELECTION_TRIGGER_CONTRACT = "1";
 const STORE_MUTATION_MESSAGE_TYPE = LodVaultStore.STORE_MUTATION_MESSAGE_TYPE;
+const DUE_BADGE_ALARM = "lodvault-due-badge";
+const DUE_BADGE_COLOR = "#1f5f8b";
+const SYNC_ISSUE_BADGE_COLOR = "#b3261e";
 const STORE_MUTATION_METHODS = new Set([
   "setAutoMode",
   "setSyncLanguages",
@@ -42,6 +45,7 @@ const STORE_MUTATION_METHODS = new Set([
   "importJson",
   "importBrowserHistory",
   "recordFlashcardReview",
+  "applyRemoteFlashcardMeta",
   "getFlashcardStats"
 ]);
 
@@ -411,6 +415,53 @@ async function reloadLodTabs() {
   }
 }
 
+function formatDueBadge(dueCount) {
+  if (!dueCount) return "";
+  return dueCount > 99 ? "99+" : String(dueCount);
+}
+
+let toolbarBadgeRefresh = Promise.resolve();
+
+// A sync problem needs action, so it outranks the due count on the one badge.
+function refreshToolbarBadge() {
+  toolbarBadgeRefresh = toolbarBadgeRefresh.then(async () => {
+    const issue = await LodVaultStore.getSyncIssue?.();
+    if (issue) {
+      await chrome.action?.setBadgeBackgroundColor?.({ color: SYNC_ISSUE_BADGE_COLOR });
+      await chrome.action?.setBadgeText?.({ text: "!" });
+      await chrome.action?.setTitle?.({ title: "LODVault: sync is paused. Open Stats for details." });
+      return;
+    }
+
+    const [entries, meta] = await Promise.all([
+      LodVaultStore.getEntries(),
+      LodVaultStore.getFlashcardMeta()
+    ]);
+    const { dueCount } = LodVaultStore.buildTodayQueue(entries, meta);
+    await chrome.action?.setBadgeBackgroundColor?.({ color: DUE_BADGE_COLOR });
+    await chrome.action?.setBadgeText?.({ text: formatDueBadge(dueCount) });
+    await chrome.action?.setTitle?.({
+      title: dueCount ? `LODVault: ${dueCount} word${dueCount === 1 ? "" : "s"} due today` : "LODVault"
+    });
+  }).catch((error) => {
+    console.warn("[LODVault] Could not update the toolbar badge:", error?.message || error);
+  });
+  return toolbarBadgeRefresh;
+}
+
+// Cards fall due at local midnight with no storage change to announce it.
+function scheduleDueBadgeRefresh() {
+  const nextMidnight = new Date();
+  nextMidnight.setHours(24, 0, 0, 0);
+  chrome.alarms?.create?.(DUE_BADGE_ALARM, { when: nextMidnight.getTime() });
+}
+
+chrome.alarms?.onAlarm?.addListener((alarm) => {
+  if (alarm?.name !== DUE_BADGE_ALARM) return;
+  scheduleDueBadgeRefresh();
+  void refreshToolbarBadge();
+});
+
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === "update" || details.reason === "install") {
     registerContextMenus();
@@ -463,26 +514,18 @@ chrome.commands?.onCommand?.addListener(async (command) => {
   }
 });
 
-function renderSyncIssueBadge(issue) {
-  chrome.action?.setBadgeText?.({ text: issue ? "!" : "" });
-  chrome.action?.setBadgeBackgroundColor?.({ color: "#b3261e" });
-  chrome.action?.setTitle?.({
-    title: issue ? "LODVault: sync is paused. Open Stats for details." : "LODVault"
-  });
-}
-
-function refreshSyncIssueBadge() {
-  LodVaultStore.getSyncIssue?.().then(renderSyncIssueBadge).catch(() => {});
-}
-
 function repairDamagedHistoryEntries() {
   LodVaultStore.queueDamagedHistoryEntries?.().catch(() => {});
 }
 
 chrome.storage.onChanged?.addListener((changes, areaName) => {
   syncCoordinator.handleStorageChanged(changes, areaName);
-  if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.SYNC_ISSUE_KEY)) {
-    renderSyncIssueBadge(changes[LodVaultStore.SYNC_ISSUE_KEY]?.newValue || null);
+  if (areaName === "local" && (
+    changes?.[LodVaultStore.STORAGE_KEY]
+    || changes?.[LodVaultStore.FLASHCARD_META_KEY]
+    || Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.SYNC_ISSUE_KEY)
+  )) {
+    void refreshToolbarBadge();
   }
   if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
     scheduleHistoryHydrationResume(25);
@@ -490,9 +533,10 @@ chrome.storage.onChanged?.addListener((changes, areaName) => {
 });
 
 scheduleHistoryHydrationResume(50);
-refreshSyncIssueBadge();
 registerContextMenus();
 void syncSelectionTriggerRegistration();
+scheduleDueBadgeRefresh();
+void refreshToolbarBadge();
 chrome.permissions?.onAdded?.addListener(() => {
   void syncSelectionTriggerRegistration();
 });

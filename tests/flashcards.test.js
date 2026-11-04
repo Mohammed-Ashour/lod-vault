@@ -118,7 +118,8 @@ test("session mode shows bounded deck and summary after ratings", async () => {
 
 test("flashcard sessions resume at the first unrated card", async () => {
   const entries = Array.from({ length: 12 }, (_, i) => makeEntry({ id: `WORD${i}`, word: `Word${i}` }));
-  const first = await loadFlashcardsScript({ entries });
+  const url = "https://extension.test/pages/flashcards.html?deck=study";
+  const first = await loadFlashcardsScript({ entries, url });
   const size = first.dom.window.document.getElementById("session-size");
   size.value = "10";
   size.dispatchEvent(new first.dom.window.Event("change"));
@@ -133,7 +134,7 @@ test("flashcard sessions resume at the first unrated card", async () => {
 
   assert.equal(first.storageData["lodVault.flashcardSession"].index, 2);
 
-  const resumed = await loadFlashcardsScript({ entries, localStorage: first.storageData });
+  const resumed = await loadFlashcardsScript({ entries, url, localStorage: first.storageData });
   const resume = resumed.dom.window.document.getElementById("resume-session");
   assert.equal(resume.classList.contains("is-hidden"), false);
   assert.match(resume.textContent, /8 cards remaining/);
@@ -305,6 +306,7 @@ test("multiple choice mode maps correct answers to Good and wrong answers to Har
 test("multiple choice drops a pick when the card changes before the delay elapses", async () => {
   const reviews = [];
   const { dom } = await loadFlashcardsScript({
+    url: "https://extension.test/pages/flashcards.html?deck=study",
     entries: [
       makeEntry({ id: "A1", word: "Haus", translations: { en: "house" } }),
       makeEntry({ id: "A2", word: "Waasser", translations: { en: "water" } }),
@@ -329,4 +331,176 @@ test("multiple choice drops a pick when the card changes before the delay elapse
   await new Promise((resolve) => dom.window.setTimeout(resolve, 900));
 
   assert.deepEqual(reviews, []);
+});
+
+const wait = (dom, ms = 0) => new Promise((resolve) => dom.window.setTimeout(resolve, ms));
+
+async function loadWithReviews({ entries, meta = {}, url, localStorage } = {}) {
+  const reviews = [];
+  const loaded = await loadFlashcardsScript({
+    entries,
+    url,
+    localStorage,
+    storeOverrides: {
+      async getFlashcardMeta() {
+        return meta;
+      },
+      async recordFlashcardReview(entryId, rating) {
+        reviews.push({ entryId, rating });
+      }
+    }
+  });
+  return { ...loaded, reviews };
+}
+
+async function revealAndRate(dom, rating) {
+  dom.window.document.getElementById("flip-card").click();
+  dom.window.document.querySelector(`[data-rating="${rating}"]`).click();
+  await wait(dom);
+}
+
+test("flashcards open on Today: due cards first, then new words up to the target", async () => {
+  const past = new Date(Date.now() - 3 * 86400e3).toISOString();
+  const entries = [
+    makeEntry({ id: "NEW1", word: "Neit" }),
+    makeEntry({ id: "HISTORY1", word: "Vergaangen", study: false, history: true }),
+    makeEntry({ id: "DUE1", word: "Faelleg" })
+  ];
+  const { dom } = await loadWithReviews({
+    entries,
+    meta: { DUE1: { totalReviews: 2, reviews: [], interval: 2, dueAt: past } }
+  });
+  const doc = dom.window.document;
+
+  assert.equal(doc.getElementById("deck-filter").value, "today");
+  assert.equal(doc.getElementById("card-word").textContent, "Faelleg");
+  assert.match(doc.getElementById("progress").textContent, /Session 1 \/ 2/);
+});
+
+test("the daily target limits how many new words Today introduces", async () => {
+  const entries = Array.from({ length: 12 }, (_, i) => makeEntry({ id: `W${i}`, word: `W${i}` }));
+  const { dom } = await loadWithReviews({
+    entries,
+    localStorage: { "lodVault.flashcardSettings": { dailyTarget: 5, mode: "self" } }
+  });
+  const doc = dom.window.document;
+  assert.match(doc.getElementById("progress").textContent, /Session 1 \/ 5/);
+
+  const target = doc.getElementById("daily-target");
+  target.value = "20";
+  target.dispatchEvent(new dom.window.Event("change"));
+  await wait(dom);
+  assert.match(doc.getElementById("progress").textContent, /Session 1 \/ 12/);
+});
+
+test("a Hard card comes back once before the session ends", async () => {
+  const entries = [makeEntry({ id: "A", word: "Eent" }), makeEntry({ id: "B", word: "Zwee" })];
+  const { dom, reviews } = await loadWithReviews({ entries });
+  const doc = dom.window.document;
+
+  await revealAndRate(dom, 1);
+  assert.match(doc.getElementById("progress").textContent, /Session 2 \/ 3/);
+  await revealAndRate(dom, 2);
+  assert.equal(doc.getElementById("card-word").textContent, "Eent");
+  await revealAndRate(dom, 1);
+
+  assert.deepEqual(reviews.map((review) => review.entryId), ["A", "B", "A"]);
+  assert.equal(doc.getElementById("summary-overlay").classList.contains("is-hidden"), false);
+});
+
+test("a retried multiple-choice card gets fresh options when it follows itself", async () => {
+  const entries = [
+    makeEntry({ id: "A", word: "Eent", translations: { en: "one" } }),
+    makeEntry({ id: "B", word: "Zwee", translations: { en: "two" }, study: false, favorite: true })
+  ];
+  const { dom, reviews } = await loadWithReviews({ entries });
+  const doc = dom.window.document;
+  const modeSelect = doc.getElementById("mode-select");
+  modeSelect.value = "mc";
+  modeSelect.dispatchEvent(new dom.window.Event("change"));
+  await wait(dom);
+
+  doc.querySelector('#mc-options [data-correct="0"]').click();
+  await wait(dom, 800);
+
+  assert.deepEqual(reviews, [{ entryId: "A", rating: 1 }]);
+  const options = [...doc.querySelectorAll("#mc-options button")];
+  assert.ok(options.length > 1);
+  assert.ok(options.every((option) => !option.disabled));
+});
+
+test("Today is not offered as a resumable session on the next visit", async () => {
+  const entries = [makeEntry({ id: "A" }), makeEntry({ id: "B", word: "Bam" })];
+  const { dom, storageData } = await loadWithReviews({ entries });
+  await revealAndRate(dom, 2);
+  assert.equal(storageData["lodVault.flashcardSession"], undefined);
+});
+
+test("finishing Today shows a done state with a way to keep practising", async () => {
+  const future = new Date(Date.now() + 3 * 86400e3).toISOString();
+  const { dom } = await loadWithReviews({
+    entries: [makeEntry()],
+    meta: { HAUS1: { totalReviews: 1, reviews: [], interval: 3, dueAt: future } }
+  });
+  const doc = dom.window.document;
+  assert.equal(doc.getElementById("empty-title").textContent, "All done for today.");
+
+  const button = doc.getElementById("empty-study-list");
+  assert.equal(button.classList.contains("is-hidden"), false);
+  button.click();
+  await wait(dom);
+  assert.equal(doc.getElementById("deck-filter").value, "study");
+  assert.equal(doc.getElementById("card-word").textContent, "Haus");
+});
+
+test("a word list with no Study words falls back to a deck that has cards", async () => {
+  const { dom } = await loadWithReviews({
+    entries: [makeEntry({ study: false, favorite: true })]
+  });
+  assert.equal(dom.window.document.getElementById("deck-filter").value, "favorites");
+});
+
+test("a storage change neither resets the chosen deck nor closes the summary", async () => {
+  const entries = [makeEntry()];
+  const { dom, storageOnChanged } = await loadWithReviews({
+    entries,
+    url: "https://extension.test/pages/flashcards.html?deck=study"
+  });
+  const doc = dom.window.document;
+  const deck = doc.getElementById("deck-filter");
+  deck.value = "all";
+  deck.dispatchEvent(new dom.window.Event("change"));
+  await wait(dom);
+
+  storageOnChanged.dispatch({ "lodVault.flashcardMeta": {} }, "local");
+  await wait(dom, 5);
+  assert.match(doc.getElementById("deck-status").textContent, /All saved/);
+
+  deck.value = "today";
+  deck.dispatchEvent(new dom.window.Event("change"));
+  await wait(dom);
+  await revealAndRate(dom, 2);
+  const summary = doc.getElementById("summary-overlay");
+  assert.equal(summary.classList.contains("is-hidden"), false);
+
+  storageOnChanged.dispatch({ "lodVault.flashcardMeta": {} }, "local");
+  await wait(dom, 5);
+  assert.equal(summary.classList.contains("is-hidden"), false);
+});
+
+test("the flashcard page lists the keyboard shortcuts for the current mode", async () => {
+  const entries = [makeEntry(), makeEntry({ id: "B", word: "Bam" })];
+  const { dom } = await loadWithReviews({
+    entries,
+    url: "https://extension.test/pages/flashcards.html?deck=study"
+  });
+  const doc = dom.window.document;
+  const hint = doc.getElementById("shortcut-hint");
+  assert.equal(hint.textContent, "Space reveal · ← → navigate · 1 / 2 / 3 rate · R flip direction");
+
+  const modeSelect = doc.getElementById("mode-select");
+  modeSelect.value = "mc";
+  modeSelect.dispatchEvent(new dom.window.Event("change"));
+  await wait(dom);
+  assert.equal(hint.textContent, "1–4 choose · ← → navigate · R flip direction");
 });

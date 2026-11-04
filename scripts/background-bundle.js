@@ -2144,6 +2144,10 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   }
 
   const FLASHCARD_META_KEY = "lodVault.flashcardMeta";
+  const FLASHCARD_SETTINGS_KEY = "lodVault.flashcardSettings";
+  const FLASHCARD_DAILY_TARGETS = [5, 10, 20];
+  const FLASHCARD_DEFAULT_DAILY_TARGET = 10;
+  const FLASHCARD_MAX_INTERVAL_DAYS = 365;
 
   function normalizeFlashcardMeta(meta = {}) {
     const reviews = Array.isArray(meta.reviews) ? meta.reviews.slice(-100) : [];
@@ -2197,21 +2201,62 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     }
   }
 
-  function computeFlashcardDueAt(existing, rating) {
-    const normalizedRating = [1, 2, 3].includes(Number(rating)) ? Number(rating) : 2;
-    let interval = existing.interval || 0;
+  function normalizeFlashcardDailyTarget(settings) {
+    const target = settings?.dailyTarget;
+    if (FLASHCARD_DAILY_TARGETS.includes(Number(target))) return Number(target);
+    return target === null ? 0 : FLASHCARD_DEFAULT_DAILY_TARGET;
+  }
 
-    if (normalizedRating === 1) {
-      interval = 1;
-    } else if (normalizedRating === 2) {
-      interval = interval ? Math.ceil(interval * 2) : 1;
-    } else {
-      interval = interval ? Math.ceil(interval * 2.5) : 2;
+  async function getFlashcardDailyTarget() {
+    const data = await chrome.storage.local.get([FLASHCARD_SETTINGS_KEY]);
+    return normalizeFlashcardDailyTarget(data[FLASHCARD_SETTINGS_KEY]);
+  }
+
+  function getLocalDayStart(value = new Date(), offsetDays = 0) {
+    const day = new Date(value);
+    day.setHours(0, 0, 0, 0);
+    day.setDate(day.getDate() + offsetDays);
+    return day;
+  }
+
+  // A card is due for the whole local day it falls on, including schedules
+  // written with a time of day by older versions or in another time zone.
+  function isFlashcardDue(card, now = new Date()) {
+    const dueTime = Date.parse(card?.dueAt || "");
+    return Number.isFinite(dueTime) && dueTime < getLocalDayStart(now, 1).getTime();
+  }
+
+  function computeFlashcardDueAt(existing, rating, now = new Date()) {
+    const normalizedRating = [1, 2, 3].includes(Number(rating)) ? Number(rating) : 2;
+    const previous = existing.interval || 0;
+    const scheduled = previous > 0 && Number.isFinite(Date.parse(existing.dueAt || ""));
+
+    // Practising ahead of schedule is not evidence the word can wait longer, so
+    // only a Hard rating changes a card that isn't due yet.
+    if (normalizedRating !== 1 && scheduled && !isFlashcardDue(existing, now)) {
+      return { dueAt: existing.dueAt, interval: previous };
     }
 
-    const due = new Date();
-    due.setDate(due.getDate() + interval);
-    return { dueAt: due.toISOString(), interval };
+    let interval = 1;
+    if (normalizedRating === 2) {
+      interval = previous ? Math.ceil(previous * 2) : 1;
+    } else if (normalizedRating === 3) {
+      interval = previous ? Math.ceil(previous * 2.5) : 2;
+    }
+    interval = Math.min(interval, FLASHCARD_MAX_INTERVAL_DAYS);
+
+    return { dueAt: getLocalDayStart(now, interval).toISOString(), interval };
+  }
+
+  // Reviews are stored as UTC timestamps; days and streaks follow the learner's
+  // own calendar. Bare YYYY-MM-DD values are already day keys.
+  function toLocalDateKey(value = new Date()) {
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return "";
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${date.getFullYear()}-${month}-${day}`;
   }
 
   // Reviews are stored as UTC timestamps; days and streaks follow the learner's
@@ -2230,6 +2275,12 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     const checkDate = new Date();
     checkDate.setHours(0, 0, 0, 0);
 
+    // Today still counts as open: a streak only breaks once a whole day passes.
+    const todayKey = toLocalDateKey(checkDate);
+    if (!sortedDescDates.some((dateStr) => toLocalDateKey(dateStr) === todayKey)) {
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+
     let streak = 0;
 
     for (const dateStr of sortedDescDates) {
@@ -2247,39 +2298,148 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return streak;
   }
 
+  // The one definition of "what should I study today", shared by the popup,
+  // the flashcards page and the toolbar badge. Every due card comes first,
+  // most overdue first. New Study-list words then fill what's left of the daily
+  // target; a target of 0 means the learner turned it off.
+  function buildTodayQueue(entries = [], meta = {}, options = {}) {
+    const now = options.now || new Date();
+    const dailyTarget = Math.max(0, Number(options.dailyTarget) || 0);
+    const todayKey = toLocalDateKey(now);
+    const due = [];
+    const fresh = [];
+    const reviewDays = new Set();
+    let reviewedToday = 0;
+
+    for (const card of Object.values(meta || {})) {
+      for (const review of Array.isArray(card?.reviews) ? card.reviews : []) {
+        const dateKey = toLocalDateKey(review?.date);
+        if (!dateKey) continue;
+        reviewDays.add(dateKey);
+        if (dateKey === todayKey) reviewedToday += 1;
+      }
+    }
+
+    for (const entry of entries) {
+      const card = meta?.[entry?.id];
+      if (card?.totalReviews) {
+        if (isFlashcardDue(card, now)) due.push(entry);
+      } else if (entry?.study) {
+        fresh.push(entry);
+      }
+    }
+
+    due.sort((left, right) => (
+      (Date.parse(meta[left.id].dueAt) - Date.parse(meta[right.id].dueAt))
+      || String(left.id).localeCompare(String(right.id))
+    ));
+    fresh.sort((left, right) => (
+      (Date.parse(left.createdAt || "") || 0) - (Date.parse(right.createdAt || "") || 0)
+      || String(left.id).localeCompare(String(right.id))
+    ));
+
+    const newSlots = dailyTarget
+      ? Math.max(0, dailyTarget - reviewedToday - due.length)
+      : fresh.length;
+    const newEntries = fresh.slice(0, newSlots);
+
+    return {
+      dueEntries: due,
+      newEntries,
+      queue: [...due, ...newEntries],
+      dueCount: due.length,
+      newCount: newEntries.length,
+      reviewedToday,
+      streak: computeFlashcardStreak(Array.from(reviewDays).sort().reverse())
+    };
+  }
+
   async function recordFlashcardReviewDirect(entryId, rating, direction) {
     if (!entryId) throw new Error("Missing entry id.");
-    const normalizedRating = [1, 2, 3].includes(Number(rating)) ? Number(rating) : 2;
-    const normalizedDirection = direction === "rev" ? "rev" : "fwd";
-    const meta = await getFlashcardMeta();
-    const existing = meta[entryId] || {};
+    return runVaultIo(async () => {
+      const normalizedRating = [1, 2, 3].includes(Number(rating)) ? Number(rating) : 2;
+      const normalizedDirection = direction === "rev" ? "rev" : "fwd";
+      const meta = await getFlashcardMeta();
+      const existing = meta[entryId] || {};
 
-    const reviews = Array.isArray(existing.reviews) ? existing.reviews : [];
-    reviews.push({
-      date: nowIso(),
-      rating: normalizedRating,
-      direction: normalizedDirection
+      const reviews = Array.isArray(existing.reviews) ? existing.reviews : [];
+      reviews.push({
+        date: nowIso(),
+        rating: normalizedRating,
+        direction: normalizedDirection
+      });
+
+      const trimmed = reviews.slice(-100);
+      const hardCount = trimmed.filter((r) => r.rating === 1).length;
+      const goodCount = trimmed.filter((r) => r.rating === 2).length;
+      const easyCount = trimmed.filter((r) => r.rating === 3).length;
+      const { dueAt, interval } = computeFlashcardDueAt(existing, normalizedRating);
+
+      meta[entryId] = {
+        reviews: trimmed,
+        totalReviews: (existing.totalReviews || 0) + 1,
+        hardCount,
+        goodCount,
+        easyCount,
+        lastReviewedAt: nowIso(),
+        dueAt,
+        interval
+      };
+
+      await saveFlashcardMeta(meta);
+      return meta[entryId];
     });
+  }
 
-    const trimmed = reviews.slice(-100);
-    const hardCount = trimmed.filter((r) => r.rating === 1).length;
-    const goodCount = trimmed.filter((r) => r.rating === 2).length;
-    const easyCount = trimmed.filter((r) => r.rating === 3).length;
-    const { dueAt, interval } = computeFlashcardDueAt(existing, normalizedRating);
+  function toWholeSeconds(iso) {
+    const time = Date.parse(iso || "");
+    return Number.isFinite(time) ? Math.floor(time / 1000) : 0;
+  }
 
-    meta[entryId] = {
-      reviews: trimmed,
-      totalReviews: (existing.totalReviews || 0) + 1,
-      hardCount,
-      goodCount,
-      easyCount,
-      lastReviewedAt: nowIso(),
-      dueAt,
-      interval
+  // Sync carries timestamps in whole seconds, so records are compared at that
+  // precision: the same review read back from sync must not look like news.
+  function mergeSyncedFlashcardRecord(local, remote) {
+    if (!local) return remote;
+    const localTime = toWholeSeconds(local.lastReviewedAt);
+    const remoteTime = toWholeSeconds(remote.lastReviewedAt);
+    const remoteWins = remoteTime > localTime
+      || (remoteTime === localTime && remote.totalReviews > local.totalReviews);
+    const winner = remoteWins ? remote : local;
+
+    const reviews = new Map();
+    for (const review of [...remote.reviews, ...local.reviews]) {
+      reviews.set(`${toWholeSeconds(review.date)}:${review.rating}`, review);
+    }
+
+    return {
+      ...winner,
+      reviews: Array.from(reviews.values())
+        .sort((left, right) => toWholeSeconds(left.date) - toWholeSeconds(right.date))
+        .slice(-100),
+      totalReviews: Math.max(local.totalReviews, remote.totalReviews)
     };
+  }
 
-    await saveFlashcardMeta(meta);
-    return meta[entryId];
+  async function applyRemoteFlashcardMetaDirect(remoteMap = {}, deletedMap = {}) {
+    return runVaultIo(async () => {
+      const local = await getFlashcardMeta();
+      const remote = normalizeFlashcardMetaMap(remoteMap);
+      const merged = { ...local };
+      let changed = false;
+
+      for (const [id, record] of Object.entries(remote)) {
+        if (deletedMap?.[id]) continue;
+        merged[id] = mergeSyncedFlashcardRecord(local[id], record);
+        if (JSON.stringify(merged[id]) !== JSON.stringify(local[id])) changed = true;
+      }
+
+      if (changed) await saveFlashcardMeta(merged);
+      return { changed, meta: merged };
+    });
+  }
+
+  async function applyRemoteFlashcardMeta(remoteMap, deletedMap) {
+    return runStoreMutation("applyRemoteFlashcardMeta", [remoteMap, deletedMap], applyRemoteFlashcardMetaDirect);
   }
 
   async function recordFlashcardReview(entryId, rating, direction) {
@@ -2359,6 +2519,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     isDamagedHistoryEntry,
     queueDamagedHistoryEntries,
     FLASHCARD_META_KEY,
+    FLASHCARD_SETTINGS_KEY,
+    FLASHCARD_MAX_INTERVAL_DAYS,
     DEFAULT_SETTINGS,
     EXPORT_VERSION,
     MAX_SYNC_LANGUAGES,
@@ -2417,11 +2579,19 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     resumeHistoryImportHydration,
     applyRemoteVaultStateDirect,
     normalizeFlashcardMeta,
+    normalizeFlashcardMetaMap,
+    normalizeFlashcardDailyTarget,
+    getFlashcardDailyTarget,
     getFlashcardMeta,
     saveFlashcardMeta,
     recordFlashcardReview,
+    applyRemoteFlashcardMeta,
     getFlashcardStats,
-    computeFlashcardStreak
+    computeFlashcardDueAt,
+    computeFlashcardStreak,
+    isFlashcardDue,
+    buildTodayQueue,
+    toLocalDateKey
   };
 })();
 
@@ -3550,6 +3720,15 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   const SYNC_SETTINGS_KEY = "lodVault.s";
   const SYNC_DELETED_KEY = "lodVault.d";
   const SYNC_ENTRY_PREFIX = "lodVault.e.";
+  // Review progress lives in its own keys, outside the manifest and format
+  // version, so versions that don't know about it leave it alone. Each key is
+  // self-describing and only ever adds to what a device knows.
+  const SYNC_PROGRESS_PREFIX = "lodVault.p.";
+  // Words always win the quota. Progress takes what they leave, up to a limit,
+  // and keeps a margin so note edits don't immediately hit the ceiling.
+  const SYNC_PROGRESS_MAX_BYTES = 24 * 1024;
+  const SYNC_PROGRESS_RESERVE_BYTES = 8 * 1024;
+  const SYNC_PROGRESS_BUCKET_BYTES = 5000;
   const SYNC_SHARD_SOFT_LIMIT = 7000;
   const SYNC_ITEM_HARD_LIMIT = 8192;
   const SYNC_TOTAL_HARD_LIMIT = 100 * 1024;
@@ -3830,6 +4009,94 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     }
 
     return normalizeEntry(expanded);
+  }
+
+  function compactProgress(id, card) {
+    const lastReview = card.reviews[card.reviews.length - 1];
+    const compact = {
+      i: id,
+      n: card.totalReviews,
+      l: isoToUnix(card.lastReviewedAt),
+      d: isoToUnix(card.dueAt),
+      v: card.interval
+    };
+    if (card.hardCount) compact.h = card.hardCount;
+    if (card.goodCount) compact.g = card.goodCount;
+    if (card.easyCount) compact.e = card.easyCount;
+    // Only the latest review travels. That is enough for today's count and the
+    // streak on other devices without spending quota on the whole log.
+    if (lastReview) compact.r = [isoToUnix(lastReview.date), lastReview.rating, lastReview.direction === "rev" ? 1 : 0];
+    return compact;
+  }
+
+  function expandProgress(compact = {}) {
+    const lastReviewedAt = unixToIso(compact.l);
+    const review = Array.isArray(compact.r) && unixToIso(compact.r[0])
+      ? [{ date: unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd" }]
+      : [];
+    return store.normalizeFlashcardMeta({
+      reviews: review,
+      totalReviews: compact.n,
+      hardCount: compact.h,
+      goodCount: compact.g,
+      easyCount: compact.e,
+      lastReviewedAt,
+      dueAt: unixToIso(compact.d),
+      interval: compact.v
+    });
+  }
+
+  function bucketForId(id, bucketCount) {
+    let hash = 0;
+    for (let index = 0; index < id.length; index += 1) {
+      hash = (hash * 31 + id.charCodeAt(index)) >>> 0;
+    }
+    return hash % bucketCount;
+  }
+
+  // Buckets are keyed by a hash of the word id, so a review rewrites one sync
+  // item rather than shifting every item after it. Sync write limits are low.
+  function bucketProgress(records) {
+    const totalBytes = getByteLength(records);
+    let bucketCount = Math.max(1, Math.ceil(totalBytes / SYNC_PROGRESS_BUCKET_BYTES));
+
+    for (;;) {
+      const buckets = Array.from({ length: bucketCount }, () => []);
+      for (const record of records) {
+        buckets[bucketForId(record.i, bucketCount)].push(record);
+      }
+      if (bucketCount >= records.length || buckets.every((bucket) => getByteLength(bucket) <= SYNC_SHARD_SOFT_LIMIT)) {
+        return buckets.filter((bucket) => bucket.length);
+      }
+      bucketCount += 1;
+    }
+  }
+
+  async function buildProgressPayload(flashcardMeta, entryMap, budgetBytes) {
+    const budget = Math.min(SYNC_PROGRESS_MAX_BYTES, budgetBytes);
+    if (budget <= 0) return {};
+
+    let records = Object.entries(flashcardMeta || {})
+      .filter(([id, card]) => entryMap?.[id] && card.totalReviews)
+      .sort(([leftId, left], [rightId, right]) => (
+        isoToUnix(right.lastReviewedAt) - isoToUnix(left.lastReviewedAt)
+        || leftId.localeCompare(rightId)
+      ))
+      .map(([id, card]) => compactProgress(id, card));
+
+    // Most recently studied words survive when progress doesn't all fit.
+    while (records.length) {
+      const sorted = [...records].sort((left, right) => left.i.localeCompare(right.i));
+      const payload = {};
+      const buckets = bucketProgress(sorted);
+      for (let index = 0; index < buckets.length; index += 1) {
+        payload[`${SYNC_PROGRESS_PREFIX}${index}`] = await compressShard(buckets[index]);
+      }
+      const bytes = estimateSyncWriteSize(payload);
+      if (bytes <= budget) return payload;
+      records = records.slice(0, Math.floor(records.length * (budget / bytes) * 0.9));
+    }
+    return {};
   }
 
   function shardEntries(entryMap = {}, syncLanguages = DEFAULT_SETTINGS.syncLanguages) {
@@ -4147,7 +4414,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   }
 
   async function getLocalState() {
-    const data = await chrome.storage.local.get([STORAGE_KEY, LOCAL_SETTINGS_KEY, LOCAL_DELETED_KEY]);
+    const data = await chrome.storage.local.get([STORAGE_KEY, LOCAL_SETTINGS_KEY, LOCAL_DELETED_KEY, store.FLASHCARD_META_KEY]);
     const rawEntries = data[STORAGE_KEY] && typeof data[STORAGE_KEY] === "object" ? data[STORAGE_KEY] : {};
     const rawSettings = data[LOCAL_SETTINGS_KEY] && typeof data[LOCAL_SETTINGS_KEY] === "object" ? data[LOCAL_SETTINGS_KEY] : {};
     const settings = normalizeSettings(rawSettings);
@@ -4158,7 +4425,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       rawEntries: normalizeEntryMap(rawEntries),
       rawSettings,
       settings,
-      deletedMap
+      deletedMap,
+      flashcardMeta: store.normalizeFlashcardMetaMap(data[store.FLASHCARD_META_KEY])
     };
   }
 
@@ -4220,6 +4488,15 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       shards.push(await decompressShard(data[key]));
     }
 
+    const progressKeys = Object.keys(data).filter((key) => key.startsWith(SYNC_PROGRESS_PREFIX));
+    const progress = {};
+    for (const key of progressKeys) {
+      for (const record of await decompressShard(data[key])) {
+        const id = cleanText(record?.i);
+        if (id) progress[id] = expandProgress(record);
+      }
+    }
+
     const extraShardKeys = presentShardKeys.filter((key) => !expectedShardKeys.includes(key));
     const rawShardEntries = flattenShardEntries(shards);
     const settings = normalizeSyncSettings(rawSettings, manifest);
@@ -4263,6 +4540,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       compactShards,
       entryShardMap,
       entries,
+      progressKeys,
+      progress,
       hasSyncData
     };
   }
@@ -4333,7 +4612,34 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       || key === SYNC_SETTINGS_KEY
       || key === SYNC_DELETED_KEY
       || key.startsWith(SYNC_ENTRY_PREFIX)
+      || key.startsWith(SYNC_PROGRESS_PREFIX)
     ));
+  }
+
+  function omitKeys(data = {}, keys = []) {
+    const remaining = { ...data };
+    for (const key of keys) delete remaining[key];
+    return remaining;
+  }
+
+  // Whatever the rest of sync storage leaves over, minus the safety margin.
+  function getProgressBudget(nonProgressData) {
+    return SYNC_TOTAL_HARD_LIMIT - SYNC_PROGRESS_RESERVE_BYTES - estimateSyncWriteSize(nonProgressData);
+  }
+
+  // Writes are checked against old and new data together, so progress that has
+  // to give way for words must be gone before the words are written.
+  async function removeStaleProgress(syncState, payload) {
+    const staleKeys = syncState.progressKeys.filter((key) => !(key in payload));
+    if (!staleKeys.length) return syncState.data;
+    try {
+      await chrome.storage.sync.remove(staleKeys);
+    } catch (error) {
+      if (!isRecoverableSyncError(error)) throw error;
+      console.warn("[LODVault] Could not clear old sync progress:", error);
+      return syncState.data;
+    }
+    return omitKeys(syncState.data, staleKeys);
   }
 
   async function getActualSyncBytesInUse(keys = null) {
@@ -4520,13 +4826,22 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
     Object.assign(nextSyncData, buildMetadataPayload(localState.settings, shards.length));
 
+    const untouchedData = omitKeys(syncState.data, [
+      ...syncState.progressKeys,
+      ...syncState.presentShardKeys,
+      ...Object.keys(nextSyncData)
+    ]);
+    const progressBudget = getProgressBudget({ ...untouchedData, ...nextSyncData });
+    Object.assign(nextSyncData, await buildProgressPayload(localState.flashcardMeta, localState.rawEntries, progressBudget));
+
     const removeKeys = syncState.presentShardKeys.filter((key) => !(key in nextSyncData));
     if (!nextSyncData[SYNC_DELETED_KEY] && syncState.data?.[SYNC_DELETED_KEY]) {
       removeKeys.push(SYNC_DELETED_KEY);
     }
 
+    const currentData = await removeStaleProgress(syncState, nextSyncData);
     const writeResult = await writeSyncPayload(nextSyncData, {
-      currentData: syncState.data,
+      currentData,
       removeKeys
     });
 
@@ -4536,6 +4851,36 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       shardCount: shards.length,
       mode: writeResult.ok ? "full" : "full-failed"
     };
+  }
+
+  // Touches only progress keys and leaves the manifest alone, so its writes
+  // don't wake other devices' full pull when nothing they hold has changed.
+  async function pushProgress() {
+    const [localState, syncState] = await Promise.all([getLocalState(), getSyncState()]);
+
+    if (!syncState.hasSyncData || syncState.partialRead || syncState.needsMigration) {
+      return pushAll();
+    }
+
+    const budget = getProgressBudget(omitKeys(syncState.data, syncState.progressKeys));
+    const payload = await buildProgressPayload(localState.flashcardMeta, localState.rawEntries, budget);
+    const currentData = await removeStaleProgress(syncState, payload);
+    const writeResult = await writeSyncPayload(payload, { currentData });
+
+    return {
+      ...writeResult,
+      mode: writeResult.ok ? "progress" : "progress-failed"
+    };
+  }
+
+  function hasProgressToPush(localMeta, remoteProgress, entryMap) {
+    return Object.entries(localMeta || {}).some(([id, card]) => {
+      if (!entryMap?.[id] || !card.totalReviews) return false;
+      const remote = remoteProgress?.[id];
+      return !remote
+        || remote.totalReviews !== card.totalReviews
+        || isoToUnix(remote.lastReviewedAt) !== isoToUnix(card.lastReviewedAt);
+    });
   }
 
   async function pullAll(options = {}) {
@@ -4578,20 +4923,36 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         })();
 
     let pushResult = null;
+    const progressResult = await store.applyRemoteFlashcardMeta(
+      syncState.progress,
+      store.mergeDeletedMaps(localState.deletedMap, syncState.deletedMap)
+    );
+    const needsProgressPush = hasProgressToPush(
+      progressResult.meta,
+      syncState.progress,
+      applyResult.entries || localState.rawEntries
+    );
+
     const shouldRepush = !syncState.partialRead && (applyResult.changed || syncState.needsMigration);
-    if (shouldRepush && options.repush !== false) {
+    if (options.repush !== false && (shouldRepush || (needsProgressPush && !syncState.partialRead))) {
       const repushDelayMs = Math.max(0, Number(options.repushDelayMs ?? DEFAULT_REPUSH_DELAY_MS) || 0);
       if (repushDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, repushDelayMs));
       }
-      pushResult = await pushAll();
+      // Progress is best effort and retried on later pushes, so its outcome says
+      // nothing about whether the vault itself is syncing.
+      if (shouldRepush) {
+        pushResult = await pushAll();
+      } else {
+        await pushProgress();
+      }
     }
 
     return {
       ok: true,
       ...(pushResult ? { pushed: true } : {}),
       ...(pushResult?.ok === false ? pushResult : {}),
-      changed: Boolean(applyResult.changed),
+      changed: Boolean(applyResult.changed || progressResult.changed),
       entryCount: Number(applyResult.entryCount) || 0,
       partialRead: syncState.partialRead,
       missingShardKeys: syncState.missingShardKeys,
@@ -4702,6 +5063,10 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       removeKeys
     });
 
+    if (writeResult.reason === "quota-exceeded" && syncState.progressKeys.length) {
+      return pushAll();
+    }
+
     return {
       ...writeResult,
       entryCount: Object.keys(localState.entries).length,
@@ -4725,6 +5090,10 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     const writeResult = await writeSyncPayload(payload, {
       currentData: syncState.data
     });
+
+    if (writeResult.reason === "quota-exceeded" && syncState.progressKeys.length) {
+      return pushAll();
+    }
 
     return {
       ...writeResult,
@@ -4758,6 +5127,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         ? measuredVaultBytesUsed
         : estimateSyncWriteSize(lodVaultData);
       const bytesUsedOther = Math.max(0, bytesUsedTotal - bytesUsedVault);
+      const bytesUsedProgress = estimateSyncWriteSize(
+        Object.fromEntries((syncState.progressKeys || []).map((key) => [key, syncState.data[key]]))
+      );
       const itemCountTotal = Object.keys(syncState.data || {}).length;
       const itemCountVault = lodVaultKeys.length;
       const itemCountOther = Math.max(0, itemCountTotal - itemCountVault);
@@ -4770,9 +5142,11 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       const langCount = Array.isArray(syncState.manifest?.l) ? syncState.manifest.l.length : 3;
 
       let estimatedRemaining = capacityByCount[Math.min(langCount, 3)] || 700;
-      if (entryCount > 0 && bytesUsedVault > 0) {
-        const avgBytesPerEntry = bytesUsedVault / entryCount;
-        estimatedRemaining = Math.floor(bytesRemaining / Math.max(1, avgBytesPerEntry));
+      // Progress gives way to words, so its space still counts as free for them.
+      const bytesUsedWords = bytesUsedVault - bytesUsedProgress;
+      if (entryCount > 0 && bytesUsedWords > 0) {
+        const avgBytesPerEntry = bytesUsedWords / entryCount;
+        estimatedRemaining = Math.floor((bytesRemaining + bytesUsedProgress) / Math.max(1, avgBytesPerEntry));
       }
 
       return {
@@ -4835,6 +5209,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     SYNC_SETTINGS_KEY,
     SYNC_DELETED_KEY,
     SYNC_ENTRY_PREFIX,
+    SYNC_PROGRESS_PREFIX,
     SYNC_SHARD_SOFT_LIMIT,
     SYNC_ITEM_HARD_LIMIT,
     SYNC_TOTAL_HARD_LIMIT,
@@ -4853,6 +5228,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       pullAll,
       pushEntry,
       pushSettings,
+      pushProgress,
       destroy
     }
   };
@@ -4867,16 +5243,21 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     const syncAdapter = options.syncAdapter || syncNamespace.SyncAdapter;
     const logger = options.logger || console;
     const pushDebounceMs = Math.max(0, Number(options.pushDebounceMs ?? globalThis.__LOD_SYNC_PUSH_DEBOUNCE_MS__ ?? 2000) || 0);
+    // A review session rates a card every few seconds, and sync allows only so
+    // many writes a minute. Short of the 30s after which a worker may be stopped.
+    const progressDebounceMs = pushDebounceMs * 5;
     const suppressWindowMs = Math.max(pushDebounceMs * 2, 50);
     const localSyncKeys = new Set([
       store.STORAGE_KEY,
       store.SETTINGS_KEY,
-      store.DELETED_KEY
+      store.DELETED_KEY,
+      store.FLASHCARD_META_KEY
     ]);
     const syncManifestKey = syncNamespace.SYNC_MANIFEST_KEY;
     const syncSettingsKey = syncNamespace.SYNC_SETTINGS_KEY;
     const syncDeletedKey = syncNamespace.SYNC_DELETED_KEY;
     const syncEntryPrefix = syncNamespace.SYNC_ENTRY_PREFIX;
+    const syncProgressPrefix = syncNamespace.SYNC_PROGRESS_PREFIX;
 
     let syncTaskQueue = Promise.resolve();
     let syncInitPromise = null;
@@ -4922,6 +5303,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         || key === syncSettingsKey
         || key === syncDeletedKey
         || key.startsWith(syncEntryPrefix)
+        || (syncProgressPrefix && key.startsWith(syncProgressPrefix))
       ));
     }
 
@@ -4972,6 +5354,10 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       const settingsChange = changes?.[store.SETTINGS_KEY];
       const deletedChange = changes?.[store.DELETED_KEY];
       const settingsKind = getSettingsChangeKind(settingsChange);
+
+      if (changes?.[store.FLASHCARD_META_KEY] && !entryChange && !deletedChange && (!settingsKind || settingsKind === "none")) {
+        return { type: "progress" };
+      }
 
       if (!entryChange && !deletedChange && settingsKind === "none") {
         return null;
@@ -5127,7 +5513,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         clearTimeout(pendingLocalPushTimer);
       }
 
-      const delayMs = pendingLocalPushPlan?.immediate ? 0 : pushDebounceMs;
+      const delayMs = pendingLocalPushPlan?.immediate
+        ? 0
+        : pendingLocalPushPlan?.type === "progress" ? progressDebounceMs : pushDebounceMs;
 
       pendingLocalPushTimer = setTimeout(() => {
         pendingLocalPushTimer = null;
@@ -5157,8 +5545,17 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
             return syncAdapter.pushSettings();
           }
 
+          if (planToRun.type === "progress" && syncAdapter.pushProgress) {
+            return syncAdapter.pushProgress();
+          }
+
           return syncAdapter.pushAll();
-        }).then(recordSyncOutcome).catch(async (error) => {
+        }).then((result) => {
+          // Progress is best effort: a push of it can't vouch for the words, so
+          // it neither raises nor clears the "sync paused" state.
+          if (String(result?.mode || "").startsWith("progress")) return undefined;
+          return recordSyncOutcome(result);
+        }).catch(async (error) => {
           logSyncWarning("Sync push failed", error);
           await recordSyncOutcome({ ok: false, reason: "sync-failed" });
         });
@@ -5254,6 +5651,9 @@ const SELECTION_TRIGGER_SCRIPT_FILES = ["scripts/selection-trigger.js"];
 const SELECTION_TRIGGER_STYLE_FILES = ["styles/selection-trigger.css"];
 const SELECTION_TRIGGER_CONTRACT = "1";
 const STORE_MUTATION_MESSAGE_TYPE = LodVaultStore.STORE_MUTATION_MESSAGE_TYPE;
+const DUE_BADGE_ALARM = "lodvault-due-badge";
+const DUE_BADGE_COLOR = "#1f5f8b";
+const SYNC_ISSUE_BADGE_COLOR = "#b3261e";
 const STORE_MUTATION_METHODS = new Set([
   "setAutoMode",
   "setSyncLanguages",
@@ -5270,6 +5670,7 @@ const STORE_MUTATION_METHODS = new Set([
   "importJson",
   "importBrowserHistory",
   "recordFlashcardReview",
+  "applyRemoteFlashcardMeta",
   "getFlashcardStats"
 ]);
 
@@ -5639,6 +6040,53 @@ async function reloadLodTabs() {
   }
 }
 
+function formatDueBadge(dueCount) {
+  if (!dueCount) return "";
+  return dueCount > 99 ? "99+" : String(dueCount);
+}
+
+let toolbarBadgeRefresh = Promise.resolve();
+
+// A sync problem needs action, so it outranks the due count on the one badge.
+function refreshToolbarBadge() {
+  toolbarBadgeRefresh = toolbarBadgeRefresh.then(async () => {
+    const issue = await LodVaultStore.getSyncIssue?.();
+    if (issue) {
+      await chrome.action?.setBadgeBackgroundColor?.({ color: SYNC_ISSUE_BADGE_COLOR });
+      await chrome.action?.setBadgeText?.({ text: "!" });
+      await chrome.action?.setTitle?.({ title: "LODVault: sync is paused. Open Stats for details." });
+      return;
+    }
+
+    const [entries, meta] = await Promise.all([
+      LodVaultStore.getEntries(),
+      LodVaultStore.getFlashcardMeta()
+    ]);
+    const { dueCount } = LodVaultStore.buildTodayQueue(entries, meta);
+    await chrome.action?.setBadgeBackgroundColor?.({ color: DUE_BADGE_COLOR });
+    await chrome.action?.setBadgeText?.({ text: formatDueBadge(dueCount) });
+    await chrome.action?.setTitle?.({
+      title: dueCount ? `LODVault: ${dueCount} word${dueCount === 1 ? "" : "s"} due today` : "LODVault"
+    });
+  }).catch((error) => {
+    console.warn("[LODVault] Could not update the toolbar badge:", error?.message || error);
+  });
+  return toolbarBadgeRefresh;
+}
+
+// Cards fall due at local midnight with no storage change to announce it.
+function scheduleDueBadgeRefresh() {
+  const nextMidnight = new Date();
+  nextMidnight.setHours(24, 0, 0, 0);
+  chrome.alarms?.create?.(DUE_BADGE_ALARM, { when: nextMidnight.getTime() });
+}
+
+chrome.alarms?.onAlarm?.addListener((alarm) => {
+  if (alarm?.name !== DUE_BADGE_ALARM) return;
+  scheduleDueBadgeRefresh();
+  void refreshToolbarBadge();
+});
+
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === "update" || details.reason === "install") {
     registerContextMenus();
@@ -5691,26 +6139,18 @@ chrome.commands?.onCommand?.addListener(async (command) => {
   }
 });
 
-function renderSyncIssueBadge(issue) {
-  chrome.action?.setBadgeText?.({ text: issue ? "!" : "" });
-  chrome.action?.setBadgeBackgroundColor?.({ color: "#b3261e" });
-  chrome.action?.setTitle?.({
-    title: issue ? "LODVault: sync is paused. Open Stats for details." : "LODVault"
-  });
-}
-
-function refreshSyncIssueBadge() {
-  LodVaultStore.getSyncIssue?.().then(renderSyncIssueBadge).catch(() => {});
-}
-
 function repairDamagedHistoryEntries() {
   LodVaultStore.queueDamagedHistoryEntries?.().catch(() => {});
 }
 
 chrome.storage.onChanged?.addListener((changes, areaName) => {
   syncCoordinator.handleStorageChanged(changes, areaName);
-  if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.SYNC_ISSUE_KEY)) {
-    renderSyncIssueBadge(changes[LodVaultStore.SYNC_ISSUE_KEY]?.newValue || null);
+  if (areaName === "local" && (
+    changes?.[LodVaultStore.STORAGE_KEY]
+    || changes?.[LodVaultStore.FLASHCARD_META_KEY]
+    || Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.SYNC_ISSUE_KEY)
+  )) {
+    void refreshToolbarBadge();
   }
   if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
     scheduleHistoryHydrationResume(25);
@@ -5718,9 +6158,10 @@ chrome.storage.onChanged?.addListener((changes, areaName) => {
 });
 
 scheduleHistoryHydrationResume(50);
-refreshSyncIssueBadge();
 registerContextMenus();
 void syncSelectionTriggerRegistration();
+scheduleDueBadgeRefresh();
+void refreshToolbarBadge();
 chrome.permissions?.onAdded?.addListener(() => {
   void syncSelectionTriggerRegistration();
 });

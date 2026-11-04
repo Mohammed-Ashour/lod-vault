@@ -1,48 +1,34 @@
 (() => {
   let refreshToken = 0;
-  let lastDueCount = 0;
+  let hasQueue = false;
 
   function createStudyModule(ctx) {
     const { store, chromeApi, state, elements } = ctx;
 
-    function computeDueAndNewCounts(entries, meta) {
-      const now = Date.now();
-      let dueCount = 0;
-      let newCount = 0;
-
-      for (const entry of entries || []) {
-        const card = meta?.[entry?.id];
-        if (!card || !card.totalReviews) {
-          newCount += 1;
-          continue;
-        }
-        const dueTime = Date.parse(card.dueAt || "");
-        if (Number.isFinite(dueTime) && dueTime <= now) {
-          dueCount += 1;
-        }
-      }
-
-      return { dueCount, newCount };
-    }
-
-    function renderStudyCard({ dueCount, newCount }) {
+    function renderStudyCard({ dueCount, newCount, reviewedToday, streak }) {
       if (!elements.studySummary) return;
 
-      const hasDue = dueCount > 0;
-      const hasNew = newCount > 0;
-      const summary = hasDue && hasNew
-        ? `${dueCount} due · ${newCount} new`
-        : hasDue
-          ? `${dueCount} due`
-          : hasNew
-            ? `${newCount} new`
-            : "Nothing due right now";
+      const hasWork = dueCount > 0 || newCount > 0;
+      const parts = [];
+      if (dueCount > 0) parts.push(`${dueCount} due`);
+      if (newCount > 0) parts.push(`${newCount} new`);
+      const summary = hasWork
+        ? parts.join(" · ")
+        : reviewedToday > 0 ? "All done for today" : "Nothing due right now";
 
       elements.studySummary.textContent = summary;
-      elements.studySummary.classList.toggle("is-empty", !hasDue);
+      elements.studySummary.classList.toggle("is-empty", !hasWork);
 
       if (elements.startDueReview) {
-        elements.startDueReview.textContent = hasDue ? "Start review" : "Study cards";
+        elements.startDueReview.textContent = hasWork ? "Start review" : "Study cards";
+      }
+
+      if (elements.studyActivity) {
+        const activity = [];
+        if (streak > 0) activity.push(`${streak}-day streak`);
+        if (reviewedToday > 0) activity.push(`${reviewedToday} reviewed today`);
+        elements.studyActivity.textContent = activity.join(" · ");
+        elements.studyActivity.classList.toggle("is-hidden", !activity.length);
       }
     }
 
@@ -51,26 +37,28 @@
       const entries = state.savedEntries || [];
 
       let meta = {};
-      if (typeof store.getFlashcardMeta === "function") {
-        try {
-          meta = (await store.getFlashcardMeta()) || {};
-        } catch {
-          meta = {};
-        }
+      let dailyTarget = 0;
+      try {
+        [meta, dailyTarget] = await Promise.all([
+          store.getFlashcardMeta(),
+          store.getFlashcardDailyTarget()
+        ]);
+      } catch {
+        meta = {};
       }
 
       // A newer refresh superseded this one while we were awaiting storage:
       // drop the stale result instead of repainting with old counts.
       if (token !== refreshToken) return;
 
-      const { dueCount, newCount } = computeDueAndNewCounts(entries, meta);
-      lastDueCount = dueCount;
-      renderStudyCard({ dueCount, newCount });
+      const today = store.buildTodayQueue(entries, meta || {}, { dailyTarget });
+      hasQueue = today.queue.length > 0;
+      renderStudyCard(today);
     }
 
     function startDueReview() {
       const url = chromeApi.runtime.getURL(
-        `pages/flashcards.html${lastDueCount > 0 ? "?deck=due" : ""}`
+        `pages/flashcards.html${hasQueue ? "?deck=today" : ""}`
       );
       chromeApi.tabs.create({ url });
     }
