@@ -626,8 +626,8 @@ function renderDeck() {
     elements.cardHint.textContent = state.mode === "mc" ? "Choose the correct answer." : "Click Reveal to show the answer.";
   }
 
-  if (elements.prevCard) elements.prevCard.disabled = state.sessionActive || count <= 1;
-  if (elements.nextCard) elements.nextCard.disabled = state.sessionActive || count <= 1;
+  if (elements.prevCard) elements.prevCard.disabled = !canNavigate();
+  if (elements.nextCard) elements.nextCard.disabled = !canNavigate();
 
   if (state.revealed && count > 0) {
     elements.ratingBar?.classList.remove("is-hidden");
@@ -638,7 +638,7 @@ function renderDeck() {
   if (elements.shortcutHint) {
     const shortcuts = [
       state.mode === "mc" ? "1–4 choose" : "Space reveal",
-      state.sessionActive ? "" : "← → navigate",
+      canNavigate() ? "← → navigate" : "",
       state.mode === "mc" ? "" : "1 / 2 / 3 rate",
       "R flip direction"
     ];
@@ -735,16 +735,43 @@ function toggleReveal() {
   renderDeck();
 }
 
+function canNavigate() {
+  return state.sessionActive
+    ? state.sessionCards.length - state.sessionIndex > 1
+    : state.deck.length > 1;
+}
+
+// Rated cards stay before sessionIndex and unrated ones from it onwards, which
+// is what progress, resume and the end of a session rely on. So moving through
+// a session rotates the unrated cards rather than moving the position.
+function rotateSessionCards(step) {
+  const cards = state.sessionCards;
+  if (step > 0) {
+    cards.push(...cards.splice(state.sessionIndex, 1));
+  } else {
+    cards.splice(state.sessionIndex, 0, cards.pop());
+  }
+  void saveSession();
+}
+
 function showPrevious() {
-  if (state.sessionActive || state.deck.length <= 1) return;
-  state.index = (state.index - 1 + state.deck.length) % state.deck.length;
+  if (!canNavigate() || state.ratingInProgress) return;
+  if (state.sessionActive) {
+    rotateSessionCards(-1);
+  } else {
+    state.index = (state.index - 1 + state.deck.length) % state.deck.length;
+  }
   state.revealed = false;
   renderDeck();
 }
 
 function showNext() {
-  if (state.sessionActive || state.deck.length <= 1) return;
-  state.index = (state.index + 1) % state.deck.length;
+  if (!canNavigate() || (state.sessionActive && state.ratingInProgress)) return;
+  if (state.sessionActive) {
+    rotateSessionCards(1);
+  } else {
+    state.index = (state.index + 1) % state.deck.length;
+  }
   state.revealed = false;
   renderDeck();
 }

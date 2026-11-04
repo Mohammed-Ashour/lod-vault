@@ -504,3 +504,66 @@ test("the flashcard page lists the keyboard shortcuts for the current mode", asy
   await wait(dom);
   assert.equal(hint.textContent, "1–4 choose · ← → navigate · R flip direction");
 });
+
+test("Prev and Next move through the unrated cards of a session", async () => {
+  const entries = ["A", "B", "C"].map((id) => makeEntry({ id, word: id }));
+  const { dom, reviews } = await loadWithReviews({ entries });
+  const doc = dom.window.document;
+  const word = () => doc.getElementById("card-word").textContent;
+  const next = doc.getElementById("next-card");
+  const prev = doc.getElementById("prev-card");
+
+  assert.equal(next.disabled, false);
+  assert.equal(prev.disabled, false);
+
+  next.click();
+  assert.equal(word(), "B");
+  next.click();
+  assert.equal(word(), "C");
+  next.click();
+  assert.equal(word(), "A");
+  prev.click();
+  assert.equal(word(), "C");
+
+  // Skipping isn't rating, and every card still gets rated exactly once.
+  assert.deepEqual(reviews, []);
+  assert.match(doc.getElementById("session-progress").textContent, /0 rated · 3 remaining/);
+
+  await revealAndRate(dom, 2);
+  assert.equal(word(), "A");
+  next.click();
+  assert.equal(word(), "B");
+  await revealAndRate(dom, 2);
+  assert.equal(word(), "A");
+
+  // One card left: there is nowhere to move to.
+  assert.equal(next.disabled, true);
+  assert.equal(prev.disabled, true);
+  await revealAndRate(dom, 2);
+
+  assert.deepEqual(reviews.map((review) => review.entryId), ["C", "B", "A"]);
+  assert.equal(doc.getElementById("summary-overlay").classList.contains("is-hidden"), false);
+  assert.equal(doc.getElementById("summary-total").textContent, "3");
+});
+
+test("keyboard arrows follow Prev and Next, and skipped order survives a resume", async () => {
+  const entries = Array.from({ length: 12 }, (_, i) => makeEntry({ id: `W${i}`, word: `W${i}` }));
+  const url = "https://extension.test/pages/flashcards.html?deck=study";
+  const first = await loadWithReviews({ entries, url });
+  const doc = first.dom.window.document;
+  const size = doc.getElementById("session-size");
+  size.value = "10";
+  size.dispatchEvent(new first.dom.window.Event("change"));
+  await wait(first.dom);
+
+  const startWord = doc.getElementById("card-word").textContent;
+  doc.dispatchEvent(new first.dom.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+  const skippedTo = doc.getElementById("card-word").textContent;
+  assert.notEqual(skippedTo, startWord);
+  await wait(first.dom);
+
+  const resumed = await loadWithReviews({ entries, url, localStorage: first.storageData });
+  resumed.dom.window.document.getElementById("resume-session-button").click();
+  await wait(resumed.dom);
+  assert.equal(resumed.dom.window.document.getElementById("card-word").textContent, skippedTo);
+});
