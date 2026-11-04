@@ -1,27 +1,9 @@
-// popup-list.js — Saved-list feature module for the popup page.
-//
-// Owns the saved words list (render, search, stats, Favorite/Study/Note/Delete
-// interactions), the Flashcards/Vault page openers, and the renderSavedList hub
-// that refreshes every popup section after the vault changes. Renders into the
-// popup DOM through the shared ctx object.
-//
-// Cross-module calls (resolved lazily at runtime):
-//   ctx.current.renderAutoMode()          — history count in the auto-mode copy
-//   ctx.current.syncCurrentCardState()    — current card after vault changes
-//   ctx.current.showNoteBody()            — "+ Note" reveal in list items
-//   ctx.sync.renderSyncLanguages()        — chips/capacity after vault changes
-//   ctx.sync.renderVerifiedSyncStatus()   — verified label after vault changes
-//   ctx.sync.refreshSyncHealth()          — health banner after vault changes
-//   ctx.backup.renderPortableBackupStatus() — backup chip after vault changes
-//   ctx.study.refreshStudyCard()           — due/new counts after vault changes
-//   ctx.showActionFeedback()              — transient action feedback toast
-//   ctx.deleteUndo.deleteEntry()          — delete-with-undo for list items
-//   ctx.noteAutosave                      — autosave for list note textareas
 (() => {
   function createListModule(ctx) {
     const { store, chromeApi, state, elements } = ctx;
 
     const LIST_LIMIT = 10;
+    const openDetails = new Set();
 
     function renderSummary(entries) {
       const favoriteCount = entries.filter((entry) => entry.favorite).length;
@@ -70,7 +52,7 @@
           <div class="saved-item-top">
             <span class="word-row">${typeof store.buildAudioBtnMarkup === "function" ? store.buildAudioBtnMarkup(entry) : ""}<a href="${store.escapeHtml(entry.url)}" target="_blank" rel="noreferrer" class="word-link">${store.escapeHtml(entry.word)}</a></span>
             <div class="item-controls">
-              <button type="button" class="toggle-pill toggle-fav ${entry.favorite ? "is-active" : ""}" data-action="toggle-favorite" data-id="${store.escapeHtml(entry.id)}" aria-pressed="${entry.favorite ? "true" : "false"}" title="${entry.favorite ? "Remove from favorites" : "Add to favorites"}"><span class="toggle-pill-icon">${entry.favorite ? "★" : "☆"}</span><span class="toggle-pill-label">Fav</span></button>
+              <button type="button" class="toggle-pill toggle-fav ${entry.favorite ? "is-active" : ""}" data-action="toggle-favorite" data-id="${store.escapeHtml(entry.id)}" aria-pressed="${entry.favorite ? "true" : "false"}" title="${entry.favorite ? "Remove from favorites" : "Add to favorites"}"><span class="toggle-pill-icon">${entry.favorite ? "★" : "☆"}</span><span class="toggle-pill-label">Favorite</span></button>
               <button type="button" class="toggle-pill toggle-study ${entry.study ? "is-active" : ""}" data-action="toggle-study" data-id="${store.escapeHtml(entry.id)}" aria-pressed="${entry.study ? "true" : "false"}" title="${entry.study ? "Remove from study list" : "Add to study list"}"><span class="toggle-pill-icon">${entry.study ? "●" : "○"}</span><span class="toggle-pill-label">Study</span></button>
               <button type="button" class="control-btn control-delete" data-action="remove" data-id="${store.escapeHtml(entry.id)}" aria-label="Delete saved word" title="Delete saved word">×</button>
             </div>
@@ -78,6 +60,7 @@
           ${subline ? `<p class="item-meta">${subline}</p>` : ""}
           ${lastVisitedText}
           ${meanings ? `<div class="item-meanings">${meanings}</div>` : ""}
+          <details class="saved-details"><summary>Example &amp; note</summary>
           ${entry.example ? `<p class="item-example">${store.escapeHtml(entry.example)}</p>` : ""}
           <div class="note-section">
             <button type="button" class="note-toggle${hasNote ? " is-hidden" : ""}" data-action="toggle-note" data-id="${store.escapeHtml(entry.id)}" aria-label="Add a note">+ Note</button>
@@ -86,6 +69,7 @@
               <textarea id="note-${store.escapeHtml(entry.id)}" class="note-input" data-note-id="${store.escapeHtml(entry.id)}" data-saved-value="${store.escapeHtml(entry.note || "")}" placeholder="Add a note for this word...">${store.escapeHtml(entry.note || "")}</textarea>
             </div>
           </div>
+          </details>
         </article>
       `;
     }
@@ -95,6 +79,7 @@
       state.savedEntries = entries;
       renderSummary(entries);
       renderList();
+      ctx.lookup?.refreshSavedState();
 
       ctx.current.renderAutoMode();
       ctx.sync.renderSyncLanguages();
@@ -114,7 +99,9 @@
       const hasQuery = state.searchQuery.trim().length > 0;
       const displayEntries = hasQuery ? visibleEntries : entries;
 
-      elements.searchStatus.textContent = formatSearchStatus(visibleEntries.length, entries.length);
+      if (state.searchSource !== "lod") {
+        elements.searchStatus.textContent = formatSearchStatus(visibleEntries.length, entries.length);
+      }
 
       if (!entries.length) {
         elements.savedList.innerHTML = "";
@@ -140,7 +127,36 @@
           ? `<p class="list-overflow">Showing ${LIST_LIMIT} of ${displayEntries.length} matches. Refine your search to narrow down.</p>`
           : `<p class="list-overflow">Showing ${LIST_LIMIT} recent words. Type to search or open Vault to browse everything.</p>`;
       }
+      // Reuse live note editors so storage refreshes cannot replace a focused
+      // draft or detach the editor an in-flight autosave is updating.
+      const notes = new Map();
+      const active = document.activeElement;
+      const focusedAction = active?.closest(".saved-item") && active.dataset.action
+        ? { id: active.closest(".saved-item").dataset.id, action: active.dataset.action } : null;
+      for (const row of elements.savedList.querySelectorAll(".saved-item")) {
+        notes.set(row.dataset.id, row.querySelector(".note-section"));
+        if (row.querySelector(".saved-details").open) openDetails.add(row.dataset.id);
+        else openDetails.delete(row.dataset.id);
+      }
       LodVaultStore.setHtml(elements.savedList, listMarkup);
+      for (const row of elements.savedList.querySelectorAll(".saved-item")) {
+        row.querySelector(".saved-details").open = openDetails.has(row.dataset.id);
+        const section = notes.get(row.dataset.id);
+        if (!section) continue;
+        const note = section.querySelector("textarea");
+        const entry = displayEntries.find((item) => item.id === row.dataset.id);
+        if (note !== active && note.dataset.dirty !== "true" && note.dataset.saving !== "true") {
+          note.value = entry.note || "";
+          note.dataset.savedValue = note.value;
+        }
+        row.querySelector(".note-section").replaceWith(section);
+        if (note === active) note.focus({ preventScroll: true });
+      }
+      if (focusedAction) {
+        [...elements.savedList.querySelectorAll("button[data-action]")]
+          .find((button) => button.dataset.id === focusedAction.id && button.dataset.action === focusedAction.action)
+          ?.focus({ preventScroll: true });
+      }
     }
 
     function findEntry(id) {
@@ -193,6 +209,7 @@
       const entry = findEntry(button.dataset.id);
       if (!entry) return;
 
+      const hadFocus = document.activeElement === button;
       button.disabled = true;
 
       try {
@@ -215,12 +232,18 @@
         ctx.showActionFeedback("Could not update your vault.", "error");
       } finally {
         button.disabled = false;
+        if (hadFocus) {
+          const next = [...elements.savedList.querySelectorAll("button[data-action]")]
+            .find((item) => item.dataset.id === button.dataset.id && item.dataset.action === button.dataset.action);
+          (next || (button.dataset.action === "remove" ? elements.deleteUndoButton : null))?.focus({ preventScroll: true });
+        }
       }
     }
 
     function onSavedListInput(event) {
       const textarea = event.target.closest("textarea[data-note-id]");
       if (!textarea) return;
+      delete textarea.dataset.discarded;
       ctx.noteAutosave.markDirty(textarea);
     }
 
@@ -237,6 +260,10 @@
     }
 
     function onSearchInput(event) {
+      if (state.searchSource === "lod") {
+        ctx.lookup.onInput(event);
+        return;
+      }
       state.searchQuery = event.target.value || "";
       renderList();
     }

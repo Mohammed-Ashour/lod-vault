@@ -1,14 +1,3 @@
-// popup-study.js — Study feature module for the popup page.
-//
-// Renders the compact Study banner: due/new counts and a single
-// Start-review entry point into the flashcards page. Data comes from the
-// vault entries (state.savedEntries) and the flashcard review meta
-// (store.getFlashcardMeta). Detailed stats (streak, daily target, session
-// progress) live on the flashcards page.
-//
-// The banner's counts are scoped to the deck the button opens: with due
-// cards it deep-links to the Due-today deck (?deck=due); otherwise it
-// opens the flashcards page as-is (default deck).
 (() => {
   let refreshToken = 0;
   let lastDueCount = 0;

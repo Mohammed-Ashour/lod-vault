@@ -59,6 +59,7 @@ cp \
   scripts/popup-current.js \
   scripts/popup.js \
   scripts/popup-list.js \
+  scripts/popup-lookup.js \
   scripts/popup-study.js \
   scripts/popup-sync.js \
   scripts/preview.js \

@@ -1,5 +1,3 @@
-// Theme controls shared by popup, Vault and Flashcards. theme-init.js restores
-// the saved class before paint; this file updates controls and handles changes.
 (() => {
   const KEY = "blueNightTheme";
   const SWITCHING_CLASS = "theme-switching";

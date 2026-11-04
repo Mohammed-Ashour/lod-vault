@@ -1,6 +1,6 @@
 # Privacy Policy — LODVault
 
-**Last updated:** April 2026
+**Last updated:** October 2026
 
 LODVault is a browser extension for [lod.lu](https://lod.lu) — the official Luxembourgish Online Dictionary. This policy explains how the extension handles your data.
 
@@ -11,15 +11,15 @@ LODVault is a browser extension for [lod.lu](https://lod.lu) — the official Lu
 When you save a word, LODVault stores the following **locally in your browser** using `chrome.storage.local`:
 
 - The word text and its URL on lod.lu
-- The word's grammatical type, inflection, and example sentence (extracted from the page)
-- Translations shown on the page (German, French, English, Portuguese, Dutch)
+- The word's grammatical type, inflection, and example sentence, read from a LOD page or fetched from the LOD API
+- Available translations in German, French, English, Portuguese, and Dutch
 - Which lists the word belongs to: Favorites, Study, History
 - Your personal note for the word (if you add one)
 - Visit count and last visited date (if Auto mode is on)
 - Your Auto mode on/off setting
 - If you manually trigger **Import history**, matching `lod.lu/artikel/*` URLs from your browser history are read once and only missing words are added to your vault
 
-This data never leaves your browser. It is not sent to any server, not shared with any third party, and not accessible to anyone other than you.
+LODVault does not upload your vault or personal notes to LOD or to an extension-operated server. If you enable browser sync, your browser stores a compact replica through its own sync service. Manual exports and backups create files on your device.
 
 ---
 
@@ -36,7 +36,16 @@ This data never leaves your browser. It is not sent to any server, not shared wi
 
 ## External requests
 
-LODVault makes **no external network requests**. It does not contact any server, API, or third-party service. The only pages it interacts with are `lod.lu/artikel/*` pages — and only to read word content already visible on screen.
+LODVault contacts `https://lod.lu` to retrieve dictionary content and pronunciation audio:
+
+- **Search LOD** sends the text you type and the selected search language to the LOD API. All-languages search sends that same text for each supported language. Results load after a short typing pause or when you press Enter.
+- Expanding or saving a result sends its LOD article ID to retrieve the full dictionary entry.
+- **LOD Lens** sends only the word or text you explicitly select for lookup. It does not send the surrounding page contents.
+- Playing pronunciation requests the corresponding audio file. Browser-history import may fetch missing dictionary entries by their article IDs.
+
+LOD receives these requests and the connection information normally available to a website, such as your IP address. LODVault does not send your personal notes, vault contents, or full page contents with dictionary requests. **My vault** search filters saved words locally without contacting LOD.
+
+LODVault has no analytics or tracking service and no extension-operated backend.
 
 ---
 
@@ -59,6 +68,8 @@ If you want a portable backup before uninstalling, use **Backup JSON** from the 
 | `tabs` | Detects which LOD article page is currently active so the popup can show the current word |
 | `https://lod.lu/artikel/*` | Injects the save banner into LOD article pages and communicates with the active page |
 | `https://www.lod.lu/artikel/*` | Same as above, for the www subdomain |
+| `https://lod.lu/api/*` | Retrieves dictionary search results and complete entries for Search LOD and LOD Lens |
+| `https://lod.lu/uploads/*` | Plays dictionary pronunciation audio when requested |
 | `history` (optional) | Only when you click **Import history**; reads `lod.lu/artikel/*` visits to add missing words (add-only, non-destructive) |
 
 ---

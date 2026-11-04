@@ -434,7 +434,7 @@
       --line-strong: rgba(168,218,220,0.18);
       --text:    #e4eef4;
       --text-2:  #b8cedb;
-      --muted:   #6a8da6;
+      --muted:   #96afc1;
       --teal:    #39a7c4;
       --teal-h:  #4fb9d4;
       --teal-lt: #a8dadc;
@@ -451,7 +451,7 @@
       --line-strong: rgba(18,48,74,0.22);
       --text:    #13222e;
       --text-2:  #43586a;
-      --muted:   #6b7f90;
+      --muted:   #526a7c;
       --teal:    #147f9c;
       --teal-h:  #0f6f8a;
       --teal-lt: #0e7490;

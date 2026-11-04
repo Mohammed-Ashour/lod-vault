@@ -1159,9 +1159,6 @@
     initPromise = null;
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Sync usage statistics (for the popup capacity bar)                  */
-  /* ------------------------------------------------------------------ */
 
   async function inspectSyncStorage() {
     try {

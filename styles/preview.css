@@ -5,24 +5,22 @@
    ──────────────────────────────────────────────────────────── */
 
 body {
-  min-height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
   background: var(--page);
   font-size: 14px;
   line-height: 1.48;
 }
 
-.appbar { position: sticky; top: 0; z-index: 30; }
+.appbar { flex-shrink: 0; position: relative; z-index: 30; }
 
-.preview-shell { min-height: calc(100vh - 64px); }
+.preview-shell { flex: 1; min-height: 0; }
 #preview-frame {
   display: block;
   width: 100%;
-  height: calc(100vh - 64px);
-  min-height: 480px;
+  height: 100%;
+  min-height: 0;
   border: 0;
   background: var(--page);
-}
-
-@media (max-width: 720px) {
-  #preview-frame { height: calc(100vh - 116px); }
 }

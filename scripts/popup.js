@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const active = tab.dataset.pane === name;
       tab.classList.toggle("is-active", active);
       tab.setAttribute("aria-selected", String(active));
+      tab.tabIndex = active ? 0 : -1;
     });
     document.querySelectorAll(".popup-pane").forEach((pane) => {
       pane.classList.toggle("is-active", pane.dataset.pane === name);
@@ -19,6 +20,17 @@ document.addEventListener("DOMContentLoaded", () => {
   tabs?.addEventListener("click", (event) => {
     const tab = event.target.closest(".popup-tab");
     if (tab) showPane(tab.dataset.pane);
+  });
+
+  tabs?.addEventListener("keydown", (event) => {
+    if (!event.target.matches(".popup-tab") || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const items = [...tabs.querySelectorAll(".popup-tab")];
+    const index = items.indexOf(event.target);
+    const next = event.key === "Home" ? items[0] : event.key === "End" ? items.at(-1)
+      : items[(index + (event.key === "ArrowRight" ? 1 : items.length - 1)) % items.length];
+    showPane(next.dataset.pane);
+    next.focus();
   });
 
   showPane(tabs?.querySelector(".is-active")?.dataset.pane || "words");
