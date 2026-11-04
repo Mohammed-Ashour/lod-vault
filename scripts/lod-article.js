@@ -354,9 +354,6 @@
     return extractEntryFromHtmlWithRegex(html, url);
   }
 
-  /**
-   * Full info text for title attribute (POS + all translations).
-   */
   function infoTextFull(entry) {
     const parts = [];
     if (entry?.pos) parts.push(entry.pos);

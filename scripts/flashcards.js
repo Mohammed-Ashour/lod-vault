@@ -371,7 +371,8 @@ function onKeyDown(event) {
 
   const target = event.target;
   if (
-    target?.tagName === "SELECT"
+    target?.closest?.("button, a, summary")
+    || target?.tagName === "SELECT"
     || target?.tagName === "INPUT"
     || target?.tagName === "TEXTAREA"
     || target?.isContentEditable
@@ -784,11 +785,21 @@ function endSession() {
   const trigger = document.getElementById("session-trigger");
   if (!menu || !trigger) return;
 
+  function setOpen(open) {
+    menu.classList.toggle("is-open", open);
+    trigger.setAttribute("aria-expanded", String(open));
+  }
   trigger.addEventListener("click", (event) => {
     event.stopPropagation();
-    menu.classList.toggle("is-open");
+    setOpen(!menu.classList.contains("is-open"));
   });
   document.addEventListener("click", (event) => {
-    if (!event.target.closest(".menu-wrap")) menu.classList.remove("is-open");
+    if (!event.target.closest(".menu-wrap")) setOpen(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && menu.classList.contains("is-open")) {
+      setOpen(false);
+      trigger.focus();
+    }
   });
 })();

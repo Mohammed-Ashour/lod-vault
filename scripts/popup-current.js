@@ -1,15 +1,3 @@
-// popup-current.js — Current-word feature module for the popup page.
-//
-// Owns the "Current word" card (word, audio, meanings, Favorite/Study/Delete
-// actions), the current-word note textarea (via the shared note autosave
-// controller), auto mode, and keeping the active lod.lu tab in sync with the
-// saved state. Renders into the popup DOM through the shared ctx object.
-//
-// Cross-module calls (resolved lazily at runtime):
-//   ctx.list.renderSavedList()      — after actions that change the vault
-//   ctx.list.renderList()           — after a note save rerenders the list
-//   ctx.showActionFeedback()        — transient action feedback toast
-//   ctx.deleteUndo.deleteEntry()    — delete-with-undo for the current word
 (() => {
   function createCurrentModule(ctx) {
     const { store, chromeApi, state, elements } = ctx;

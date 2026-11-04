@@ -22,7 +22,7 @@
 
 <img src="docs/screenshots/popup-blue-night.png" width="380" alt="LODVault popup — Blue Night redesign" /> <img src="docs/screenshots/popup-blue-night-light.png" width="380" alt="LODVault popup — Blue Night light mode" />
 
-The popup opens on a **Today** panel (due words + Start review), then splits into two tabs: **Words** (contextual capture card for the word open on lod.lu, search, saved-word list) and **Stats & data** (sync/backup/restore/export status on top, vault counters, Auto mode). Header links take you straight to Flashcards or the Vault, and the ☀/☾ button flips the whole product between navy night and cool paper day.
+The popup opens on a **Today** panel with due words and Start review, then splits into **Words** and **Stats & data**. Words keeps My vault / Search LOD, search and its metadata fixed above one scrolling area. Current-page details expand inside that area without moving search. Stats & data groups sync, backup, restore, exports, counters and Auto mode. Header links take you straight to Flashcards or the Vault, and the ☀/☾ button flips the whole product between navy night and cool paper day.
 
 <img src="docs/screenshots/popup-stats-blue-night.png" width="380" alt="LODVault popup — Stats & data tab" /> <img src="docs/screenshots/popup-stats-blue-night-light.png" width="380" alt="LODVault popup — Stats & data tab, light mode" />
 
@@ -69,7 +69,7 @@ All session setup (deck, order, size, mode, daily target) is grouped behind one 
 | 🔊 **Pronunciation audio** | Play LOD pronunciation audio from the popup and saved-word list |
 | 📝 **Notes** | Write your own note for each saved word (auto-saved) |
 | 🔎 **LOD Lens** | Select Luxembourgish text on supported pages to translate it in a floating overlay, then save it straight to your vault |
-| 🔍 **Search** | Filter your saved words in the popup |
+| 🔍 **Search** | Switch between My vault and Search LOD in the popup. Look up Luxembourgish, English, French, German, Portuguese, or Dutch words and save the Luxembourgish entry to Favorites or Study |
 | 🃏 **Flashcards** | Review your saved words with a simple flashcard mode |
 | 👁 **Preview** | Browse your full word list in a clean page — no download needed |
 | 📤 **Export HTML / Anki** | Download standalone HTML or Anki-ready text export |
@@ -145,7 +145,10 @@ The **LODVault** icon will appear in your browser toolbar.
 - Choose up to **3 sync languages** for sync payload size control and use **Sync now** when you want an immediate push
 - Use **Import history** with a date range (7d / 30d / 90d / 365d / all time) to add missing LOD words
 - Review the import report and use **Backup JSON** before uninstalling or changing installations if you want a portable backup
-- Search, play pronunciation audio, add notes, toggle lists, or delete words from there
+- **My vault** filters saved words without sending a dictionary request
+- **Search LOD** searches all supported languages by default, or a selected language. Favorite and Study are available on each result and fetch the full entry before saving. Expand a result for translations, an example and notes
+- Dictionary searches send only the query text to LOD. Switching back to My vault keeps your local search
+- Play pronunciation audio, add notes, toggle lists, or delete saved words from there
 
 ### Study with flashcards
 - Click **Flashcards** in the popup
@@ -179,6 +182,18 @@ npm install
 npm test
 ```
 
+### Check UI layout in Chrome
+
+```bash
+npm run test:ui
+# Check the actual extension action window in recent Chrome:
+npm run test:popup
+# Also regenerate the before/after screenshots:
+npm run test:ui -- --capture
+```
+
+Uses isolated browser/storage fixtures, not your real vault or live LOD requests. Set `CHROME_PATH` if Chrome is not in its default macOS location or Chromium is not on PATH.
+
 ### Lint the Firefox package
 
 ```bash
@@ -208,7 +223,7 @@ Builds the release zips and runs `web-ext lint` on the Firefox artifact (`dist/l
 - Everything you save lives in your browser via `chrome.storage.local`
 - If browser sync is enabled, a compact replica is stored in `chrome.storage.sync`
 - In Chrome, uninstalling the extension may remove both local data and its extension sync data, so use **Backup JSON** if you want a portable backup before uninstalling
-- No analytics, no tracking, no external requests
+- No analytics or tracking. Dictionary search and LOD Lens send only the text you choose to look up to the LOD API; they do not send page contents or personal notes
 
 ---
 

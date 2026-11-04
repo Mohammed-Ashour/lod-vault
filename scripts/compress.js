@@ -9,10 +9,6 @@
 (() => {
   const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-  /* ------------------------------------------------------------------ */
-  /*  Feature detection                                                   */
-  /* ------------------------------------------------------------------ */
-
   let compressionAvailable = false;
 
   try {
@@ -27,10 +23,6 @@
   } catch (_error) {
     // Intentionally empty — fall back to no-op.
   }
-
-  /* ------------------------------------------------------------------ */
-  /*  Custom base64 (avoids btoa/atob which may be absent in workers)     */
-  /* ------------------------------------------------------------------ */
 
   function bytesToBase64(bytes) {
     let result = "";
@@ -87,10 +79,6 @@
     return bytes;
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Stream helpers                                                     */
-  /* ------------------------------------------------------------------ */
-
   async function readAllChunks(readableStream) {
     const reader = readableStream.getReader();
     const chunks = [];
@@ -135,10 +123,6 @@
 
     return result;
   }
-
-  /* ------------------------------------------------------------------ */
-  /*  Public API                                                         */
-  /* ------------------------------------------------------------------ */
 
   /**
    * Compress a UTF-8 string via deflate-raw and return a base64-encoded
@@ -218,10 +202,6 @@
   function isAvailable() {
     return compressionAvailable;
   }
-
-  /* ------------------------------------------------------------------ */
-  /*  Export                                                             */
-  /* ------------------------------------------------------------------ */
 
   globalThis.LodVaultCompress = Object.freeze({
     compress,

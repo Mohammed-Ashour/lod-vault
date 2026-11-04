@@ -5,6 +5,7 @@
 
   function createNoteAutosaveController(options = {}) {
     const timers = new Map();
+    const saves = new WeakMap();
     const getTimerKey = typeof options.getTimerKey === "function"
       ? options.getTimerKey
       : (textarea) => textarea?.dataset?.noteId || "default";
@@ -77,7 +78,32 @@
       schedule(textarea, delay);
     }
 
-    async function commit(textarea) {
+    function commit(textarea) {
+      if (!textarea) return Promise.resolve(false);
+      const pending = saves.get(textarea);
+      if (pending) {
+        textarea.dataset.resave = "true";
+        return pending;
+      }
+      const operation = commitOnce(textarea);
+      saves.set(textarea, operation);
+      operation.finally(() => { if (saves.get(textarea) === operation) saves.delete(textarea); });
+      return operation;
+    }
+
+    // Drain the latest edit before a caller discards an editor. A commit during
+    // an existing save now waits for it instead of returning prematurely.
+    async function flush(textarea) {
+      let succeeded;
+      do {
+        clear(textarea);
+        succeeded = await commit(textarea);
+        clear(textarea);
+      } while (succeeded && !textarea.disabled && normalizeNoteValue(textarea.value) !== (textarea.dataset.savedValue || ""));
+      return succeeded;
+    }
+
+    async function commitOnce(textarea) {
       if (!textarea || isBlocked(textarea)) return;
 
       clear(textarea);
@@ -100,11 +126,12 @@
         }
         textarea.dataset.dirty = "";
         setStatus(textarea, getIdleMessage({ textarea, savedValue }), "");
-        return;
+        return true;
       }
 
       textarea.dataset.saving = "true";
       setStatus(textarea, getSavingMessage({ textarea }), "saving");
+      let savedSuccessfully = false;
 
       try {
         const savedEntry = await saveNoteHandler(noteId, requestValue, textarea);
@@ -123,16 +150,19 @@
           getSavedMessage({ textarea, savedEntry, noteId, requestValue, requestNote, changedSinceRequest }),
           changedSinceRequest ? "saving" : "success"
         );
+        savedSuccessfully = true;
+        return true;
       } catch (error) {
         const handled = await onError({ error, textarea, noteId, requestValue, requestNote });
         if (!handled) {
           setStatus(textarea, getErrorMessage({ error, textarea, noteId, requestValue, requestNote }), "error");
         }
+        return false;
       } finally {
         textarea.dataset.saving = "";
 
-        const needsResave = textarea.dataset.resave === "true"
-          || (textarea.dataset.dirty === "true" && normalizeNoteValue(textarea.value) !== (textarea.dataset.savedValue || ""));
+        const needsResave = savedSuccessfully && (textarea.dataset.resave === "true"
+          || (textarea.dataset.dirty === "true" && normalizeNoteValue(textarea.value) !== (textarea.dataset.savedValue || "")));
 
         textarea.dataset.resave = "";
         if (needsResave && shouldKeepScheduling(textarea)) {
@@ -147,6 +177,7 @@
       schedule,
       markDirty,
       commit,
+      flush,
       destroy: clearAll
     };
   }

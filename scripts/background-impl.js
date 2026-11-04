@@ -5,6 +5,7 @@ const OPEN_LENS_OVERLAY_MESSAGE_TYPE = "lodvault:open-lens-overlay";
 const LENS_PROXY_MESSAGE_TYPE = "lodvault:lens-fetch";
 const LENS_PROXY_ALLOWED_ORIGIN = "https://lod.lu";
 const LENS_PROXY_ALLOWED_LOCALE = "lb";
+const LENS_PROXY_SEARCH_LANGUAGES = new Set(["lb", ...LodVaultStore.TRANSLATION_LANGUAGE_ORDER]);
 const LENS_PROXY_SEARCH_PATH = `/api/${LENS_PROXY_ALLOWED_LOCALE}/search`;
 const LENS_PROXY_SUGGEST_PATH = `/api/${LENS_PROXY_ALLOWED_LOCALE}/suggest`;
 const LENS_PROXY_ENTRY_PREFIX = `/api/${LENS_PROXY_ALLOWED_LOCALE}/entry/`;
@@ -30,6 +31,7 @@ const STORE_MUTATION_METHODS = new Set([
   "setSyncLanguages",
   "markSyncVerified",
   "toggleList",
+  "addToList",
   "recordAutoVisit",
   "removeFromHistory",
   "refreshEntryData",
@@ -130,11 +132,11 @@ function validateLensProxyUrl(value) {
 
     const lang = sanitizeLensQuery(parsed.searchParams.get("lang"));
     const query = sanitizeLensQuery(parsed.searchParams.get("query"));
-    if (lang !== LENS_PROXY_ALLOWED_LOCALE || !query) {
+    if (!LENS_PROXY_SEARCH_LANGUAGES.has(lang) || !query || parsed.searchParams.getAll("lang").length !== 1 || parsed.searchParams.getAll("query").length !== 1) {
       throw new Error("Blocked unauthorized LOD Lens request URL.");
     }
 
-    parsed.search = `?lang=${encodeURIComponent(LENS_PROXY_ALLOWED_LOCALE)}&query=${encodeURIComponent(query)}`;
+    parsed.search = `?lang=${encodeURIComponent(lang)}&query=${encodeURIComponent(query)}`;
     return parsed.toString();
   }
 
@@ -517,7 +519,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     fetch(requestUrl, {
       method: "GET",
-      headers: { Accept: "application/json" }
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15000)
     })
       .then(async (response) => {
         const text = await response.text();

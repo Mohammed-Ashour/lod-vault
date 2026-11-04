@@ -953,7 +953,7 @@
     return entry && shouldKeepEntry(entry) ? entry : null;
   }
 
-  async function toggleListDirect(entry, listName) {
+  async function changeListMembership(entry, listName, toggle) {
     return runVaultIo(async () => {
       if (!["favorite", "study"].includes(listName)) {
         throw new Error(`Unsupported list: ${listName}`);
@@ -976,7 +976,7 @@
       merged.history = Boolean(existing?.history);
       merged.visitCount = normalizeVisitCount(existing?.visitCount);
       merged.lastVisitedAt = cleanText(existing?.lastVisitedAt);
-      merged[listName] = !merged[listName];
+      merged[listName] = toggle ? !merged[listName] : true;
 
       if (!shouldKeepEntry(merged)) {
         delete entryMap[normalized.id];
@@ -996,7 +996,13 @@
   }
 
   async function toggleList(entry, listName) {
-    return runStoreMutation("toggleList", [entry, listName], toggleListDirect);
+    return runStoreMutation("toggleList", [entry, listName], () => changeListMembership(entry, listName, true));
+  }
+
+  // An explicit Save must never toggle an existing membership off, including
+  // when another popup or tab saves the same canonical article concurrently.
+  async function addToList(entry, listName) {
+    return runStoreMutation("addToList", [entry, listName], () => changeListMembership(entry, listName, false));
   }
 
   async function recordAutoVisitDirect(entry) {
@@ -2177,6 +2183,7 @@
     getEntries,
     getEntry,
     toggleList,
+    addToList,
     recordAutoVisit,
     removeFromHistory,
     refreshEntryData,
