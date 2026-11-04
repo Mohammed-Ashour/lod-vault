@@ -149,6 +149,19 @@
       : "";
   }
 
+  // Change timestamps keep milliseconds. Rounded to seconds, two edits in the
+  // same second would look older than the local copy on both devices, so each
+  // device would keep its own version.
+  function isoToMillis(iso) {
+    const timestamp = Date.parse(cleanText(iso));
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  }
+
+  function millisToIso(millis) {
+    const number = Number(millis);
+    return Number.isFinite(number) && number > 0 ? new Date(number).toISOString() : "";
+  }
+
   function packFlags(flags = {}) {
     let value = 0;
     if (flags.favorite || flags.fav) value |= 1;
@@ -214,9 +227,9 @@
     if (entry.inflection) compact.f = entry.inflection;
     if (entry.example) compact.e = entry.example;
     if (entry.note) compact.n = entry.note;
-    const noteUpdatedAt = isoToUnix(entry.noteUpdatedAt);
+    const noteUpdatedAt = isoToMillis(entry.noteUpdatedAt);
     if (noteUpdatedAt) compact.m = noteUpdatedAt;
-    const listsUpdatedAt = isoToUnix(entry.listsUpdatedAt);
+    const listsUpdatedAt = isoToMillis(entry.listsUpdatedAt);
     if (listsUpdatedAt) compact.g = listsUpdatedAt;
 
     const translations = compactTranslations(entry.translations, syncLanguages);
@@ -257,8 +270,8 @@
       inflection: cleanText(syncEntry.f),
       example: cleanText(syncEntry.e),
       note: cleanText(syncEntry.n),
-      noteUpdatedAt: unixToIso(syncEntry.m),
-      listsUpdatedAt: unixToIso(syncEntry.g),
+      noteUpdatedAt: millisToIso(syncEntry.m),
+      listsUpdatedAt: millisToIso(syncEntry.g),
       translations: expandTranslations(syncEntry.t, existing.translations),
       favorite: Boolean(flags.fav),
       study: Boolean(flags.study),
@@ -1029,17 +1042,20 @@
           };
         })();
 
+    let pushResult = null;
     const shouldRepush = !syncState.partialRead && (applyResult.changed || syncState.needsMigration);
     if (shouldRepush && options.repush !== false) {
       const repushDelayMs = Math.max(0, Number(options.repushDelayMs ?? DEFAULT_REPUSH_DELAY_MS) || 0);
       if (repushDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, repushDelayMs));
       }
-      await pushAll();
+      pushResult = await pushAll();
     }
 
     return {
       ok: true,
+      ...(pushResult ? { pushed: true } : {}),
+      ...(pushResult?.ok === false ? pushResult : {}),
       changed: Boolean(applyResult.changed),
       entryCount: Number(applyResult.entryCount) || 0,
       partialRead: syncState.partialRead,
@@ -1061,6 +1077,7 @@
       if (hasLocalEntries && !hasSyncData) {
         return {
           ...(await pushAll()),
+          pushed: true,
           mode: "push"
         };
       }

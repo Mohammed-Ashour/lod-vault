@@ -22,6 +22,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   const PORTABLE_BACKUP_KEY = "lodVault.portableBackup";
   const DELETED_KEY = "lodVault.deleted";
   const HISTORY_IMPORT_STATE_KEY = "lodVault.historyImport";
+  const HISTORY_REPAIR_ATTEMPTS_KEY = "lodVault.historyRepairAttempts";
   const SYNC_ISSUE_KEY = "lodVault.syncIssue";
   const DEFAULT_SETTINGS = {
     autoMode: false,
@@ -60,6 +61,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   const HISTORY_HYDRATION_MAX_QUEUE = 120;
   const HISTORY_HYDRATION_DELAY_MS = 250;
   const HISTORY_HYDRATION_FETCH_TIMEOUT_MS = 8000;
+  const HISTORY_REPAIR_MAX_ATTEMPTS = 5;
+  const HISTORY_REPAIR_RETRY_MS = 24 * 60 * 60 * 1000;
 
   let storeCacheListenerInstalled = false;
   let cachedEntryMap = null;
@@ -534,7 +537,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       pos: next.pos || current.pos,
       inflection: next.inflection || current.inflection,
       example: next.example || current.example,
-      note: next.note || current.note,
+      // A caller's entry can predate a note edit or clear, so it only supplies
+      // the note for a word the vault doesn't have yet.
+      note: current.id ? current.note : next.note,
       translations: {
         ...current.translations,
         ...next.translations
@@ -1370,6 +1375,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         } else {
           newCount += 1;
         }
+        const previous = normalizeEntry(existing || {});
         const merged = mergeEntry(existing, incoming);
         merged.favorite = Boolean(existing?.favorite) || Boolean(incoming.favorite);
         merged.study = Boolean(existing?.study) || Boolean(incoming.study);
@@ -1379,6 +1385,15 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
           : 0;
         merged.lastVisitedAt = incoming.lastVisitedAt || cleanText(existing?.lastVisitedAt);
         merged.note = incoming.note || merged.note;
+
+        // A restore is a new change, so it has to outrank older copies on
+        // other devices when it next syncs.
+        if (merged.note !== previous.note) {
+          merged.noteUpdatedAt = nowIso();
+        }
+        if (["favorite", "study", "history"].some((flag) => merged[flag] !== Boolean(previous[flag]))) {
+          merged.listsUpdatedAt = nowIso();
+        }
 
         if (!merged.visitCount) {
           delete merged.visitCount;
@@ -1636,6 +1651,47 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     });
   }
 
+  async function getHistoryRepairAttempts() {
+    const data = await chrome.storage.local.get([HISTORY_REPAIR_ATTEMPTS_KEY]);
+    const attempts = data[HISTORY_REPAIR_ATTEMPTS_KEY];
+    return attempts && typeof attempts === "object" ? attempts : {};
+  }
+
+  async function saveHistoryRepairAttempts(attempts) {
+    if (Object.keys(attempts).length) {
+      await chrome.storage.local.set({ [HISTORY_REPAIR_ATTEMPTS_KEY]: attempts });
+    } else {
+      await chrome.storage.local.remove(HISTORY_REPAIR_ATTEMPTS_KEY);
+    }
+  }
+
+  function recordHistoryRepairOutcome(id, outcome) {
+    return runVaultIo(async () => {
+      const attempts = await getHistoryRepairAttempts();
+      if (outcome === "repaired") {
+        if (!attempts[id]) return;
+        delete attempts[id];
+      } else {
+        attempts[id] = {
+          attempts: outcome === "gave-up"
+            ? HISTORY_REPAIR_MAX_ATTEMPTS
+            : (Number(attempts[id]?.attempts) || 0) + 1,
+          at: nowIso()
+        };
+      }
+      await saveHistoryRepairAttempts(attempts);
+    });
+  }
+
+  // A failure might be temporary, such as being offline at browser start, so
+  // it gets a limited number of daily retries. A missing article, or a word
+  // that still looks damaged after a good response, isn't worth asking about again.
+  function canRetryHistoryRepair(record) {
+    if (!record) return true;
+    if ((Number(record.attempts) || 0) >= HISTORY_REPAIR_MAX_ATTEMPTS) return false;
+    return !(Date.now() - Date.parse(record.at) < HISTORY_REPAIR_RETRY_MS);
+  }
+
   async function resumeHistoryImportHydration() {
     if (historyHydrationRunning) return false;
     historyHydrationRunning = true;
@@ -1657,14 +1713,18 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         }
 
         const nextId = state.queue[0];
-        await saveHistoryImportState({
-          ...state,
-          status: "running",
-          currentId: nextId,
-          updatedAt: nowIso()
+        await runVaultIo(async () => {
+          const latestState = await getHistoryImportState();
+          await saveHistoryImportState({
+            ...latestState,
+            status: "running",
+            currentId: nextId,
+            updatedAt: nowIso()
+          });
         });
 
         let hydrated = false;
+        let repairOutcome = "";
         try {
           const [existingEntry, deletedMap] = await Promise.all([
             getEntry(nextId),
@@ -1683,37 +1743,47 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
                 return false;
               }
 
-              entryMap[nextId] = mergeHydratedHistoryEntry(latestEntry, hydratedEntry);
+              const repairedEntry = mergeHydratedHistoryEntry(latestEntry, hydratedEntry);
+              entryMap[nextId] = repairedEntry;
               await persistVaultState({ entryMap, deletedMap: latestDeletedMap });
+              repairOutcome = isDamagedHistoryEntry(repairedEntry) ? "gave-up" : "repaired";
               return true;
             });
           }
-        } catch {
+        } catch (error) {
           hydrated = false;
+          repairOutcome = error?.status === 404 ? "gave-up" : "failed";
         }
 
-        const latestState = await getHistoryImportState();
-        let removed = false;
-        const nextQueue = latestState.queue.filter((id) => {
-          if (!removed && id === nextId) {
-            removed = true;
-            return false;
-          }
-          return true;
-        });
-        const nextFailedIds = hydrated
-          ? latestState.failedIds.filter((id) => id !== nextId)
-          : [...latestState.failedIds.filter((id) => id !== nextId), nextId].slice(-20);
+        if (repairOutcome) {
+          await recordHistoryRepairOutcome(nextId, repairOutcome);
+        }
 
-        await saveHistoryImportState({
-          ...latestState,
-          status: nextQueue.length ? "running" : "complete",
-          currentId: nextQueue.length ? "" : "",
-          updatedAt: nowIso(),
-          hydrated: latestState.hydrated + (hydrated ? 1 : 0),
-          failed: nextFailedIds.length,
-          failedIds: nextFailedIds,
-          queue: nextQueue
+        const nextQueue = await runVaultIo(async () => {
+          const latestState = await getHistoryImportState();
+          let removed = false;
+          const remainingQueue = latestState.queue.filter((id) => {
+            if (!removed && id === nextId) {
+              removed = true;
+              return false;
+            }
+            return true;
+          });
+          const nextFailedIds = hydrated
+            ? latestState.failedIds.filter((id) => id !== nextId)
+            : [...latestState.failedIds.filter((id) => id !== nextId), nextId].slice(-20);
+
+          await saveHistoryImportState({
+            ...latestState,
+            status: remainingQueue.length ? "running" : "complete",
+            currentId: "",
+            updatedAt: nowIso(),
+            hydrated: latestState.hydrated + (hydrated ? 1 : 0),
+            failed: nextFailedIds.length,
+            failedIds: nextFailedIds,
+            queue: remainingQueue
+          });
+          return remainingQueue;
         });
 
         if (nextQueue.length) {
@@ -1725,33 +1795,46 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     }
   }
 
-  async function queueDamagedHistoryEntries() {
-    const [entryMap, deletedMap, state] = await Promise.all([
-      getEntryMap(),
-      getDeletedMap(),
-      getHistoryImportState()
-    ]);
-    const nextQueue = [...state.queue];
-    for (const [id, entry] of Object.entries(entryMap)) {
-      if (nextQueue.length >= HISTORY_HYDRATION_MAX_QUEUE) break;
-      if (nextQueue.includes(id) || deletedMap[id]) continue;
-      if (isDamagedHistoryEntry(entry) && shouldHydrateHistoryEntry(entry)) {
-        nextQueue.push(id);
+  function queueDamagedHistoryEntries() {
+    return runVaultIo(async () => {
+      const [entryMap, deletedMap, state, attempts] = await Promise.all([
+        getEntryMap(),
+        getDeletedMap(),
+        getHistoryImportState(),
+        getHistoryRepairAttempts()
+      ]);
+
+      // Records only matter while a word is still damaged.
+      const liveAttempts = Object.fromEntries(Object.entries(attempts).filter(
+        ([id]) => entryMap[id] && !deletedMap[id] && isDamagedHistoryEntry(entryMap[id])
+      ));
+      if (Object.keys(liveAttempts).length !== Object.keys(attempts).length) {
+        await saveHistoryRepairAttempts(liveAttempts);
       }
-    }
 
-    const added = nextQueue.length - state.queue.length;
-    if (!added) return 0;
+      const nextQueue = [...state.queue];
+      for (const [id, entry] of Object.entries(entryMap)) {
+        if (nextQueue.length >= HISTORY_HYDRATION_MAX_QUEUE) break;
+        if (nextQueue.includes(id) || deletedMap[id]) continue;
+        if (!canRetryHistoryRepair(liveAttempts[id])) continue;
+        if (isDamagedHistoryEntry(entry) && shouldHydrateHistoryEntry(entry)) {
+          nextQueue.push(id);
+        }
+      }
 
-    await saveHistoryImportState({
-      ...state,
-      status: historyHydrationRunning ? "running" : "queued",
-      startedAt: state.startedAt || nowIso(),
-      updatedAt: nowIso(),
-      queued: state.queued + added,
-      queue: nextQueue
+      const added = nextQueue.length - state.queue.length;
+      if (!added) return 0;
+
+      await saveHistoryImportState({
+        ...state,
+        status: historyHydrationRunning ? "running" : "queued",
+        startedAt: state.startedAt || nowIso(),
+        updatedAt: nowIso(),
+        queued: state.queued + added,
+        queue: nextQueue
+      });
+      return added;
     });
-    return added;
   }
 
   function assertBrowserHistoryApiAvailable() {
@@ -1904,8 +1987,10 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
     // Lists and notes carry their own timestamps, so an unrelated update on a
     // device that missed a change can't undo it, while an explicit removal or
-    // clear still sticks. Data saved before these timestamps existed has none,
-    // and keeps the union so nothing is lost.
+    // clear still sticks. When neither copy has a timestamp, as with data saved
+    // before they existed, the union keeps everything. A timestamped copy beats
+    // an untimestamped one: its updatedAt can't be used instead, because a page
+    // visit bumps it too and would undo removals.
     const newerByField = (field) => {
       const primaryTime = Date.parse(primary[field]) || 0;
       const secondaryTime = Date.parse(secondary[field]) || 0;
@@ -1914,6 +1999,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     };
     const listsSource = newerByField("listsUpdatedAt");
     const noteSource = newerByField("noteUpdatedAt");
+    // Both devices have to settle on the same note, whichever one is merging.
+    const noteTied = !noteSource && primary.noteUpdatedAt && secondary.noteUpdatedAt;
     const flagFrom = (flag) => Boolean(listsSource ? listsSource[flag] : (primary[flag] || secondary[flag]));
 
     const hasHistory = flagFrom("history");
@@ -1940,7 +2027,11 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       pos: newest.pos || primary.pos || secondary.pos,
       inflection: newest.inflection || primary.inflection || secondary.inflection,
       example: newest.example || primary.example || secondary.example,
-      note: noteSource ? noteSource.note : (newest.note || primary.note || secondary.note),
+      note: noteSource
+        ? noteSource.note
+        : (noteTied
+            ? [primary.note || "", secondary.note || ""].sort().pop()
+            : (newest.note || primary.note || secondary.note)),
       translations: {
         ...(secondary.translations || {}),
         ...(primary.translations || {}),
@@ -2259,6 +2350,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     PORTABLE_BACKUP_KEY,
     DELETED_KEY,
     HISTORY_IMPORT_STATE_KEY,
+    HISTORY_REPAIR_ATTEMPTS_KEY,
     SYNC_ISSUE_KEY,
     getSyncIssue,
     setSyncIssue,
@@ -2832,7 +2924,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     });
 
     if (!response?.ok) {
-      throw new Error(`LOD request failed (${response?.status || 0}).`);
+      const error = new Error(`LOD request failed (${response?.status || 0}).`);
+      error.status = response?.status || 0;
+      throw error;
     }
 
     return response.json();
@@ -3590,6 +3684,19 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       : "";
   }
 
+  // Change timestamps keep milliseconds. Rounded to seconds, two edits in the
+  // same second would look older than the local copy on both devices, so each
+  // device would keep its own version.
+  function isoToMillis(iso) {
+    const timestamp = Date.parse(cleanText(iso));
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  }
+
+  function millisToIso(millis) {
+    const number = Number(millis);
+    return Number.isFinite(number) && number > 0 ? new Date(number).toISOString() : "";
+  }
+
   function packFlags(flags = {}) {
     let value = 0;
     if (flags.favorite || flags.fav) value |= 1;
@@ -3655,9 +3762,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     if (entry.inflection) compact.f = entry.inflection;
     if (entry.example) compact.e = entry.example;
     if (entry.note) compact.n = entry.note;
-    const noteUpdatedAt = isoToUnix(entry.noteUpdatedAt);
+    const noteUpdatedAt = isoToMillis(entry.noteUpdatedAt);
     if (noteUpdatedAt) compact.m = noteUpdatedAt;
-    const listsUpdatedAt = isoToUnix(entry.listsUpdatedAt);
+    const listsUpdatedAt = isoToMillis(entry.listsUpdatedAt);
     if (listsUpdatedAt) compact.g = listsUpdatedAt;
 
     const translations = compactTranslations(entry.translations, syncLanguages);
@@ -3698,8 +3805,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       inflection: cleanText(syncEntry.f),
       example: cleanText(syncEntry.e),
       note: cleanText(syncEntry.n),
-      noteUpdatedAt: unixToIso(syncEntry.m),
-      listsUpdatedAt: unixToIso(syncEntry.g),
+      noteUpdatedAt: millisToIso(syncEntry.m),
+      listsUpdatedAt: millisToIso(syncEntry.g),
       translations: expandTranslations(syncEntry.t, existing.translations),
       favorite: Boolean(flags.fav),
       study: Boolean(flags.study),
@@ -4470,17 +4577,20 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
           };
         })();
 
+    let pushResult = null;
     const shouldRepush = !syncState.partialRead && (applyResult.changed || syncState.needsMigration);
     if (shouldRepush && options.repush !== false) {
       const repushDelayMs = Math.max(0, Number(options.repushDelayMs ?? DEFAULT_REPUSH_DELAY_MS) || 0);
       if (repushDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, repushDelayMs));
       }
-      await pushAll();
+      pushResult = await pushAll();
     }
 
     return {
       ok: true,
+      ...(pushResult ? { pushed: true } : {}),
+      ...(pushResult?.ok === false ? pushResult : {}),
       changed: Boolean(applyResult.changed),
       entryCount: Number(applyResult.entryCount) || 0,
       partialRead: syncState.partialRead,
@@ -4502,6 +4612,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       if (hasLocalEntries && !hasSyncData) {
         return {
           ...(await pushAll()),
+          pushed: true,
           mode: "push"
         };
       }
@@ -4986,6 +5097,23 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       }
     }
 
+    // A pull doesn't prove pushes work, so a clean pull that pushed nothing
+    // only clears an earlier pull failure.
+    async function recordPullOutcome(result) {
+      if (result?.ok === false || result?.pushed) {
+        await recordSyncOutcome(result);
+        return;
+      }
+      try {
+        const issue = await store.getSyncIssue?.();
+        if (issue?.reason === "pull-failed") {
+          await store.clearSyncIssue?.();
+        }
+      } catch (error) {
+        logSyncWarning("Could not record sync status", error);
+      }
+    }
+
     function scheduleLocalPush(plan = { type: "all" }) {
       if (!plan) return;
 
@@ -5043,27 +5171,29 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       enqueueSyncTask(async () => {
         if (!syncInitialized) {
           suppressLocalPush();
-          await initializeSync("sync-change");
-          return;
+          return initializeSync("sync-change");
         }
 
         suppressLocalPush();
         suppressSyncPull();
-        await syncAdapter.pullAll({ repush: true });
-      }).catch((error) => {
+        return syncAdapter.pullAll({ repush: true });
+      }).then(recordPullOutcome).catch(async (error) => {
         logSyncWarning("Sync pull failed", error);
+        await recordSyncOutcome({ ok: false, reason: "pull-failed" });
       });
     }
 
     async function handleInstalled(reason = "onInstalled") {
-      return enqueueSyncTask(() => initializeSync(reason)).catch((error) => {
+      return enqueueSyncTask(() => initializeSync(reason)).then(recordPullOutcome).catch(async (error) => {
         logSyncWarning("Initial sync failed", error);
+        await recordSyncOutcome({ ok: false, reason: "pull-failed" });
       });
     }
 
     async function handleStartup(reason = "onStartup") {
-      return enqueueSyncTask(() => initializeSync(reason)).catch((error) => {
+      return enqueueSyncTask(() => initializeSync(reason)).then(recordPullOutcome).catch(async (error) => {
         logSyncWarning("Startup sync failed", error);
+        await recordSyncOutcome({ ok: false, reason: "pull-failed" });
       });
     }
 

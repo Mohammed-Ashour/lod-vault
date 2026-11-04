@@ -5,6 +5,7 @@
   const PORTABLE_BACKUP_KEY = "lodVault.portableBackup";
   const DELETED_KEY = "lodVault.deleted";
   const HISTORY_IMPORT_STATE_KEY = "lodVault.historyImport";
+  const HISTORY_REPAIR_ATTEMPTS_KEY = "lodVault.historyRepairAttempts";
   const SYNC_ISSUE_KEY = "lodVault.syncIssue";
   const DEFAULT_SETTINGS = {
     autoMode: false,
@@ -43,6 +44,8 @@
   const HISTORY_HYDRATION_MAX_QUEUE = 120;
   const HISTORY_HYDRATION_DELAY_MS = 250;
   const HISTORY_HYDRATION_FETCH_TIMEOUT_MS = 8000;
+  const HISTORY_REPAIR_MAX_ATTEMPTS = 5;
+  const HISTORY_REPAIR_RETRY_MS = 24 * 60 * 60 * 1000;
 
   let storeCacheListenerInstalled = false;
   let cachedEntryMap = null;
@@ -517,7 +520,9 @@
       pos: next.pos || current.pos,
       inflection: next.inflection || current.inflection,
       example: next.example || current.example,
-      note: next.note || current.note,
+      // A caller's entry can predate a note edit or clear, so it only supplies
+      // the note for a word the vault doesn't have yet.
+      note: current.id ? current.note : next.note,
       translations: {
         ...current.translations,
         ...next.translations
@@ -1353,6 +1358,7 @@
         } else {
           newCount += 1;
         }
+        const previous = normalizeEntry(existing || {});
         const merged = mergeEntry(existing, incoming);
         merged.favorite = Boolean(existing?.favorite) || Boolean(incoming.favorite);
         merged.study = Boolean(existing?.study) || Boolean(incoming.study);
@@ -1362,6 +1368,15 @@
           : 0;
         merged.lastVisitedAt = incoming.lastVisitedAt || cleanText(existing?.lastVisitedAt);
         merged.note = incoming.note || merged.note;
+
+        // A restore is a new change, so it has to outrank older copies on
+        // other devices when it next syncs.
+        if (merged.note !== previous.note) {
+          merged.noteUpdatedAt = nowIso();
+        }
+        if (["favorite", "study", "history"].some((flag) => merged[flag] !== Boolean(previous[flag]))) {
+          merged.listsUpdatedAt = nowIso();
+        }
 
         if (!merged.visitCount) {
           delete merged.visitCount;
@@ -1619,6 +1634,47 @@
     });
   }
 
+  async function getHistoryRepairAttempts() {
+    const data = await chrome.storage.local.get([HISTORY_REPAIR_ATTEMPTS_KEY]);
+    const attempts = data[HISTORY_REPAIR_ATTEMPTS_KEY];
+    return attempts && typeof attempts === "object" ? attempts : {};
+  }
+
+  async function saveHistoryRepairAttempts(attempts) {
+    if (Object.keys(attempts).length) {
+      await chrome.storage.local.set({ [HISTORY_REPAIR_ATTEMPTS_KEY]: attempts });
+    } else {
+      await chrome.storage.local.remove(HISTORY_REPAIR_ATTEMPTS_KEY);
+    }
+  }
+
+  function recordHistoryRepairOutcome(id, outcome) {
+    return runVaultIo(async () => {
+      const attempts = await getHistoryRepairAttempts();
+      if (outcome === "repaired") {
+        if (!attempts[id]) return;
+        delete attempts[id];
+      } else {
+        attempts[id] = {
+          attempts: outcome === "gave-up"
+            ? HISTORY_REPAIR_MAX_ATTEMPTS
+            : (Number(attempts[id]?.attempts) || 0) + 1,
+          at: nowIso()
+        };
+      }
+      await saveHistoryRepairAttempts(attempts);
+    });
+  }
+
+  // A failure might be temporary, such as being offline at browser start, so
+  // it gets a limited number of daily retries. A missing article, or a word
+  // that still looks damaged after a good response, isn't worth asking about again.
+  function canRetryHistoryRepair(record) {
+    if (!record) return true;
+    if ((Number(record.attempts) || 0) >= HISTORY_REPAIR_MAX_ATTEMPTS) return false;
+    return !(Date.now() - Date.parse(record.at) < HISTORY_REPAIR_RETRY_MS);
+  }
+
   async function resumeHistoryImportHydration() {
     if (historyHydrationRunning) return false;
     historyHydrationRunning = true;
@@ -1640,14 +1696,18 @@
         }
 
         const nextId = state.queue[0];
-        await saveHistoryImportState({
-          ...state,
-          status: "running",
-          currentId: nextId,
-          updatedAt: nowIso()
+        await runVaultIo(async () => {
+          const latestState = await getHistoryImportState();
+          await saveHistoryImportState({
+            ...latestState,
+            status: "running",
+            currentId: nextId,
+            updatedAt: nowIso()
+          });
         });
 
         let hydrated = false;
+        let repairOutcome = "";
         try {
           const [existingEntry, deletedMap] = await Promise.all([
             getEntry(nextId),
@@ -1666,37 +1726,47 @@
                 return false;
               }
 
-              entryMap[nextId] = mergeHydratedHistoryEntry(latestEntry, hydratedEntry);
+              const repairedEntry = mergeHydratedHistoryEntry(latestEntry, hydratedEntry);
+              entryMap[nextId] = repairedEntry;
               await persistVaultState({ entryMap, deletedMap: latestDeletedMap });
+              repairOutcome = isDamagedHistoryEntry(repairedEntry) ? "gave-up" : "repaired";
               return true;
             });
           }
-        } catch {
+        } catch (error) {
           hydrated = false;
+          repairOutcome = error?.status === 404 ? "gave-up" : "failed";
         }
 
-        const latestState = await getHistoryImportState();
-        let removed = false;
-        const nextQueue = latestState.queue.filter((id) => {
-          if (!removed && id === nextId) {
-            removed = true;
-            return false;
-          }
-          return true;
-        });
-        const nextFailedIds = hydrated
-          ? latestState.failedIds.filter((id) => id !== nextId)
-          : [...latestState.failedIds.filter((id) => id !== nextId), nextId].slice(-20);
+        if (repairOutcome) {
+          await recordHistoryRepairOutcome(nextId, repairOutcome);
+        }
 
-        await saveHistoryImportState({
-          ...latestState,
-          status: nextQueue.length ? "running" : "complete",
-          currentId: nextQueue.length ? "" : "",
-          updatedAt: nowIso(),
-          hydrated: latestState.hydrated + (hydrated ? 1 : 0),
-          failed: nextFailedIds.length,
-          failedIds: nextFailedIds,
-          queue: nextQueue
+        const nextQueue = await runVaultIo(async () => {
+          const latestState = await getHistoryImportState();
+          let removed = false;
+          const remainingQueue = latestState.queue.filter((id) => {
+            if (!removed && id === nextId) {
+              removed = true;
+              return false;
+            }
+            return true;
+          });
+          const nextFailedIds = hydrated
+            ? latestState.failedIds.filter((id) => id !== nextId)
+            : [...latestState.failedIds.filter((id) => id !== nextId), nextId].slice(-20);
+
+          await saveHistoryImportState({
+            ...latestState,
+            status: remainingQueue.length ? "running" : "complete",
+            currentId: "",
+            updatedAt: nowIso(),
+            hydrated: latestState.hydrated + (hydrated ? 1 : 0),
+            failed: nextFailedIds.length,
+            failedIds: nextFailedIds,
+            queue: remainingQueue
+          });
+          return remainingQueue;
         });
 
         if (nextQueue.length) {
@@ -1708,33 +1778,46 @@
     }
   }
 
-  async function queueDamagedHistoryEntries() {
-    const [entryMap, deletedMap, state] = await Promise.all([
-      getEntryMap(),
-      getDeletedMap(),
-      getHistoryImportState()
-    ]);
-    const nextQueue = [...state.queue];
-    for (const [id, entry] of Object.entries(entryMap)) {
-      if (nextQueue.length >= HISTORY_HYDRATION_MAX_QUEUE) break;
-      if (nextQueue.includes(id) || deletedMap[id]) continue;
-      if (isDamagedHistoryEntry(entry) && shouldHydrateHistoryEntry(entry)) {
-        nextQueue.push(id);
+  function queueDamagedHistoryEntries() {
+    return runVaultIo(async () => {
+      const [entryMap, deletedMap, state, attempts] = await Promise.all([
+        getEntryMap(),
+        getDeletedMap(),
+        getHistoryImportState(),
+        getHistoryRepairAttempts()
+      ]);
+
+      // Records only matter while a word is still damaged.
+      const liveAttempts = Object.fromEntries(Object.entries(attempts).filter(
+        ([id]) => entryMap[id] && !deletedMap[id] && isDamagedHistoryEntry(entryMap[id])
+      ));
+      if (Object.keys(liveAttempts).length !== Object.keys(attempts).length) {
+        await saveHistoryRepairAttempts(liveAttempts);
       }
-    }
 
-    const added = nextQueue.length - state.queue.length;
-    if (!added) return 0;
+      const nextQueue = [...state.queue];
+      for (const [id, entry] of Object.entries(entryMap)) {
+        if (nextQueue.length >= HISTORY_HYDRATION_MAX_QUEUE) break;
+        if (nextQueue.includes(id) || deletedMap[id]) continue;
+        if (!canRetryHistoryRepair(liveAttempts[id])) continue;
+        if (isDamagedHistoryEntry(entry) && shouldHydrateHistoryEntry(entry)) {
+          nextQueue.push(id);
+        }
+      }
 
-    await saveHistoryImportState({
-      ...state,
-      status: historyHydrationRunning ? "running" : "queued",
-      startedAt: state.startedAt || nowIso(),
-      updatedAt: nowIso(),
-      queued: state.queued + added,
-      queue: nextQueue
+      const added = nextQueue.length - state.queue.length;
+      if (!added) return 0;
+
+      await saveHistoryImportState({
+        ...state,
+        status: historyHydrationRunning ? "running" : "queued",
+        startedAt: state.startedAt || nowIso(),
+        updatedAt: nowIso(),
+        queued: state.queued + added,
+        queue: nextQueue
+      });
+      return added;
     });
-    return added;
   }
 
   function assertBrowserHistoryApiAvailable() {
@@ -1887,8 +1970,10 @@
 
     // Lists and notes carry their own timestamps, so an unrelated update on a
     // device that missed a change can't undo it, while an explicit removal or
-    // clear still sticks. Data saved before these timestamps existed has none,
-    // and keeps the union so nothing is lost.
+    // clear still sticks. When neither copy has a timestamp, as with data saved
+    // before they existed, the union keeps everything. A timestamped copy beats
+    // an untimestamped one: its updatedAt can't be used instead, because a page
+    // visit bumps it too and would undo removals.
     const newerByField = (field) => {
       const primaryTime = Date.parse(primary[field]) || 0;
       const secondaryTime = Date.parse(secondary[field]) || 0;
@@ -1897,6 +1982,8 @@
     };
     const listsSource = newerByField("listsUpdatedAt");
     const noteSource = newerByField("noteUpdatedAt");
+    // Both devices have to settle on the same note, whichever one is merging.
+    const noteTied = !noteSource && primary.noteUpdatedAt && secondary.noteUpdatedAt;
     const flagFrom = (flag) => Boolean(listsSource ? listsSource[flag] : (primary[flag] || secondary[flag]));
 
     const hasHistory = flagFrom("history");
@@ -1923,7 +2010,11 @@
       pos: newest.pos || primary.pos || secondary.pos,
       inflection: newest.inflection || primary.inflection || secondary.inflection,
       example: newest.example || primary.example || secondary.example,
-      note: noteSource ? noteSource.note : (newest.note || primary.note || secondary.note),
+      note: noteSource
+        ? noteSource.note
+        : (noteTied
+            ? [primary.note || "", secondary.note || ""].sort().pop()
+            : (newest.note || primary.note || secondary.note)),
       translations: {
         ...(secondary.translations || {}),
         ...(primary.translations || {}),
@@ -2242,6 +2333,7 @@
     PORTABLE_BACKUP_KEY,
     DELETED_KEY,
     HISTORY_IMPORT_STATE_KEY,
+    HISTORY_REPAIR_ATTEMPTS_KEY,
     SYNC_ISSUE_KEY,
     getSyncIssue,
     setSyncIssue,

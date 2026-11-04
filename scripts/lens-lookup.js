@@ -106,7 +106,9 @@
     });
 
     if (!response?.ok) {
-      throw new Error(`LOD request failed (${response?.status || 0}).`);
+      const error = new Error(`LOD request failed (${response?.status || 0}).`);
+      error.status = response?.status || 0;
+      throw error;
     }
 
     return response.json();

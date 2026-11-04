@@ -235,6 +235,23 @@
       }
     }
 
+    // A pull doesn't prove pushes work, so a clean pull that pushed nothing
+    // only clears an earlier pull failure.
+    async function recordPullOutcome(result) {
+      if (result?.ok === false || result?.pushed) {
+        await recordSyncOutcome(result);
+        return;
+      }
+      try {
+        const issue = await store.getSyncIssue?.();
+        if (issue?.reason === "pull-failed") {
+          await store.clearSyncIssue?.();
+        }
+      } catch (error) {
+        logSyncWarning("Could not record sync status", error);
+      }
+    }
+
     function scheduleLocalPush(plan = { type: "all" }) {
       if (!plan) return;
 
@@ -292,27 +309,29 @@
       enqueueSyncTask(async () => {
         if (!syncInitialized) {
           suppressLocalPush();
-          await initializeSync("sync-change");
-          return;
+          return initializeSync("sync-change");
         }
 
         suppressLocalPush();
         suppressSyncPull();
-        await syncAdapter.pullAll({ repush: true });
-      }).catch((error) => {
+        return syncAdapter.pullAll({ repush: true });
+      }).then(recordPullOutcome).catch(async (error) => {
         logSyncWarning("Sync pull failed", error);
+        await recordSyncOutcome({ ok: false, reason: "pull-failed" });
       });
     }
 
     async function handleInstalled(reason = "onInstalled") {
-      return enqueueSyncTask(() => initializeSync(reason)).catch((error) => {
+      return enqueueSyncTask(() => initializeSync(reason)).then(recordPullOutcome).catch(async (error) => {
         logSyncWarning("Initial sync failed", error);
+        await recordSyncOutcome({ ok: false, reason: "pull-failed" });
       });
     }
 
     async function handleStartup(reason = "onStartup") {
-      return enqueueSyncTask(() => initializeSync(reason)).catch((error) => {
+      return enqueueSyncTask(() => initializeSync(reason)).then(recordPullOutcome).catch(async (error) => {
         logSyncWarning("Startup sync failed", error);
+        await recordSyncOutcome({ ok: false, reason: "pull-failed" });
       });
     }
 
