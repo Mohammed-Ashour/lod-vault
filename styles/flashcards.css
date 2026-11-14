@@ -1,5 +1,5 @@
 /* ────────────────────────────────────────────────────────────
-   LODVault flashcards — Blue Night
+   LODVault flashcards: Blue Night
    One session menu, quiet serif statistics, a flip card and a
    three-grade rating row. Shared tokens in styles/blue-night.css.
    ──────────────────────────────────────────────────────────── */
@@ -267,6 +267,16 @@ body {
   border-radius: 50%;
   color: var(--accent);
   transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.is-listening .card-front .face-label,
+.is-listening #card-word,
+.is-listening #card-type { display: none; }
+.is-listening #card-audio { width: 88px; height: 88px; }
+.is-listening #card-audio svg { width: 36px; height: 36px; }
+.is-listening > .hint {
+  position: static;
+  margin-top: 14px;
+  text-align: center;
 }
 .audio-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .audio-btn.is-playing { background: var(--tint-strong); border-color: var(--accent); color: var(--accent); animation: audio-pulse 1s ease-in-out infinite; }

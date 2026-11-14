@@ -37,7 +37,10 @@ test("listening plays on entry, hides all answer text, and reveals the word and 
   const s = await setup();
   s.doc.getElementById("direction-toggle").click();
   s.mode("listening");
-  assert.equal(s.doc.getElementById("card-word").textContent, "Listen");
+  assert.equal(s.doc.getElementById("card-word").textContent, "");
+  assert.equal(s.doc.getElementById("card-type").textContent, "");
+  assert.equal(s.doc.getElementById("card-hint").closest(".card-front"), null);
+  assert.equal(s.doc.getElementById("card-shell").classList.contains("is-listening"), true);
   assert.doesNotMatch(s.doc.querySelector(".card-front").textContent, /Haus|house|noun/);
   assert.equal(s.doc.getElementById("card-answer").textContent, "");
   assert.equal(s.doc.querySelector(".card-back").getAttribute("aria-hidden"), "true");
@@ -61,6 +64,8 @@ test("listening plays on entry, hides all answer text, and reveals the word and 
   s.mode("self");
   assert.equal(s.doc.getElementById("card-word").textContent, "house", "preserves the previous text direction");
   assert.equal(s.doc.getElementById("direction-toggle").disabled, false);
+  assert.ok(s.doc.getElementById("card-hint").closest(".card-front"));
+  assert.equal(s.doc.getElementById("card-shell").classList.contains("is-listening"), false);
 });
 
 test("replay does not reveal; navigation stops old audio and plays the next word", async () => {
@@ -76,7 +81,7 @@ test("replay does not reveal; navigation stops old audio and plays the next word
   s.doc.getElementById("next-card").click();
   assert.ok(s.stops > before);
   assert.equal(s.plays.at(-1).id, "BAM1");
-  assert.equal(s.doc.getElementById("card-word").textContent, "Listen");
+  assert.equal(s.doc.getElementById("card-word").textContent, "");
   assert.equal(s.doc.getElementById("card-answer").textContent, "");
   const total = s.plays.length;
   s.api.renderDeck();
@@ -209,6 +214,6 @@ test("bounded listening sessions resume with sound and no answer visible", async
   await tick();
   assert.equal(resumed.api.state.mode, "listening");
   assert.equal(resumed.plays.at(-1).id, "BAM1");
-  assert.equal(resumed.doc.getElementById("card-word").textContent, "Listen");
+  assert.equal(resumed.doc.getElementById("card-word").textContent, "");
   assert.equal(resumed.doc.getElementById("card-answer").textContent, "");
 });

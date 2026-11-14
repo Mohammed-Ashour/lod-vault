@@ -570,6 +570,12 @@ function renderDeck() {
   const entry = currentEntry();
   const count = state.deck.length;
   const listening = state.mode === "listening";
+  elements.cardShell?.classList.toggle("is-listening", listening);
+  // Keep listening instructions outside the icon-only front face.
+  if (elements.cardHint) {
+    if (listening) elements.flashcard?.after(elements.cardHint);
+    else elements.flashcard?.querySelector(".card-front")?.append(elements.cardHint);
+  }
   // Include the session position so a one-card retry also plays afresh.
   const nextListeningKey = listening && entry
     ? `${entry.id}:${state.sessionActive ? state.sessionIndex : state.index}` : null;
@@ -615,8 +621,8 @@ function renderDeck() {
   }
 
   if (listening) {
-    if (elements.cardWord) elements.cardWord.textContent = "Listen";
-    if (elements.cardType) elements.cardType.textContent = "Recall the word and its meaning";
+    if (elements.cardWord) elements.cardWord.textContent = "";
+    if (elements.cardType) elements.cardType.textContent = "";
   } else if (state.direction === "rev") {
     const meaning = typeof LodVaultStore.getPrimaryMeaning === "function"
       ? LodVaultStore.getPrimaryMeaning(entry)
