@@ -396,7 +396,7 @@ async function handleStorageChange(changes, areaName) {
   if (state.sessionActive) {
     renderDeck();
   } else {
-    rebuildDeck();
+    rebuildDeck({ preserveAudio: true });
   }
 }
 
@@ -529,8 +529,10 @@ function shuffle(entries) {
   return deck;
 }
 
-function rebuildDeck() {
-  stopCardAudio();
+function rebuildDeck({ preserveAudio = false } = {}) {
+  // Storage echoes must not interrupt the same card. renderDeck still switches
+  // playback if the refreshed deck changes the current entry or position.
+  if (!preserveAudio) stopCardAudio();
   const baseDeck = makeDeck(state.entries);
   const size = state.sessionSize === "all" ? baseDeck.length : Number(state.sessionSize);
   state.sessionCards = baseDeck.slice(0, Math.min(size, baseDeck.length));

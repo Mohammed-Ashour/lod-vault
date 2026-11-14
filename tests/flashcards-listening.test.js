@@ -201,6 +201,28 @@ test("audio controller reports rejected playback but ignores failures from stopp
   controller.stopAll();
 });
 
+test("browse-mode storage echoes preserve playback but a changed current word plays afresh", async () => {
+  const s = await setup({ url: "https://extension.test/pages/flashcards.html?deck=all" });
+  s.mode("listening");
+  assert.equal(s.api.state.sessionActive, false);
+  s.doc.getElementById("flip-card").click();
+  s.doc.querySelector('[data-rating="2"]').click();
+  await tick();
+  assert.deepEqual(s.plays.map(p => p.id), ["HAUS1", "BAM1"]);
+  const stops = s.stops;
+  await s.api.handleStorageChange({ "lodVault.flashcardMeta": { newValue: {} } }, "local");
+  assert.deepEqual(s.plays.map(p => p.id), ["HAUS1", "BAM1"], "own rating echo must not replay");
+  assert.equal(s.stops, stops, "own rating echo must not stop active pronunciation");
+  await s.api.handleStorageChange({ "lodVault.entries": { newValue: {} } }, "local");
+  assert.equal(s.plays.length, 2, "unrelated entry updates must not replay either");
+  assert.equal(s.stops, stops);
+  s.setEntries([entries[0]]);
+  await s.api.handleStorageChange({ "lodVault.entries": { newValue: {} } }, "local");
+  assert.equal(s.plays.at(-1).id, "HAUS1", "removing the current entry should play its replacement");
+  assert.equal(s.plays.length, 3);
+  assert.ok(s.stops > stops);
+});
+
 test("bounded listening sessions resume with sound and no answer visible", async () => {
   const first = await setup({ url: "https://extension.test/pages/flashcards.html?deck=study" });
   first.doc.getElementById("session-size").value = "10";
