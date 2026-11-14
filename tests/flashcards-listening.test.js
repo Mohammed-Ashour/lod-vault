@@ -130,6 +130,41 @@ test("unavailable or blocked audio leaves reveal and skip usable without exposin
   assert.match(missing.doc.getElementById("card-answer").textContent, /Haus/);
 });
 
+test("listening replay restarts actual active audio and clears a previous failure hint", async () => {
+  const shared = loadSharedStore();
+  const audios = [];
+  class FakeAudio {
+    constructor() { this.paused = true; this.events = {}; audios.push(this); }
+    addEventListener(name, callback) { this.events[name] = callback; }
+    play() { this.paused = false; this.events.play?.(); return Promise.resolve(); }
+    pause() { this.paused = true; }
+  }
+  shared.context.Audio = FakeAudio;
+  const s = await setup({ storeOverrides: {
+    createAudioController(doc, opts) {
+      shared.context.Element = doc.defaultView.Element;
+      return shared.store.createAudioController(doc, opts);
+    },
+    playLodAudio(entry, opts) { shared.store.playLodAudio(entry, opts); }
+  } });
+  s.mode("listening");
+  assert.equal(audios.length, 1);
+  assert.equal(audios[0].paused, false);
+  s.doc.dispatchEvent(new s.dom.window.KeyboardEvent("keydown", { key: "p", bubbles: true }));
+  assert.equal(audios[0].paused, true);
+  assert.equal(audios.length, 2, "replay creates a new playback immediately");
+  assert.equal(audios[1].paused, false);
+  assert.equal(s.doc.getElementById("card-answer").textContent, "");
+  audios[1].events.error();
+  assert.match(s.doc.getElementById("card-hint").textContent, /Audio unavailable/);
+  s.doc.getElementById("card-audio").click();
+  assert.equal(audios.length, 3);
+  assert.equal(audios[2].paused, false);
+  assert.match(s.doc.getElementById("card-hint").textContent, /Listen, then Reveal/);
+  assert.equal(s.doc.getElementById("card-audio").classList.contains("is-error"), false);
+  s.dom.window.dispatchEvent(new s.dom.window.Event("pagehide"));
+});
+
 test("audio controller reports rejected playback but ignores failures from stopped cards", async () => {
   const s = await setup();
   const shared = loadSharedStore();

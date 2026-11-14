@@ -41,6 +41,13 @@ function playCardAudio(button = elements.cardAudio) {
   if (!entry) return;
   audioFailed = false;
   button?.classList.remove("is-error");
+  if (state.mode === "listening") {
+    // Listening promises replay, rather than the shared controller's play/pause toggle.
+    audioController?.stopAll();
+    if (elements.cardHint) {
+      elements.cardHint.textContent = "Listen, then Reveal to see the word and translation. Press P to replay.";
+    }
+  }
   LodVaultStore.playLodAudio?.(entry, { controller: audioController, button });
 }
 
