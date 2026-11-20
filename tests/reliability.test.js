@@ -613,3 +613,44 @@ test("a newer backup note wins and keeps its own date for sync", async () => {
   }).HAUS1;
   assert.equal(merged.note, "edited elsewhere");
 });
+
+test("an older backup doesn't bring back a note that was cleared after it", async () => {
+  const cleared = "2026-06-01T00:00:00.000Z";
+  const { store, storageData } = loadSharedStore({
+    "lodVault.entries": { HAUS1: makeEntry({ note: "", noteUpdatedAt: cleared }) }
+  });
+
+  await store.importJson(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    exportedAt: "2026-03-01T00:00:00.000Z",
+    entries: [makeEntry({ note: "from backup", noteUpdatedAt: "2026-02-01T00:00:00.000Z" })]
+  }));
+
+  const entry = storageData["lodVault.entries"].HAUS1;
+  assert.equal(entry.note || "", "");
+  assert.equal(entry.noteUpdatedAt, cleared);
+});
+
+test("a restore writes words and review progress together or not at all", async () => {
+  const { store, chrome, storageData } = loadSharedStore({
+    "lodVault.entries": { HAUS1: makeEntry() }
+  });
+  const writes = [];
+  const realSet = chrome.storage.local.set;
+  chrome.storage.local.set = async (payload) => {
+    writes.push(Object.keys(payload).sort());
+    if ("lodVault.flashcardMeta" in payload) throw new Error("QUOTA_BYTES quota exceeded");
+    return realSet(payload);
+  };
+
+  await assert.rejects(() => store.importJson(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    entries: [makeEntry({ id: "DACH1", word: "Dach" })],
+    flashcardMeta: { DACH1: { totalReviews: 1, reviews: [], interval: 1, dueAt: "2026-02-01T00:00:00.000Z" } }
+  })), /QUOTA/);
+
+  assert.equal(storageData["lodVault.entries"].DACH1, undefined);
+  assert.ok(writes.every((keys) => keys.includes("lodVault.flashcardMeta")));
+});

@@ -846,7 +846,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     }
   }
 
-  async function persistVaultState({ entryMap = null, settings = null, deletedMap = null }) {
+  async function persistVaultState({ entryMap = null, settings = null, deletedMap = null, flashcardMeta = null }) {
     const sourceEntryMap = entryMap ? normalizeEntryMap(entryMap) : await getEntryMap();
     const sourceDeletedMap = deletedMap ? normalizeDeletedMap(deletedMap) : await getDeletedMap();
     const nextEntryMap = normalizeEntryMap(sourceEntryMap);
@@ -859,6 +859,11 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     const normalizedSettings = settings ? normalizeSettings(settings) : null;
     if (normalizedSettings) {
       payload[SETTINGS_KEY] = normalizedSettings;
+    }
+
+    // Written in the same call as the words, so a restore can't land half done.
+    if (flashcardMeta) {
+      payload[FLASHCARD_META_KEY] = flashcardMeta;
     }
 
     if (Object.keys(nextDeletedMap).length) {
@@ -1390,10 +1395,10 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return "";
   }
 
-  // A backup note replaces the vault's note only when it is the newer one. A
+  // A backup note replaces the vault's note only when it is the newer one. An
+  // empty note with a date was cleared on purpose and counts like any edit. A
   // vault note with no date predates note timestamps, so the backup wins it.
   function isImportedNoteNewer(current, incoming, backupExportedAt = "") {
-    if (!current?.note) return true;
     const currentTime = Date.parse(cleanText(current.noteUpdatedAt));
     if (!Number.isFinite(currentTime)) return true;
     const incomingTime = Date.parse(importedNoteTimestamp(incoming, backupExportedAt));
@@ -1476,15 +1481,15 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       );
 
       try {
+        const flashcardMeta = Object.keys(incomingFlashcardMeta).length
+          ? mergeFlashcardMetaMaps(await getFlashcardMeta(), incomingFlashcardMeta)
+          : null;
         await persistVaultState({
           entryMap,
           settings: importedSettings ? effectiveSettings : null,
-          deletedMap
+          deletedMap,
+          flashcardMeta
         });
-        if (Object.keys(incomingFlashcardMeta).length) {
-          const currentFlashcardMeta = await getFlashcardMeta();
-          await saveFlashcardMeta(mergeFlashcardMetaMaps(currentFlashcardMeta, incomingFlashcardMeta));
-        }
       } catch (error) {
         invalidateStoreCache({ entryMap: false, settings: true });
         if (isExtensionContextInvalidated(error)) {
