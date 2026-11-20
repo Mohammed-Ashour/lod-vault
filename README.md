@@ -50,6 +50,8 @@ The Vault lists your saved words with translations, examples and notes. Search, 
 
 <img src="docs/screenshots/flashcards-blue-night.png" width="780" alt="LODVault flashcards — Blue Night redesign" /> <img src="docs/screenshots/flashcards-blue-night-light.png" width="780" alt="LODVault flashcards — Blue Night light mode" />
 
+Choose **Session → Mode → Writing answer** to type the Luxembourgish word from a cached LOD meaning. Check the answer, then continue with the suggested grade or use an explicit override. Accent slips receive Hard. Nouns ask for the article. Writing uses the core word's schedule, retries and undo, not a separate skill schedule. Missing dictionary details show a message and request a bounded download; switch modes and try again after it completes.
+
 Open **Session ▾** to choose a deck, study mode and daily limits. Reveal an answer, then choose Again, Good or Easy. Each button shows when the word will return. You can enable Hard in the session settings, undo your last grade and resume a session after closing the tab.
 
 ---

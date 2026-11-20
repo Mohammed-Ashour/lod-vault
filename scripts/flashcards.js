@@ -31,7 +31,58 @@ const FLASHCARD_SETTINGS_KEY = LodVaultStore.FLASHCARD_SETTINGS_KEY;
 const FLASHCARD_SESSION_KEY = "lodVault.flashcardSession";
 const DECK_FILTERS = new Set(["today", "due", "study", "favorites", "all"]);
 const ORDER_MODES = new Set(["smart", "shuffle", "sequential"]);
-const STUDY_MODES = new Set(["self", "mc", "listening"]);
+const STUDY_MODES = new Set(["self", "mc", "listening", "writing"]);
+let writingController = null;
+let writingKey = null;
+let writingGeneration = 0;
+let writingRoot = null;
+
+function clearWriting() {
+  writingGeneration += 1;
+  writingController?.destroy();
+  writingController = null;
+  writingKey = null;
+  writingRoot?.remove();
+  writingRoot = null;
+  elements.flashcard?.classList.remove("is-hidden");
+}
+
+function renderWriting(entry) {
+  const key = `${entry.id}:${state.sessionIndex}:${state.index}`;
+  if (key === writingKey) return;
+  clearWriting();
+  writingKey = key;
+  const generation = writingGeneration;
+  writingRoot = document.createElement("section");
+  writingRoot.setAttribute("aria-live", "polite");
+  writingRoot.textContent = "Loading dictionary details…";
+  elements.flashcard.after(writingRoot);
+  elements.flashcard.classList.add("is-hidden");
+  const root = writingRoot;
+  void (async () => {
+    try {
+      const lexicon = await globalThis.LodVaultLexicon?.getLexicon(entry.id);
+      if (generation !== writingGeneration) return;
+      if (!lexicon?.lemma || !lexicon.senses?.some((sense) => Object.values(sense.tr || {}).some((values) => values.length))) {
+        root.textContent = "No cached dictionary details for writing yet. Switch to Self review or try Writing again after details download.";
+        void globalThis.LodVaultLexicon?.requestHydration(state.deck.slice(0, 20).map((item) => item.id));
+        return;
+      }
+      writingController = globalThis.LodVaultExercises.render(document, root,
+        { id: entry.id, entryId: entry.id, skill: "rev", entry }, {
+          lexicon, focus: state.flashcardMeta[entry.id]?.fs,
+          onGrade(grade) {
+            if (generation !== writingGeneration || state.reviewSaveFailed || state.ratingInProgress) return;
+            state.revealed = true;
+            void rateCard(grade);
+          }
+        });
+      root.querySelector("input")?.focus();
+    } catch {
+      if (generation === writingGeneration) root.textContent = "Dictionary details unavailable. Switch to Self review to continue.";
+    }
+  })();
+}
 const DECK_LABELS = { today: "Today", due: "Due today", study: "Study list", favorites: "Favorites", all: "All saved" };
 const elements = {};
 let listeningKey = null;
@@ -172,6 +223,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 }, { once: true });
 
 window.addEventListener("pagehide", () => {
+  clearWriting();
   stopCardAudio();
   document.removeEventListener("keydown", onKeyDown);
   chrome.storage?.onChanged?.removeListener?.(handleStorageChange);
@@ -595,7 +647,12 @@ function onKeyDown(event) {
     return;
   }
 
+  if (state.mode === "writing" && writingController?.handleKey(event)) {
+    event.preventDefault();
+    return;
+  }
   if (typing) return;
+  if (state.mode === "writing" && event.key !== "Escape") return;
   if (event.key === "Escape" && state.sessionActive && !document.getElementById("session-menu")?.classList.contains("is-open")) {
     event.preventDefault();
     void endSessionEarly();
@@ -766,6 +823,7 @@ function onFlashcardClick(event) {
 
 function renderDeck() {
   const entry = currentEntry();
+  if (state.mode !== "writing" || !entry) clearWriting();
   const count = state.deck.length;
   const listening = state.mode === "listening";
   const mode = cardMode(entry);
@@ -901,6 +959,13 @@ function renderDeck() {
       listening ? "P replay" : "R flip direction"
     ];
     elements.shortcutHint.textContent = shortcuts.filter(Boolean).join(" · ");
+  }
+  if (mode === "writing") {
+    elements.flipCard?.classList.add("is-hidden");
+    elements.ratingBar?.classList.add("is-hidden");
+    if (elements.directionToggle) elements.directionToggle.disabled = true;
+    if (elements.shortcutHint) elements.shortcutHint.textContent = "Enter check answer · U undo";
+    renderWriting(entry);
   }
   if (shouldPlay) {
     if (LodVaultStore.getAudioUrl?.(entry)) playCardAudio();
@@ -1048,6 +1113,7 @@ function buildAnswerMarkup(entry) {
 }
 
 function toggleReveal() {
+  if (state.mode === "writing") return;
   if (cardMode() === "mc" || !state.deck.length) return;
   state.revealed = !state.revealed;
   renderDeck();
@@ -1322,6 +1388,7 @@ function tomorrowForecast() {
 }
 
 function showSummary({ early = false } = {}) {
+  clearWriting();
   stopCardAudio();
   // A missed card comes back in the session; the summary counts each card
   // once, by how it went the first time.
