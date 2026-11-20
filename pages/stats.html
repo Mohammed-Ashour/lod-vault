@@ -46,7 +46,7 @@
 
       <section class="stats-card" aria-labelledby="streak-heading">
         <h2 id="streak-heading">Streak rules</h2>
-        <p class="section-note">A day counts when you clear the Today queue or do at least 10 reviews. Every 7 counted days earn a freeze (up to 2), which covers a missed day automatically. Your streak and these totals sync between devices.</p>
+        <p class="section-note">Clear the Today queue or finish 10 reviews to count a study day. Every 7 study days earn a freeze that covers one missed day. You can hold up to 2 freezes. Enable browser sync to keep your streak across devices.</p>
         <div id="stats-rest-days"></div>
       </section>
 
@@ -60,11 +60,11 @@
           <input type="time" id="reminder-time" class="time-input" value="19:00" aria-label="Reminder time" disabled>
         </div>
         <p id="reminder-status" class="section-note" aria-live="polite">Reminders are off.</p>
-        <p class="section-note">The reminder says how many words are due and roughly how long they take. It stays quiet when nothing is due or you've already studied today. Turning it on asks for permission to show notifications.</p>
+        <p class="section-note">Get a notification with your due count and estimated study time. No reminder appears if nothing is due or you have studied today. Your browser asks for notification permission when you turn this on.</p>
         <div class="setting-row">
           <label class="switch-label" for="badge-includes-new">
             <input type="checkbox" id="badge-includes-new">
-            Count today's new words on the toolbar badge, not just due words
+            Include today's new words in the toolbar count
           </label>
         </div>
       </section>
