@@ -68,6 +68,7 @@ cp \
   scripts/selection-trigger.js \
   scripts/store-core.js \
   scripts/sync-coordinator.js \
+  scripts/stats.js \
   scripts/sync.js \
   scripts/theme-init.js \
   scripts/theme.js \

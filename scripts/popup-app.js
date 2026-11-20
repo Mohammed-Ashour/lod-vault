@@ -362,6 +362,9 @@
       elements.syncRetryButton?.addEventListener("click", ctx.sync.retryManualSync);
       elements.openFlashcards.addEventListener("click", ctx.list.openFlashcards);
       elements.openPreview.addEventListener("click", ctx.list.openPreview);
+      document.getElementById("open-stats")?.addEventListener("click", () => {
+        chromeApi.tabs.create({ url: chromeApi.runtime.getURL("pages/stats.html") });
+      });
       elements.exportHtml.addEventListener("click", ctx.backup.exportHtml);
       elements.exportAnki.addEventListener("click", ctx.backup.exportAnki);
       elements.startDueReview?.addEventListener("click", ctx.study.startDueReview);
