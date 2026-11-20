@@ -7,6 +7,15 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 
 function runScripts(context, scriptPaths) {
   context.crypto ||= require("node:crypto").webcrypto;
+  context.navigator ||= {};
+  context.navigator.locks ||= (() => {
+    let queue = Promise.resolve();
+    return { request(_name, task) {
+      const result = queue.then(task, task);
+      queue = result.catch(() => {});
+      return result;
+    } };
+  })();
   for (const scriptPath of scriptPaths) {
     const absolutePath = path.isAbsolute(scriptPath) ? scriptPath : path.join(repoRoot, scriptPath);
     const source = fs.readFileSync(absolutePath, "utf8");

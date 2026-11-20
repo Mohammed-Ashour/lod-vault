@@ -38,7 +38,7 @@ A banner is injected directly under the article heading on every `lod.lu/artikel
 
 ### Vault
 
-Add tags with **+ Tag** on each word. The **Decks** button saves filters for tag, part of speech, gender, level, Favorites/Study, leech status and due date. Flashcards lists saved filters under **My decks**. Level filters require downloaded lexicon details; they do not download category word lists. Tags and saved decks sync together within an 8 KB item budget; overflow stays local. JSON backups retain both.
+Add tags with **+ Tag** on each word. The **Decks** button saves filters for tag, part of speech, gender, level, Favorites/Study, leech status and due date. Flashcards lists saved filters under **My decks**. Level filters require downloaded lexicon details; they do not download category word lists. Tags and saved decks sync together within a 7,000-byte payload budget; overflow stays local. A persistent Vault warning counts omitted tags, decks and deferred deletions. Deferred deletions may still appear on other devices. JSON backups retain all records. Editing requires a browser with Web Locks; unsupported browsers refuse writes rather than risk losing another page's changes.
 
 <img src="docs/screenshots/vault-blue-night.png" width="780" alt="LODVault vault — Blue Night redesign" /> <img src="docs/screenshots/vault-blue-night-light.png" width="780" alt="LODVault vault — Blue Night light mode" />
 

@@ -4232,11 +4232,24 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return !sameOrg(mergeOrg(remoteRaw, local), remoteRaw);
   }
 
-  let writeQueue = Promise.resolve();
   function enqueue(task) {
-    const result = writeQueue.then(task, task);
-    writeQueue = result.catch(() => {});
-    return result;
+    const locks = globalThis.navigator?.locks;
+    if (!locks?.request) return Promise.reject(new Error("Tag editing requires Web Locks. Update your browser; no changes were saved."));
+    return locks.request("lodVault.tags.mutation", task);
+  }
+
+  function syncStatus(raw, options = {}) {
+    const org = pruneTombstones(normalizeOrg(raw), options.now ?? Date.now());
+    const payload = buildSyncValue(org, options);
+    const omitted = { tags: 0, decks: 0, deletions: 0 };
+    for (const kind of ["t", "k"]) {
+      for (const [key, value] of Object.entries(org[kind])) {
+        if (payload && Object.hasOwn(payload[kind], key)) continue;
+        const deleted = kind === "t" ? !value[0].length : value[0] === null;
+        omitted[deleted ? "deletions" : kind === "t" ? "tags" : "decks"]++;
+      }
+    }
+    return { omitted, localOnly: Object.values(omitted).some(Boolean) };
   }
 
   async function readOrg() {
@@ -4533,6 +4546,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     normalizeOrg,
     mergeOrg,
     buildSyncValue,
+    syncStatus,
     hasNews,
     readOrg,
     applyRemote,
