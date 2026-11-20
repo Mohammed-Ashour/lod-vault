@@ -537,3 +537,79 @@ test("pullAll reports a failed repush instead of claiming success", async () => 
   assert.equal(result.ok, false);
   assert.equal(result.pushed, true);
 });
+
+test("a failed vault write leaves no trace in the cached vault", async () => {
+  const { store, chrome, storageData } = loadSharedStore({
+    "lodVault.entries": { HAUS1: makeEntry() }
+  });
+  assert.equal((await store.getEntries()).length, 1);
+
+  const realSet = chrome.storage.local.set;
+  chrome.storage.local.set = async () => {
+    throw new Error("QUOTA_BYTES quota exceeded");
+  };
+  await assert.rejects(() => store.removeEntry("HAUS1"), /QUOTA/);
+  chrome.storage.local.set = realSet;
+
+  assert.deepEqual((await store.getEntries()).map((entry) => entry.id), ["HAUS1"]);
+
+  // The next successful write must not carry the failed delete along with it.
+  await store.addToList(makeEntry({ id: "DACH1", word: "Dach" }), "study");
+  assert.ok(storageData["lodVault.entries"].HAUS1);
+  assert.ok(storageData["lodVault.entries"].DACH1);
+});
+
+test("a caller editing the vault map it read doesn't change the cache", async () => {
+  const { store } = loadSharedStore({
+    "lodVault.entries": { HAUS1: makeEntry() }
+  });
+
+  const map = await store.getEntryMap();
+  delete map.HAUS1;
+
+  assert.ok((await store.getEntryMap()).HAUS1);
+});
+
+test("restoring an older backup keeps a note edited after it", async () => {
+  const { store, storageData } = loadSharedStore({
+    "lodVault.entries": {
+      HAUS1: makeEntry({ note: "newer edit", noteUpdatedAt: "2026-06-01T00:00:00.000Z" })
+    }
+  });
+
+  await store.importJson(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    exportedAt: "2026-03-01T00:00:00.000Z",
+    entries: [makeEntry({ note: "from backup" })]
+  }));
+
+  const entry = storageData["lodVault.entries"].HAUS1;
+  assert.equal(entry.note, "newer edit");
+  assert.equal(entry.noteUpdatedAt, "2026-06-01T00:00:00.000Z");
+});
+
+test("a newer backup note wins and keeps its own date for sync", async () => {
+  const { store, storageData } = loadSharedStore({
+    "lodVault.entries": {
+      HAUS1: makeEntry({ note: "older", noteUpdatedAt: "2026-02-01T00:00:00.000Z" })
+    }
+  });
+
+  await store.importJson(JSON.stringify({
+    app: "lodvault",
+    version: 2,
+    exportedAt: "2026-07-01T00:00:00.000Z",
+    entries: [makeEntry({ note: "from backup", noteUpdatedAt: "2026-05-01T00:00:00.000Z" })]
+  }));
+
+  const entry = storageData["lodVault.entries"].HAUS1;
+  assert.equal(entry.note, "from backup");
+  assert.equal(entry.noteUpdatedAt, "2026-05-01T00:00:00.000Z");
+
+  // A device that edited the note after the backup keeps its edit through sync.
+  const merged = store.mergeVaultVersions(storageData["lodVault.entries"], {
+    HAUS1: makeEntry({ note: "edited elsewhere", noteUpdatedAt: "2026-06-01T00:00:00.000Z" })
+  }).HAUS1;
+  assert.equal(merged.note, "edited elsewhere");
+});

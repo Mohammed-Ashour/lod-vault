@@ -821,18 +821,9 @@ function loadBackgroundScript(initialStorage = {}) {
     }
   };
 
-  let context = null;
-  function importScripts(...scriptPaths) {
-    for (const scriptPath of scriptPaths) {
-      const absolutePath = path.isAbsolute(scriptPath) ? scriptPath : path.join(repoRoot, scriptPath);
-      const scriptSource = fs.readFileSync(absolutePath, "utf8");
-      vm.runInNewContext(scriptSource, context, { filename: absolutePath });
-    }
-  }
-
-  context = {
+  // Runs the generated bundle the manifest ships, so a stale bundle fails here.
+  const context = {
     chrome,
-    importScripts,
     console,
     Intl,
     Date,
@@ -857,8 +848,8 @@ function loadBackgroundScript(initialStorage = {}) {
   };
 
   context.globalThis = context;
-  const source = fs.readFileSync(path.join(repoRoot, "scripts/background.js"), "utf8");
-  vm.runInNewContext(source, context, { filename: "scripts/background.js" });
+  const source = fs.readFileSync(path.join(repoRoot, "scripts/background-bundle.js"), "utf8");
+  vm.runInNewContext(source, context, { filename: "scripts/background-bundle.js" });
 
   function dispatchRuntimeMessage(message, sender = null) {
     return new Promise((resolve) => {

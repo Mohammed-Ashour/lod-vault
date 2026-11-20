@@ -20,6 +20,14 @@ jobs:
 
       - run: npm ci
 
+      - name: Background bundle is up to date
+        run: |
+          npm run build:background
+          git diff --exit-code -- scripts/background-bundle.js || {
+            echo "::error::scripts/background-bundle.js is stale. Run npm run build:background and commit it."
+            exit 1
+          }
+
       - run: npm test
 
       - run: npm run lint
