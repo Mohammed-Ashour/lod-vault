@@ -152,6 +152,7 @@
   function renderTagFilter() {
     const doc = state.doc;
     if (!doc) return;
+    renderSyncWarning(doc);
     let bar = doc.getElementById("lv-tag-filter");
     if (!bar) {
       bar = el(doc, "div", { id: "lv-tag-filter", className: "lv-tag-filter", role: "group", "aria-label": "Filter by tag" });
@@ -176,12 +177,30 @@
       const save = el(doc, "button", { type: "button", className: "lv-save-deck" }, `Save #${state.activeTag} as a deck`);
       save.addEventListener("click", async () => {
         await decks().saveDeck({ name: state.activeTag, f: { tag: state.activeTag } });
+        state.org = await decks().readOrg();
+        renderSyncWarning(doc);
         save.textContent = "Saved to My decks";
         save.disabled = true;
       });
       children.push(save);
     }
     bar.replaceChildren(...children);
+  }
+
+  function renderSyncWarning(doc) {
+    let warning = doc.getElementById("lv-tag-sync-warning");
+    if (!warning) {
+      warning = el(doc, "p", { id: "lv-tag-sync-warning", role: "status" });
+      warning.style.cssText = "padding:12px;border:1px solid #d69b45;border-radius:8px;color:var(--text);background:var(--tint);";
+      const anchor = doc.getElementById("search-status") || doc.getElementById("search-input") || doc.body.firstChild;
+      if (anchor) anchor.before(warning);
+      else doc.body.append(warning);
+    }
+    const { omitted, localOnly } = decks().syncStatus(state.org);
+    warning.hidden = !localOnly;
+    warning.textContent = localOnly
+      ? `Tag/deck sync limit: ${omitted.tags} tags and ${omitted.decks} decks stay on this device. ${omitted.deletions} deletions are deferred and may still appear on other devices. Local data is kept; export a backup before switching devices.`
+      : "";
   }
 
   function applyTagFilter() {
@@ -305,6 +324,7 @@
   }
 
   function renderSavedDecks(doc) {
+    renderSyncWarning(doc);
     const list = doc.getElementById("deck-list-saved");
     if (!list) return;
     const saved = decks().listDecks(state.org);
