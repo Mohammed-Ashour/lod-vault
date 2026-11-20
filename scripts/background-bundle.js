@@ -3495,11 +3495,12 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 //   { v: 1,
 //     d: { [dayNumber]: [reviews, newWords, flags] },  // flags: 1 = queue cleared
 //     b: [day, streak, freezes, towardsFreeze],         // streak state at the end of `day`
-//     w: [restDayMask, updatedAtMs],                     // optional rest days (bit 0 = Sunday)
+//     w: [[fromDay, restDayMask, updatedAtMs], …],       // optional rest days (bit 0 = Sunday)
 //     s: day }                                           // first day the stricter rule applied
 // Days before `s` were filled in from older review logs, which never recorded
 // whether the queue was cleared, so any review on them keeps the streak the way
-// it did before this module existed.
+// it did before this module existed. Rest days apply from the day they were
+// chosen, so changing them never rewrites an earlier streak.
 // A day number is the learner's local date counted in days since 1970-01-01.
 (() => {
   const ACTIVITY_KEY = "lodVault.activity";
@@ -3564,11 +3565,32 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     ];
   }
 
+  const MAX_REST_DAY_CHANGES = 8;
+
+  // Rest-day changes, oldest first: [fromDay, mask, updatedAtMs]. One entry
+  // per day; the later write wins.
   function normalizeRestDays(value) {
     if (!Array.isArray(value)) return null;
-    const mask = toCount(value[0]) & 0x7f;
-    const at = Number(value[1]);
-    return [mask, Number.isFinite(at) && at > 0 ? at : 0];
+    const byDay = new Map();
+    for (const item of value) {
+      if (!Array.isArray(item)) continue;
+      const day = Math.floor(Number(item[0]));
+      if (!Number.isFinite(day) || day <= 0) continue;
+      const at = Number(item[2]);
+      const entry = [day, toCount(item[1]) & 0x7f, Number.isFinite(at) && at > 0 ? at : 0];
+      const current = byDay.get(day);
+      if (!current || entry[2] > current[2]) byDay.set(day, entry);
+    }
+    const list = [...byDay.values()].sort((left, right) => left[0] - right[0]).slice(-MAX_REST_DAY_CHANGES);
+    return list.length ? list : null;
+  }
+
+  function restMaskOn(restDays, day) {
+    let mask = 0;
+    for (const [fromDay, value] of restDays || []) {
+      if (fromDay <= day) mask = value;
+    }
+    return mask;
   }
 
   function normalizeActivity(raw) {
@@ -3613,7 +3635,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     }
     const anchor = pickAnchor(local.b || null, remote.b || null);
     if (anchor) merged.b = anchor;
-    const rest = !local.w ? remote.w : !remote.w ? local.w : (remote.w[1] > local.w[1] ? remote.w : local.w);
+    const rest = normalizeRestDays([...(local.w || []), ...(remote.w || [])]);
     if (rest) merged.w = rest;
     const since = [local.s, remote.s].filter(Boolean);
     if (since.length) merged.s = Math.min(...since);
@@ -3655,8 +3677,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return value[0] >= STREAK_MIN_REVIEWS || Boolean(value[2] & FLAG_CLEARED && (value[0] || value[1]));
   }
 
-  function isRestDay(day, mask) {
-    return Boolean(mask & (1 << weekdayOf(day)));
+  function isRestDay(day, restDays) {
+    return Boolean(restMaskOn(restDays, day) & (1 << weekdayOf(day)));
   }
 
   // Walks day by day from `start` to `today`. Rules:
@@ -3665,7 +3687,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   // - a chosen rest day neither counts nor breaks;
   // - every 7 counted days earn a freeze (at most 2 banked), and a missed day
   //   spends one automatically instead of ending the streak.
-  function walk(days, { startDay, state, today, restMask, statuses, strictFrom }) {
+  function walk(days, { startDay, state, today, restDays, statuses, strictFrom }) {
     let { streak, freezes, towards } = state;
     let best = streak;
     for (let day = startDay; day <= today; day += 1) {
@@ -3680,7 +3702,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         if (statuses) statuses[day] = "done";
       } else if (day === today) {
         if (statuses && value) statuses[day] = "partial";
-      } else if (isRestDay(day, restMask)) {
+      } else if (isRestDay(day, restDays)) {
         if (statuses) statuses[day] = "rest";
       } else if (streak > 0 && freezes > 0) {
         freezes -= 1;
@@ -3698,7 +3720,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   function computeStreak(raw, { now = new Date(), withStatuses = false } = {}) {
     const record = normalizeActivity(raw);
     const today = toDayNumber(now);
-    const restMask = record.w ? record.w[0] : 0;
+    const restDays = record.w || [];
+    const restMask = restMaskOn(restDays, today);
     const strictFrom = record.s || today;
     const dayNumbers = Object.keys(record.d).map(Number).filter((day) => day <= today);
     const firstDay = dayNumbers.length ? Math.min(...dayNumbers) : today;
@@ -3720,7 +3743,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     let bestStatuses = null;
     for (const candidate of candidates) {
       const statuses = withStatuses ? {} : null;
-      const result = walk(record.d, { ...candidate, today, restMask, statuses, strictFrom });
+      const result = walk(record.d, { ...candidate, today, restDays, statuses, strictFrom });
       if (!bestResult || result.streak > bestResult.streak) {
         bestResult = result;
         bestStatuses = statuses;
@@ -3852,7 +3875,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   async function setRestDays(mask) {
     return enqueue(async () => {
       const previous = await readLocal();
-      const next = { ...previous, w: [toCount(mask) & 0x7f, Date.now()] };
+      const now = new Date();
+      const w = normalizeRestDays([...(previous.w || []), [toDayNumber(now), toCount(mask) & 0x7f, now.getTime()]]);
+      const next = { ...previous, w };
       return writeIfChanged(previous, next);
     });
   }
