@@ -116,20 +116,34 @@ test("rest days neither count nor break the streak", () => {
   const mask = 1 << activity.weekdayOf(restDay);
   const days = { [TODAY - 1]: [10, 0, 0], [TODAY - 3]: [10, 0, 0] };
   assert.equal(streakOf(days).streak, 1);
-  const result = activity.computeStreak(record(days, { w: [mask, 1] }), { now: NOW, withStatuses: true });
+  const result = activity.computeStreak(record(days, { w: [[TODAY - 30, mask, 1]] }), { now: NOW, withStatuses: true });
   assert.equal(result.streak, 2);
   assert.equal(result.statuses[restDay], "rest");
+  assert.equal(result.restMask, mask);
+});
+
+test("rest days only apply from the day they were chosen", () => {
+  const restDay = TODAY - 2;
+  const mask = 1 << activity.weekdayOf(restDay);
+  const days = { [TODAY - 1]: [10, 0, 0], [TODAY - 3]: [10, 0, 0] };
+  // Chosen yesterday: the missed day before that still breaks the streak.
+  assert.equal(activity.computeStreak(record(days, { w: [[TODAY - 1, mask, 5]] }), { now: NOW }).streak, 1);
+  // Switching rest days later keeps the earlier choice for earlier days.
+  const switched = record(days, { w: [[TODAY - 30, mask, 1], [TODAY - 1, 0, 9]] });
+  const result = activity.computeStreak(switched, { now: NOW });
+  assert.equal(result.streak, 2);
+  assert.equal(result.restMask, 0);
 });
 
 test("merging keeps the larger total per day and converges in any order", () => {
-  const a = { d: { 100: [5, 1, 0], 101: [10, 0, 1] }, s: 90, w: [1, 10] };
-  const b = { d: { 100: [7, 0, 0], 102: [3, 3, 0] }, s: 95, w: [2, 20] };
+  const a = { d: { 100: [5, 1, 0], 101: [10, 0, 1] }, s: 90, w: [[95, 1, 10], [99, 4, 30]] };
+  const b = { d: { 100: [7, 0, 0], 102: [3, 3, 0] }, s: 95, w: [[95, 2, 20]] };
   const ab = activity.mergeActivity(a, b);
   const ba = activity.mergeActivity(b, a);
   assert.deepEqual(ab, ba);
   assert.deepEqual(plain(ab.d), { 100: [7, 1, 0], 101: [10, 0, 1], 102: [3, 3, 0] });
   assert.equal(ab.s, 90);
-  assert.deepEqual(plain(ab.w), [2, 20]);
+  assert.deepEqual(plain(ab.w), [[95, 2, 20], [99, 4, 30]]);
   assert.deepEqual(activity.mergeActivity(ab, b), ab);
 });
 
