@@ -566,7 +566,10 @@ test("registered backup sections round-trip alongside legacy lexicon imports", a
   for (const name of ["tags", "activity"]) {
     store.registerBackupSection(name, {
       exportData: async () => ({ value: name }),
-      importData: async (value) => { restored[name] = value; }
+      importData: async (value) => {
+        assert.equal((await store.getEntryMap()).HAUS1.study, true);
+        restored[name] = value;
+      }
     });
   }
   const sections = await store.collectBackupSections();

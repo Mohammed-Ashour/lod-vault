@@ -1324,7 +1324,8 @@
     return merged;
   }
 
-  // Optional backup sections owned by other modules.
+  // Optional backup sections (daily activity, tags, …) owned by other modules.
+  // Each registers how to read its data for export and merge it back on restore.
   const backupSections = new Map();
 
   function registerBackupSection(name, handlers = {}) {
@@ -1531,7 +1532,9 @@
         savedIds: Object.keys(entryMap).filter((id) => entryMap[id]?.favorite || entryMap[id]?.study),
         lexiconCount: 0
       };
-      const sections = await applyBackupSections(incomingSections, backupContext);
+      const sections = await applyBackupSections(
+        incomingSections.lexicon ? { lexicon: incomingSections.lexicon } : null, backupContext
+      );
 
       try {
         const flashcardMeta = Object.keys(incomingFlashcardMeta).length
@@ -1551,6 +1554,9 @@
         throw error;
       }
 
+      // Other handlers may read vault membership, so run them after persistence.
+      const { lexicon: _lexicon, ...remainingSections } = incomingSections;
+      sections.push(...await applyBackupSections(remainingSections));
       return {
         imported,
         total: countStoredEntries(entryMap),
