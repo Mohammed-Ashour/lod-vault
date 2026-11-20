@@ -164,6 +164,7 @@ The **LODVault** icon will appear in your browser toolbar.
 - Practising a word that isn't due (Study list, Favorites, All saved) is logged but doesn't move its schedule. Missing it brings it back tomorrow at the latest
 - Words reviewed with an older version switch to the new scheduler the next time you review them; their due dates don't change until then
 - Choose **Session → Mode → Listening** to hear the pronunciation without seeing the answer. Click **Reveal** (or press Space) to see the Luxembourgish word and translations, then rate it as usual
+- **Streak:** a day counts when you clear the Today queue or do at least 10 reviews. Each 7 counted days earn a streak freeze (up to 2), which covers a missed day automatically. Days before you updated to this version count whenever you reviewed anything. Daily totals sync, so the streak is the same on every device
 - Listening plays automatically when a card appears. Click the speaker or press **P** to replay. If browser autoplay is blocked or LOD audio is unavailable, try the speaker again, reveal the answer, or skip the card. Listening uses LOD audio and needs a network connection; reverse direction is disabled in this mode
 
 ### Use LOD Lens on other sites
@@ -226,6 +227,7 @@ Builds the release zips and runs `web-ext lint` on the Firefox artifact (`dist/l
 - Lens trigger heuristics plus stale-session protection for async sentence actions
 - compact sync serialization, merge behavior, sharding, and quota fallback logic
 - review scheduling, the Today queue, the due badge, and review-progress sync
+- daily activity totals, streak rules and freezes, and their sync and backup
 
 ---
 

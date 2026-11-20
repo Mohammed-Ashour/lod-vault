@@ -9,17 +9,21 @@
     // many writes a minute. Short of the 30s after which a worker may be stopped.
     const progressDebounceMs = pushDebounceMs * 5;
     const suppressWindowMs = Math.max(pushDebounceMs * 2, 50);
+    // Daily activity is optional: it syncs with review progress when loaded.
+    const activityKey = options.activityKey || globalThis.LodVaultActivity?.ACTIVITY_KEY || null;
     const localSyncKeys = new Set([
       store.STORAGE_KEY,
       store.SETTINGS_KEY,
       store.DELETED_KEY,
-      store.FLASHCARD_META_KEY
+      store.FLASHCARD_META_KEY,
+      ...(activityKey ? [activityKey] : [])
     ]);
     const syncManifestKey = syncNamespace.SYNC_MANIFEST_KEY;
     const syncSettingsKey = syncNamespace.SYNC_SETTINGS_KEY;
     const syncDeletedKey = syncNamespace.SYNC_DELETED_KEY;
     const syncEntryPrefix = syncNamespace.SYNC_ENTRY_PREFIX;
     const syncProgressPrefix = syncNamespace.SYNC_PROGRESS_PREFIX;
+    const syncActivityKey = syncNamespace.SYNC_ACTIVITY_KEY;
 
     let syncTaskQueue = Promise.resolve();
     let syncInitPromise = null;
@@ -66,6 +70,7 @@
         || key === syncDeletedKey
         || key.startsWith(syncEntryPrefix)
         || (syncProgressPrefix && key.startsWith(syncProgressPrefix))
+        || (syncActivityKey && key === syncActivityKey)
       ));
     }
 
@@ -117,7 +122,8 @@
       const deletedChange = changes?.[store.DELETED_KEY];
       const settingsKind = getSettingsChangeKind(settingsChange);
 
-      if (changes?.[store.FLASHCARD_META_KEY] && !entryChange && !deletedChange && (!settingsKind || settingsKind === "none")) {
+      const progressChange = changes?.[store.FLASHCARD_META_KEY] || (activityKey && changes?.[activityKey]);
+      if (progressChange && !entryChange && !deletedChange && (!settingsKind || settingsKind === "none")) {
         return { type: "progress" };
       }
 
