@@ -255,6 +255,285 @@
     return "";
   }
 
+  // ── Lexicon parser ──────────────────────────────────────────────────────
+  // parseLexicon keeps the structure the flattened entry above throws away:
+  // gender, plurals, participles and each sense with its own translations and
+  // examples. The result is a local-only record (scripts/lexicon-store.js), so it
+  // can be richer than the synced entry. The API is undocumented: unknown part
+  // types are ignored and every field is optional.
+  const LEXICON_VERSION = 1;
+  const LEXICON_LANGUAGES = Object.freeze(["en", "fr", "de", "pt", "nl"]);
+  const LEXICON_LIMITS = Object.freeze({
+    senses: 12,
+    examplesPerSense: 3,
+    translationsPerLanguage: 4,
+    synonymsPerSense: 6,
+    categories: 12
+  });
+  const GENDER_BY_LABEL = Object.freeze({ M: "m", F: "f", N: "n" });
+
+  function asArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function uniqueTexts(values) {
+    const result = [];
+    for (const value of values) {
+      const text = cleanDictionaryText(value);
+      if (text && !result.includes(text)) result.push(text);
+    }
+    return result;
+  }
+
+  function splitAlternatives(value) {
+    return uniqueTexts(String(value ?? "").split(/\s+\/\s+/));
+  }
+
+  function lexiconGender(label) {
+    const match = /^SUBST\+([MFN])$/i.exec(cleanText(label));
+    return match ? GENDER_BY_LABEL[match[1].toUpperCase()] : null;
+  }
+
+  // [[translation, clarifier?], ...]. A clarifier qualifies the translations
+  // before it ("marcher, aller (à pied)"), so it is kept on the last one, which
+  // renders the same way LOD does.
+  function lexiconTranslations(parts) {
+    const pairs = [];
+    for (const part of asArray(parts)) {
+      const text = cleanDictionaryText(Array.isArray(part?.parts) ? partsToText(part.parts) : part?.content);
+      if (!text) continue;
+      if (part?.type === "translation") {
+        pairs.push([text]);
+      } else if (part?.type === "semanticClarifier") {
+        if (!pairs.length) pairs.push([""]);
+        const last = pairs[pairs.length - 1];
+        last[1] = last[1] ? `${last[1]}; ${text}` : text;
+      }
+    }
+    return pairs.filter((pair) => pair[0] || pair[1]).slice(0, LEXICON_LIMITS.translationsPerLanguage);
+  }
+
+  // Joins word tokens the way LOD renders them and records where each
+  // inflected headword sits, so a cloze can blank it without guessing.
+  function lexiconTokens(parts, spans = null) {
+    let text = "";
+    for (const part of asArray(parts)) {
+      if (!part || typeof part !== "object") continue;
+      if (!["text", "word", "inflectedHeadword"].includes(part.type)) continue;
+      if (part.type === "text" && Array.isArray(part.parts)) {
+        const nested = lexiconTokens(part.parts, spans ? [] : null);
+        if (!nested.text) continue;
+        const offset = text ? text.length + 1 : 0;
+        text = text ? `${text} ${nested.text}` : nested.text;
+        if (spans) for (const [start, end] of nested.spans) spans.push([start + offset, end + offset]);
+        continue;
+      }
+      if (part.type !== "word" && part.type !== "inflectedHeadword") continue;
+      const content = cleanText(part.content);
+      if (!content) continue;
+      const join = !text || part.joinWithPreviousWord === true || /['’]$/.test(text);
+      const start = join ? text.length : text.length + 1;
+      text = join ? `${text}${content}` : `${text} ${content}`;
+      if (spans && part.type === "inflectedHeadword") spans.push([start, start + content.length]);
+    }
+    return { text, spans: spans || [] };
+  }
+
+  function lexiconExample(example) {
+    let text = "";
+    let spans = [];
+    let gloss = "";
+    const labels = [];
+    for (const part of asArray(example?.parts)) {
+      if (part?.type === "text") {
+        for (const child of asArray(part.parts)) {
+          if (child?.type === "attribute") labels.push(child.content);
+        }
+        const tokens = lexiconTokens(part.parts, []);
+        if (!tokens.text) continue;
+        const offset = text ? text.length + 1 : 0;
+        text = text ? `${text} ${tokens.text}` : tokens.text;
+        spans = spans.concat(tokens.spans.map(([start, end]) => [start + offset, end + offset]));
+      } else if (part?.type === "gloss") {
+        const glossText = lexiconTokens(part.parts).text || cleanText(part.content);
+        if (glossText) gloss = gloss ? `${gloss}; ${glossText}` : glossText;
+      }
+    }
+    if (!text) return null;
+    const record = { t: text, h: spans };
+    const audio = cleanText(example?.audioFiles?.ogg || example?.audioFiles?.aac);
+    if (audio) record.a = audio;
+    if (gloss) record.g = gloss;
+    const exampleLabels = uniqueTexts(labels);
+    if (exampleLabels.length) record.l = exampleLabels;
+    return record;
+  }
+
+  function lexiconForms(inflection) {
+    const forms = [];
+    const nRule = {};
+    for (const form of asArray(inflection?.forms)) {
+      const content = cleanDictionaryText(form?.content);
+      if (!content) continue;
+      if (!forms.includes(content)) forms.push(content);
+      const nRuleForm = cleanDictionaryText(form?.nRuleForm);
+      if (nRuleForm && nRuleForm !== content) nRule[content] = nRuleForm;
+    }
+    return { forms, nRule };
+  }
+
+  function synonymsBySense(apiEntry) {
+    const bySense = new Map();
+    for (const group of asArray(apiEntry?.allSynonyms?.synonymGroups)) {
+      const number = Number(group?.number);
+      if (!Number.isInteger(number)) continue;
+      const list = bySense.get(number) || [];
+      for (const synonym of asArray(group?.toSynonyms)) list.push(synonym?.syn);
+      bySense.set(number, list);
+    }
+    return bySense;
+  }
+
+  function lexiconSense(meaning, unit, index, groupSynonyms) {
+    const number = Number.isInteger(meaning?.number) && meaning.number > 0 ? meaning.number : index + 1;
+    const sense = {
+      id: cleanText(meaning?.meaningID) || `S${number}`,
+      n: number
+    };
+    const gram = uniqueTexts(asArray(unit?.grammaticalInformation));
+    if (gram.length) sense.gram = gram;
+    const governs = cleanDictionaryText(meaning?.grammaticalInformation);
+    if (governs) sense.gov = governs;
+    const phrase = cleanDictionaryText(meaning?.secondaryHeadword);
+    if (phrase) sense.phrase = phrase;
+    const labels = uniqueTexts(asArray(meaning?.attributes));
+    if (labels.length) sense.labels = labels;
+    const synonyms = uniqueTexts([
+      ...asArray(meaning?.synonyms).map((value) => (typeof value === "string" ? value : value?.syn)),
+      ...(groupSynonyms.get(number) || [])
+    ]).slice(0, LEXICON_LIMITS.synonymsPerSense);
+    if (synonyms.length) sense.syn = synonyms;
+
+    const tr = {};
+    for (const language of LEXICON_LANGUAGES) {
+      const pairs = lexiconTranslations(meaning?.targetLanguages?.[language]?.parts);
+      if (pairs.length) tr[language] = pairs;
+    }
+    sense.tr = tr;
+
+    const { forms } = lexiconForms(meaning?.inflection);
+    if (forms.length) sense.plurals = forms;
+    const declension = cleanDictionaryText(meaning?.declensionInfo);
+    if (declension) sense.decl = declension;
+
+    sense.ex = asArray(meaning?.examples)
+      .map(lexiconExample)
+      .filter(Boolean)
+      .slice(0, LEXICON_LIMITS.examplesPerSense);
+    return sense;
+  }
+
+  function lexiconConjugation(rows, persons) {
+    if (!rows || typeof rows !== "object") return null;
+    const forms = persons.map((person) => cleanDictionaryText(rows[person]));
+    return forms.some(Boolean) ? forms : null;
+  }
+
+  function parseLexicon(apiEntry = {}, options = {}) {
+    const id = cleanText(apiEntry?.lod_id);
+    const lemma = cleanDictionaryText(apiEntry?.lemma);
+    if (!id || !lemma) return null;
+
+    const micros = asArray(apiEntry.microStructures);
+    const posLabel = cleanText(apiEntry.partOfSpeechLabel || micros[0]?.partOfSpeechLabel || apiEntry.partOfSpeech);
+    const posBase = posLabel.split("+")[0].toUpperCase();
+    const fetchedAt = Number.isFinite(options.now) ? options.now : Date.now();
+    const record = {
+      v: LEXICON_VERSION,
+      id,
+      fetchedAt,
+      lemma,
+      pos: posLabel,
+      gender: lexiconGender(posLabel)
+    };
+
+    const ipa = cleanText(apiEntry.ipa);
+    if (ipa) record.ipa = ipa;
+    const audio = cleanText(apiEntry.audioFiles?.ogg || apiEntry.audioFiles?.aac);
+    if (audio) record.audio = audio;
+    const categories = uniqueTexts(asArray(apiEntry.categories).map((category) => category?.code))
+      .slice(0, LEXICON_LIMITS.categories);
+    if (categories.length) record.cats = categories;
+    const nRule = cleanDictionaryText(apiEntry.nRuleForm);
+    if (nRule) record.nRule = nRule;
+
+    const groupSynonyms = synonymsBySense(apiEntry);
+    const senses = [];
+    const nounPlurals = [];
+    const pluralNRule = {};
+    for (const micro of micros) {
+      const microForms = lexiconForms(micro?.inflection);
+      nounPlurals.push(...microForms.forms);
+      Object.assign(pluralNRule, microForms.nRule);
+      for (const unit of asArray(micro?.grammaticalUnits)) {
+        for (const meaning of asArray(unit?.meanings)) {
+          if (!meaning || typeof meaning !== "object") continue;
+          const sense = lexiconSense(meaning, unit, senses.length, groupSynonyms);
+          senses.push(sense);
+          if (sense.plurals) nounPlurals.push(...sense.plurals);
+          Object.assign(pluralNRule, lexiconForms(meaning.inflection).nRule);
+        }
+      }
+    }
+
+    // Keep the first senses plus any the learner chose to focus on.
+    const keep = new Set(asArray(options.keepSenses).map(Number));
+    const limit = Number.isInteger(options.maxSenses) && options.maxSenses > 0 ? options.maxSenses : LEXICON_LIMITS.senses;
+    record.senses = senses.filter((sense, index) => index < limit || keep.has(sense.n));
+    if (senses.length > record.senses.length) record.moreSenses = senses.length - record.senses.length;
+
+    if (posBase === "SUBST") {
+      const plurals = uniqueTexts(nounPlurals);
+      record.noun = {
+        plurals,
+        noPlural: !plurals.length && senses.some((sense) => /kee\s+plural/i.test(sense.decl || ""))
+      };
+      if (Object.keys(pluralNRule).length) record.noun.pluralNRule = pluralNRule;
+    }
+
+    const conjugation = apiEntry.tables?.verbConjugation;
+    const verbMicro = micros.find((micro) => micro?.auxiliaryVerb || micro?.pastParticiple);
+    if (posBase === "VRB" || conjugation || verbMicro) {
+      const participles = uniqueTexts([
+        ...asArray(verbMicro?.pastParticiple),
+        ...splitAlternatives(conjugation?.pastParticiple)
+      ]);
+      const verb = {
+        aux: cleanDictionaryText(conjugation?.auxiliaryVerb || verbMicro?.auxiliaryVerb) || null,
+        pp: participles,
+        separable: cleanText(conjugation?.["@attributes"]?.separableVerb).toLowerCase() === "yes"
+      };
+      const persons = ["p1", "p2", "p3", "p4", "p5", "p6"];
+      const present = lexiconConjugation(conjugation?.indicative?.present, persons);
+      if (present) verb.present = present;
+      const pastSimple = lexiconConjugation(conjugation?.indicative?.pastSimple, persons);
+      if (pastSimple) verb.pastSimple = pastSimple;
+      const imperative = lexiconConjugation(conjugation?.imperative?.present, ["p2", "p5"]);
+      if (imperative) verb.imperative = imperative;
+      record.verb = verb;
+    }
+
+    const basicForms = apiEntry.tables?.adjDeclension?.basicForms;
+    if (posBase === "ADJ" || basicForms) {
+      record.adj = {
+        comp: cleanDictionaryText(basicForms?.comparative) || null,
+        sup: cleanDictionaryText(basicForms?.superlative) || null
+      };
+    }
+
+    return record;
+  }
+
   function normalizeEntryFromApi(apiEntry = {}) {
     const id = cleanText(apiEntry.lod_id);
     const word = cleanDictionaryText(apiEntry.lemma);
@@ -535,6 +814,9 @@
     extractInflection,
     extractExample,
     normalizeEntryFromApi,
+    parseLexicon,
+    LEXICON_VERSION,
+    LEXICON_LIMITS,
     search,
     fetchEntry,
     suggest,

@@ -159,6 +159,13 @@
           <button id="import-browser-history" class="btn-ghost">Import history</button>
         </div>
 
+        <div class="history-import-row backup-options-row">
+          <label class="history-import-label backup-lexicon-option" for="export-include-lexicon">
+            <input id="export-include-lexicon" type="checkbox">
+            <span>Include dictionary details in the backup (bigger file)</span>
+          </label>
+        </div>
+
         <div id="import-history-range-row" class="history-import-row">
           <label class="history-import-label" for="import-history-range">History range</label>
           <select id="import-history-range" class="select history-import-select">
@@ -250,6 +257,7 @@
   <script src="../scripts/popup-current.js"></script>
   <script src="../scripts/popup-list.js"></script>
   <script src="../scripts/lens-lookup.js"></script>
+  <script src="../scripts/lexicon-store.js"></script>
   <script src="../scripts/popup-lookup.js"></script>
   <script src="../scripts/popup-backup.js"></script>
   <script src="../scripts/popup-study.js"></script>

@@ -414,7 +414,10 @@
         store.getSettings(),
         typeof store.getFlashcardMeta === "function" ? store.getFlashcardMeta() : Promise.resolve({})
       ]);
-      const json = store.buildJsonExport(entries, { settings, flashcardMeta });
+      const sections = await store.collectBackupSections({
+        exclude: document.getElementById("export-include-lexicon")?.checked ? [] : ["lexicon"]
+      });
+      const json = store.buildJsonExport(entries, { settings, flashcardMeta, sections });
       const date = new Date().toISOString().slice(0, 10);
       store.downloadTextFile(`lodvault-export-${date}.json`, json, "application/json");
 

@@ -1324,6 +1324,47 @@
     return merged;
   }
 
+  // Optional backup sections (daily activity, tags, …) owned by other modules.
+  // Each registers how to read its data for export and merge it back on restore.
+  const backupSections = new Map();
+
+  function registerBackupSection(name, handlers = {}) {
+    const key = cleanText(name);
+    if (!key || typeof handlers.exportData !== "function" || typeof handlers.importData !== "function") return;
+    backupSections.set(key, handlers);
+  }
+
+  async function collectBackupSections(options = {}) {
+    const exclude = new Set(Array.isArray(options.exclude) ? options.exclude : []);
+    const sections = {};
+    for (const [name, handlers] of backupSections) {
+      if (exclude.has(name)) continue;
+      try {
+        const value = await handlers.exportData();
+        if (value != null) sections[name] = value;
+      } catch (error) {
+        console.warn(`[LODVault] Could not export ${name}:`, error?.message || error);
+      }
+    }
+    return sections;
+  }
+
+  async function applyBackupSections(sections, context = {}) {
+    if (!sections || typeof sections !== "object" || Array.isArray(sections)) return [];
+    const applied = [];
+    for (const [name, value] of Object.entries(sections)) {
+      const handlers = backupSections.get(name);
+      if (!handlers) continue;
+      try {
+        await handlers.importData(value, context);
+        applied.push(name);
+      } catch (error) {
+        console.warn(`[LODVault] Could not restore ${name}:`, error?.message || error);
+      }
+    }
+    return applied;
+  }
+
   function buildJsonExport(entries, options = {}) {
     const normalizedSettings = normalizeSettings(options.settings || DEFAULT_SETTINGS);
     const settings = {
@@ -1331,6 +1372,11 @@
       syncLanguages: normalizedSettings.syncLanguages
     };
     const flashcardMeta = normalizeFlashcardMetaMap(options.flashcardMeta);
+    // Optional, local-only dictionary details (scripts/lexicon-store.js). Old
+    // builds ignore the field when restoring.
+    const lexicon = options.lexicon && typeof options.lexicon === "object" && Object.keys(options.lexicon).length
+      ? options.lexicon
+      : null;
     return JSON.stringify(
       {
         app: "lodvault",
@@ -1338,7 +1384,8 @@
         exportedAt: nowIso(),
         settings,
         entries: entries.map(normalizeEntry),
-        flashcardMeta
+        flashcardMeta,
+        ...(options.sections || lexicon ? { sections: { ...(lexicon ? { lexicon } : {}), ...options.sections } } : {})
       },
       null,
       2
@@ -1477,6 +1524,18 @@
         !Array.isArray(parsed) && parsed && typeof parsed === "object" ? parsed.flashcardMeta : null
       );
 
+      // Restored before the entries are written, so the lexicon hydrator that
+      // reacts to the new entries finds the records and doesn't refetch them.
+      const incomingSections = !Array.isArray(parsed) ? { ...parsed?.sections } : {};
+      if (!incomingSections.lexicon && parsed?.lexicon) incomingSections.lexicon = parsed.lexicon;
+      const backupContext = {
+        savedIds: Object.keys(entryMap).filter((id) => entryMap[id]?.favorite || entryMap[id]?.study),
+        lexiconCount: 0
+      };
+      const sections = await applyBackupSections(
+        incomingSections.lexicon ? { lexicon: incomingSections.lexicon } : null, backupContext
+      );
+
       try {
         const flashcardMeta = Object.keys(incomingFlashcardMeta).length
           ? mergeFlashcardMetaMaps(await getFlashcardMeta(), incomingFlashcardMeta)
@@ -1495,7 +1554,18 @@
         throw error;
       }
 
-      return { imported, total: countStoredEntries(entryMap), newCount, mergeCount, restoreCount };
+      // Other handlers may read vault membership, so run them after persistence.
+      const { lexicon: _lexicon, ...remainingSections } = incomingSections;
+      sections.push(...await applyBackupSections(remainingSections));
+      return {
+        imported,
+        total: countStoredEntries(entryMap),
+        newCount,
+        mergeCount,
+        restoreCount,
+        ...(sections.length ? { sections } : {}),
+        ...(incomingSections.lexicon ? { lexiconCount: backupContext.lexiconCount } : {})
+      };
     });
   }
 
@@ -2916,6 +2986,9 @@
     removeEntry,
     restoreEntry,
     markPortableBackupExported,
+    registerBackupSection,
+    collectBackupSections,
+    applyBackupSections,
     buildJsonExport,
     importJson,
     previewJsonImport,
