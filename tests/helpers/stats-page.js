@@ -18,12 +18,12 @@ async function loadStatsPage(localData = {}, { permissionGranted = true } = {}) 
   chrome.tabs = { create: ({ url }) => createdTabs.push(url) };
   chrome.runtime = { ...(chrome.runtime || {}), getURL: (relative) => `chrome-extension://test/${relative}` };
   chrome.permissions = {
-    async request(details) {
+    request(details) {
       permissionRequests.push(details);
-      return permissionGranted;
+      return Promise.resolve(permissionGranted);
     },
     async contains() {
-      return permissionGranted;
+      return permissionGranted === true;
     }
   };
   const context = {
