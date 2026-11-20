@@ -1,0 +1,34 @@
+/* Typed-answer feedback shared by flashcard exercises (scripts/answer-grader.js). */
+.accent-keys { display: inline-flex; gap: 6px; }
+.accent-key {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  font: 600 16px/1 var(--sans);
+  color: var(--text);
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.accent-key:hover { border-color: var(--accent); color: var(--accent-lt); }
+.accent-key:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.answer-diff { font: 600 17px/1.4 var(--sans); letter-spacing: 0.01em; }
+.answer-diff-same { color: var(--text); }
+.answer-diff-extra { color: var(--danger); text-decoration: line-through; text-decoration-thickness: 2px; }
+.answer-diff-missing { color: var(--ok); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+
+.answer-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font: 700 12px/1.4 var(--sans);
+  border-radius: var(--r-full);
+  border: 1px solid currentColor;
+}
+.answer-verdict.is-correct { color: var(--ok); }
+.answer-verdict.is-close { color: var(--warn); }
+.answer-verdict.is-wrong { color: var(--danger); }
+.answer-notes { margin: 6px 0 0; padding: 0; list-style: none; color: var(--text-2); font-size: 13px; }
