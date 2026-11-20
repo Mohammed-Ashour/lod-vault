@@ -208,7 +208,7 @@
       verdict: "wrong",
       correct: false,
       grade: GRADE.AGAIN,
-      matched: primary,
+      matched: closest?.variant.matched || primary,
       typed,
       alternatives,
       notes: [],
