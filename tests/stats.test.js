@@ -2,9 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const vm = require("node:vm");
-const { JSDOM } = require("jsdom");
 const { runScripts, loadSharedStore } = require("./helpers/loaders");
+const { loadStatsPage } = require("./helpers/stats-page");
 
 const repoRoot = path.resolve(__dirname, "..");
 const DAY = 86400e3;
@@ -14,36 +13,6 @@ function loadStatsCore() {
   const loaded = loadSharedStore();
   runScripts(loaded.context, ["scripts/activity.js", "scripts/stats.js"]);
   return { stats: loaded.context.LodVaultStats, activity: loaded.context.LodVaultActivity, context: loaded.context };
-}
-
-async function loadStatsPage(localData = {}) {
-  const shared = loadSharedStore(localData);
-  const html = fs.readFileSync(path.join(repoRoot, "pages/stats.html"), "utf8");
-  const dom = new JSDOM(html, { url: "chrome-extension://test/pages/stats.html", pretendToBeVisual: true });
-  const createdTabs = [];
-  const chrome = shared.chrome;
-  chrome.tabs = { create: ({ url }) => createdTabs.push(url) };
-  chrome.runtime = { ...(chrome.runtime || {}), getURL: (relative) => `chrome-extension://test/${relative}` };
-  const context = {
-    window: dom.window,
-    document: dom.window.document,
-    navigator: dom.window.navigator,
-    chrome,
-    console,
-    Intl,
-    Date,
-    setTimeout: dom.window.setTimeout.bind(dom.window),
-    clearTimeout: dom.window.clearTimeout.bind(dom.window),
-    globalThis: null
-  };
-  context.globalThis = context;
-  context.LodVaultStoreCore = shared.store;
-  context.LodVaultStore = shared.store;
-  for (const script of ["scripts/activity.js", "scripts/stats.js"]) {
-    vm.runInNewContext(fs.readFileSync(path.join(repoRoot, script), "utf8"), context, { filename: script });
-  }
-  const view = await context.LodVaultStats.init();
-  return { dom, view, context, createdTabs, storageData: shared.storageData };
 }
 
 test("words you know uses recall now, estimated from intervals for older cards", () => {

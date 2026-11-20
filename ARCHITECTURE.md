@@ -84,6 +84,7 @@ Dependencies point from page controllers toward these helpers. Layout changes mu
 - `scripts/preview.js` and `styles/preview.css`: live Vault editing and remaining-height iframe layout.
 - `scripts/flashcards.js` and `styles/flashcards.css`: review behavior and responsive card/session controls.
 - `scripts/activity.js`: daily activity totals, streak rules and their sync value.
+- `scripts/reminders.js`: optional daily reminder. Per-device settings in local `lodVault.reminders`. The background keeps one `lodvault-reminder` alarm at the next chosen time, re-creates it after it fires and on startup/install if missing, and registers the notification click listener at the top level (and again when the optional `notifications` permission is granted). It also holds the Progress page's reminder form.
 - `scripts/background-impl.js`: toolbar due badge, refreshed on entry and review changes and by a `chrome.alarms` alarm at local midnight.
 
 ## Architecture change protocol

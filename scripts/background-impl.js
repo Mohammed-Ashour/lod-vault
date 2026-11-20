@@ -453,11 +453,20 @@ function refreshToolbarBadge() {
       LodVaultStore.getEntries(),
       LodVaultStore.getFlashcardMeta()
     ]);
-    const { dueCount } = LodVaultStore.buildTodayQueue(entries, meta);
+    const reminderSettings = await globalThis.LodVaultReminders?.getReminderSettings?.();
+    // Optionally the badge also counts today's new words, up to the daily target.
+    const includeNew = Boolean(reminderSettings?.badgeIncludesNew);
+    const dailyTarget = includeNew ? await LodVaultStore.getFlashcardDailyTarget?.() : undefined;
+    const { dueCount, newCount } = LodVaultStore.buildTodayQueue(entries, meta, includeNew ? { dailyTarget } : undefined);
+    const count = dueCount + (includeNew ? newCount : 0);
     await chrome.action?.setBadgeBackgroundColor?.({ color: DUE_BADGE_COLOR });
-    await chrome.action?.setBadgeText?.({ text: formatDueBadge(dueCount) });
+    await chrome.action?.setBadgeText?.({ text: formatDueBadge(count) });
     await chrome.action?.setTitle?.({
-      title: dueCount ? `LODVault: ${dueCount} word${dueCount === 1 ? "" : "s"} due today` : "LODVault"
+      title: count
+        ? includeNew
+          ? `LODVault: ${count} word${count === 1 ? "" : "s"} to study today`
+          : `LODVault: ${count} word${count === 1 ? "" : "s"} due today`
+        : "LODVault"
     });
   }).catch((error) => {
     console.warn("[LODVault] Could not update the toolbar badge:", error?.message || error);
@@ -471,6 +480,22 @@ function scheduleDueBadgeRefresh() {
   nextMidnight.setHours(24, 0, 0, 0);
   chrome.alarms?.create?.(DUE_BADGE_ALARM, { when: nextMidnight.getTime() });
 }
+
+// Optional study reminder (see reminders.js). Listeners are registered at the
+// top level so the alarm and a notification click can wake the worker.
+function ensureReminderScheduled() {
+  globalThis.LodVaultReminders?.ensureReminderScheduled?.().catch?.((error) => {
+    console.warn("[LODVault] Could not schedule the study reminder:", error?.message || error);
+  });
+}
+
+chrome.alarms?.onAlarm?.addListener((alarm) => {
+  if (alarm?.name !== globalThis.LodVaultReminders?.REMINDER_ALARM) return;
+  globalThis.LodVaultReminders.handleAlarm(alarm).catch((error) => {
+    console.warn("[LODVault] Could not show the study reminder:", error?.message || error);
+  });
+});
+globalThis.LodVaultReminders?.ensureNotificationListener?.();
 
 chrome.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm?.name !== DUE_BADGE_ALARM) return;
@@ -486,6 +511,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     syncCoordinator.handleInstalled("onInstalled");
     repairDamagedHistoryEntries();
     scheduleHistoryHydrationResume(50);
+    ensureReminderScheduled();
   }
 });
 
@@ -495,6 +521,7 @@ chrome.runtime.onStartup?.addListener(() => {
   syncCoordinator.handleStartup("onStartup");
   repairDamagedHistoryEntries();
   scheduleHistoryHydrationResume(50);
+  ensureReminderScheduled();
 });
 
 chrome.contextMenus?.onClicked?.addListener((info, tab) => {
@@ -554,6 +581,11 @@ chrome.storage.onChanged?.addListener((changes, areaName) => {
   if (areaName === "local" && changes?.[LodVaultStore.FLASHCARD_META_KEY]) {
     recordDailyActivity();
   }
+  const reminderKey = globalThis.LodVaultReminders?.REMINDER_SETTINGS_KEY;
+  if (areaName === "local" && reminderKey && changes?.[reminderKey]) {
+    globalThis.LodVaultReminders.scheduleReminder().catch(() => {});
+    void refreshToolbarBadge();
+  }
   if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
     scheduleHistoryHydrationResume(25);
   }
@@ -565,8 +597,10 @@ void syncSelectionTriggerRegistration();
 scheduleDueBadgeRefresh();
 void refreshToolbarBadge();
 recordDailyActivity();
+ensureReminderScheduled();
 chrome.permissions?.onAdded?.addListener(() => {
   void syncSelectionTriggerRegistration();
+  globalThis.LodVaultReminders?.ensureNotificationListener?.();
 });
 chrome.permissions?.onRemoved?.addListener(() => {
   void syncSelectionTriggerRegistration();

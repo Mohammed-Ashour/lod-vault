@@ -14,7 +14,8 @@
     "unlimitedStorage"
   ],
   "optional_permissions": [
-    "history"
+    "history",
+    "notifications"
   ],
   "host_permissions": [
     "https://lod.lu/artikel/*",
