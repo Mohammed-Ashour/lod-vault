@@ -71,6 +71,7 @@
         cache.delete(url);
       });
       audio.addEventListener("error", () => {
+        if (cache.get(url) !== audio) return;
         if (btn) {
           btn.classList.remove("is-playing");
           btn.classList.add("is-error");
@@ -81,8 +82,11 @@
       });
 
       audio.play().catch(() => {
+        // A stopped/replaced request must not report an error on the next card.
+        if (cache.get(url) !== audio) return;
         if (btn) btn.classList.remove("is-playing");
         cache.delete(url);
+        options.onError?.(btn);
       });
     }
 

@@ -156,6 +156,8 @@ The **LODVault** icon will appear in your browser toolbar.
 - Change the daily target or pick another deck (Due today, Study list, Favorites, All saved) under **Session**
 - Click the card or **Reveal** to show the full meaning
 - Practising a word before it's due doesn't push it further out. Rating it Hard brings it back tomorrow
+- Choose **Session → Mode → Listening** to hear the pronunciation without seeing the answer. Click **Reveal** (or press Space) to see the Luxembourgish word and translations, then rate it as usual
+- Listening plays automatically when a card appears. Click the speaker or press **P** to replay. If browser autoplay is blocked or LOD audio is unavailable, try the speaker again, reveal the answer, or skip the card. Listening uses LOD audio and needs a network connection; reverse direction is disabled in this mode
 
 ### Use LOD Lens on other sites
 - Select a Luxembourgish word or short phrase on a supported page

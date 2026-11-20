@@ -23,9 +23,33 @@ const FLASHCARD_SETTINGS_KEY = LodVaultStore.FLASHCARD_SETTINGS_KEY;
 const FLASHCARD_SESSION_KEY = "lodVault.flashcardSession";
 const DECK_FILTERS = new Set(["today", "due", "study", "favorites", "all"]);
 const ORDER_MODES = new Set(["smart", "shuffle", "sequential"]);
-const STUDY_MODES = new Set(["self", "mc"]);
+const STUDY_MODES = new Set(["self", "mc", "listening"]);
 const DECK_LABELS = { today: "Today", due: "Due today", study: "Study list", favorites: "Favorites", all: "All saved" };
 const elements = {};
+let listeningKey = null;
+let audioController;
+let audioFailed = false;
+
+function stopCardAudio() {
+  audioController?.stopAll();
+  listeningKey = null;
+  audioFailed = false;
+}
+
+function playCardAudio(button = elements.cardAudio) {
+  const entry = currentEntry();
+  if (!entry) return;
+  audioFailed = false;
+  button?.classList.remove("is-error");
+  if (state.mode === "listening") {
+    // Listening promises replay, rather than the shared controller's play/pause toggle.
+    audioController?.stopAll();
+    if (elements.cardHint) {
+      elements.cardHint.textContent = "Listen, then Reveal to see the word and translation. Press P to replay.";
+    }
+  }
+  LodVaultStore.playLodAudio?.(entry, { controller: audioController, button });
+}
 
 document.addEventListener("DOMContentLoaded", async () => {
   elements.deckStatus = document.getElementById("deck-status");
@@ -53,6 +77,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.flashcard = document.getElementById("flashcard");
   elements.cardWord = document.getElementById("card-word");
   elements.cardAudio = document.getElementById("card-audio");
+  audioController = LodVaultStore.createAudioController?.(document, {
+    onError() {
+      audioFailed = true;
+      if (state.mode === "listening" && elements.cardHint) {
+        elements.cardHint.textContent = "Audio unavailable. Try Play pronunciation again, reveal the answer, or skip this card.";
+      }
+    }
+  });
   elements.cardType = document.getElementById("card-type");
   elements.cardAnswer = document.getElementById("card-answer");
   elements.prevCard = document.getElementById("prev-card");
@@ -102,9 +134,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderStats();
   renderResumeSession();
   rebuildDeck();
-});
+}, { once: true });
 
 window.addEventListener("pagehide", () => {
+  stopCardAudio();
   document.removeEventListener("keydown", onKeyDown);
   chrome.storage?.onChanged?.removeListener?.(handleStorageChange);
 });
@@ -205,6 +238,7 @@ async function resumeSession() {
     return;
   }
 
+  stopCardAudio();
   state.filter = DECK_FILTERS.has(saved.filter) ? saved.filter : state.filter;
   state.orderMode = ORDER_MODES.has(saved.orderMode) ? saved.orderMode : state.orderMode;
   state.direction = saved.direction === "rev" ? "rev" : "fwd";
@@ -339,6 +373,7 @@ async function onDailyTargetChange(event) {
 }
 
 function onModeChange(event) {
+  stopCardAudio();
   state.mode = STUDY_MODES.has(event.target.value) ? event.target.value : "self";
   state.revealed = false;
   void saveSettings();
@@ -361,11 +396,12 @@ async function handleStorageChange(changes, areaName) {
   if (state.sessionActive) {
     renderDeck();
   } else {
-    rebuildDeck();
+    rebuildDeck({ preserveAudio: true });
   }
 }
 
 function toggleDirection() {
+  if (state.mode === "listening") return;
   state.direction = state.direction === "fwd" ? "rev" : "fwd";
   if (elements.directionToggle) {
     elements.directionToggle.textContent = state.direction === "fwd" ? "Lux → EN" : "EN → Lux";
@@ -415,6 +451,8 @@ function onKeyDown(event) {
     rateCard(2);
   } else if (event.key === "3") {
     rateCard(3);
+  } else if (state.mode === "listening" && (event.key === "p" || event.key === "P")) {
+    playCardAudio();
   } else if (event.key === "r" || event.key === "R") {
     toggleDirection();
   }
@@ -491,7 +529,10 @@ function shuffle(entries) {
   return deck;
 }
 
-function rebuildDeck() {
+function rebuildDeck({ preserveAudio = false } = {}) {
+  // Storage echoes must not interrupt the same card. renderDeck still switches
+  // playback if the refreshed deck changes the current entry or position.
+  if (!preserveAudio) stopCardAudio();
   const baseDeck = makeDeck(state.entries);
   const size = state.sessionSize === "all" ? baseDeck.length : Number(state.sessionSize);
   state.sessionCards = baseDeck.slice(0, Math.min(size, baseDeck.length));
@@ -513,9 +554,7 @@ function currentEntry() {
 function onAudioClick(event) {
   event.stopPropagation();
   const entry = currentEntry();
-  if (entry) {
-    LodVaultStore.playLodAudio(entry);
-  }
+  if (entry) playCardAudio(event.currentTarget);
 }
 
 function onFlashcardClick(event) {
@@ -523,9 +562,7 @@ function onFlashcardClick(event) {
   if (audioBtn) {
     event.stopPropagation();
     const entry = currentEntry();
-    if (entry) {
-      LodVaultStore.playLodAudio(entry);
-    }
+    if (entry) playCardAudio(audioBtn);
     return;
   }
   toggleReveal();
@@ -534,6 +571,20 @@ function onFlashcardClick(event) {
 function renderDeck() {
   const entry = currentEntry();
   const count = state.deck.length;
+  const listening = state.mode === "listening";
+  elements.cardShell?.classList.toggle("is-listening", listening);
+  // Keep listening instructions outside the icon-only front face.
+  if (elements.cardHint) {
+    if (listening) elements.flashcard?.after(elements.cardHint);
+    else elements.flashcard?.querySelector(".card-front")?.append(elements.cardHint);
+  }
+  // Include the session position so a one-card retry also plays afresh.
+  const nextListeningKey = listening && entry
+    ? `${entry.id}:${state.sessionActive ? state.sessionIndex : state.index}` : null;
+  const shouldPlay = nextListeningKey !== null && nextListeningKey !== listeningKey;
+  if (nextListeningKey !== listeningKey) stopCardAudio();
+  listeningKey = nextListeningKey;
+  if (elements.directionToggle) elements.directionToggle.disabled = listening;
 
   if (elements.deckStatus) {
     const deckLabel = DECK_LABELS[state.filter] || "Deck";
@@ -571,7 +622,10 @@ function renderDeck() {
     elements.sessionProgress?.classList.add("is-hidden");
   }
 
-  if (state.direction === "rev") {
+  if (listening) {
+    if (elements.cardWord) elements.cardWord.textContent = "";
+    if (elements.cardType) elements.cardType.textContent = "";
+  } else if (state.direction === "rev") {
     const meaning = typeof LodVaultStore.getPrimaryMeaning === "function"
       ? LodVaultStore.getPrimaryMeaning(entry)
       : null;
@@ -601,7 +655,8 @@ function renderDeck() {
   }
 
   if (elements.cardAnswer) {
-    LodVaultStore.setHtml(elements.cardAnswer, buildAnswerMarkup(entry));
+    // Do not expose the answer to assistive technology before a listening reveal.
+    LodVaultStore.setHtml(elements.cardAnswer, listening && !state.revealed ? "" : buildAnswerMarkup(entry));
   }
 
   if (elements.mcOptions) {
@@ -618,12 +673,21 @@ function renderDeck() {
     elements.mcOptions.classList.toggle("is-hidden", state.mode !== "mc");
   }
   elements.flashcard?.classList.toggle("is-revealed", state.revealed);
+  for (const face of elements.flashcard?.querySelectorAll(".card-face") || []) {
+    const hidden = face.classList.contains("card-back") !== state.revealed;
+    face.setAttribute("aria-hidden", String(hidden));
+    face.toggleAttribute("inert", hidden);
+  }
   if (elements.flipCard) {
     elements.flipCard.textContent = state.revealed ? "Hide" : "Reveal";
     elements.flipCard.classList.toggle("is-hidden", state.mode === "mc");
   }
   if (elements.cardHint) {
-    elements.cardHint.textContent = state.mode === "mc" ? "Choose the correct answer." : "Click Reveal to show the answer.";
+    elements.cardHint.textContent = listening
+      ? audioFailed
+        ? "Audio unavailable. Try Play pronunciation again, reveal the answer, or skip this card."
+        : "Listen, then Reveal to see the word and translation. Press P to replay."
+      : state.mode === "mc" ? "Choose the correct answer." : "Click Reveal to show the answer.";
   }
 
   if (elements.prevCard) elements.prevCard.disabled = !canNavigate();
@@ -640,9 +704,16 @@ function renderDeck() {
       state.mode === "mc" ? "1–4 choose" : "Space reveal",
       canNavigate() ? "← → navigate" : "",
       state.mode === "mc" ? "" : "1 / 2 / 3 rate",
-      "R flip direction"
+      listening ? "P replay" : "R flip direction"
     ];
     elements.shortcutHint.textContent = shortcuts.filter(Boolean).join(" · ");
+  }
+  if (shouldPlay) {
+    if (LodVaultStore.getAudioUrl?.(entry)) playCardAudio();
+    else {
+      audioFailed = true;
+      if (elements.cardHint) elements.cardHint.textContent = "No pronunciation available. Reveal the answer or skip this card.";
+    }
   }
 }
 
@@ -717,7 +788,7 @@ function buildAnswerMarkup(entry) {
     chips.push(`<span class="chip">Type: ${LodVaultStore.escapeHtml(entry.pos)}</span>`);
   }
 
-  const directionBadge = state.direction === "rev"
+  const directionBadge = state.mode !== "listening" && state.direction === "rev"
     ? '<span class="chip">Reverse mode</span>'
     : "";
 
@@ -831,13 +902,13 @@ async function recordRating(entry, rating) {
   }
 
   if (typeof LodVaultStore.recordFlashcardReview === "function") {
-    await LodVaultStore.recordFlashcardReview(entry.id, rating, state.direction);
+    await LodVaultStore.recordFlashcardReview(entry.id, rating, state.mode === "listening" ? "fwd" : state.direction);
     await loadFlashcardMeta();
     computeStats();
     renderStats();
   }
 
-  state.sessionResults.push({ entryId: entry.id, rating, direction: state.direction });
+  state.sessionResults.push({ entryId: entry.id, rating, direction: state.mode === "listening" ? "fwd" : state.direction });
 
   if (state.sessionActive) {
     // A missed word comes back once before the session ends.
@@ -860,6 +931,7 @@ async function recordRating(entry, rating) {
 }
 
 function showSummary() {
+  stopCardAudio();
   const hard = state.sessionResults.filter((r) => r.rating === 1).length;
   const good = state.sessionResults.filter((r) => r.rating === 2).length;
   const easy = state.sessionResults.filter((r) => r.rating === 3).length;
