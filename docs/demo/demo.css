@@ -1,0 +1,18 @@
+/* Shared layout for the development demos in docs/demo (not shipped). */
+.demo { margin: 0; background: var(--page); color: var(--text); font-family: var(--sans); }
+.demo-main { max-width: 900px; margin: 0 auto; padding: 24px; display: grid; gap: 16px; }
+.demo-title { margin: 0; font: 600 22px/1.2 var(--serif); }
+.demo-card { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-md); padding: 18px 20px; }
+.demo-prompt { margin: 0 0 12px; font-size: 18px; }
+.demo-blank { color: var(--accent-lt); }
+.demo-input-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.demo-input { flex: 1; min-width: 180px; height: 40px; padding: 0 12px; font-size: 17px; color: var(--text); background: var(--page); border: 1px solid var(--line-strong); border-radius: var(--r-sm); }
+.demo-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.demo-check { height: 40px; padding: 0 16px; }
+.demo-result { margin-top: 14px; min-height: 128px; align-content: start; display: grid; gap: 6px; justify-items: start; }
+.demo-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.demo-table th, .demo-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.demo-table th { color: var(--muted); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+.demo-table .answer-diff { font-size: 14px; }
+.demo-table code { font-size: 12px; color: var(--text-2); }
+.demo-table td:first-child, .demo-table td:nth-child(2) { font-family: ui-monospace, monospace; }
