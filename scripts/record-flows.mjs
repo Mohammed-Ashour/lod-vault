@@ -116,5 +116,46 @@ export const flows = {
       await page.sleep(500);
       await page.shot("activity-popup-today.png", "#study-card");
     }
+  },
+  // PR 2: the Progress page in both themes.
+  "stats-tour": {
+    page: "pages/stats.html",
+    width: 1100,
+    height: 720,
+    seed: () => studySeed(),
+    gif: "stats-tour.gif",
+    async run(page) {
+      await page.shot("stats-dark.png");
+      await page.shot("stats-heatmap-freeze.png", ".stats-card");
+      await page.sleep(1200);
+      await page.scrollTo("#forecast-heading", 1400);
+      await page.scrollTo("#breakdown-heading", 1400);
+      await page.scrollTo("#streak-heading", 900);
+      await page.click("#rest-day-6", 1400);
+      await page.scrollTo("#heatmap-heading", 1500);
+      await page.click(".theme-btn", 1300);
+      await page.shot("stats-light.png");
+      await page.scrollTo("#forecast-heading", 1300);
+      await page.scrollTo("#summary-heading", 900);
+    }
+  },
+  "stats-narrow": {
+    page: "pages/stats.html",
+    width: 400,
+    height: 900,
+    seed: () => studySeed(),
+    async run(page) {
+      await page.shot("stats-narrow.png");
+    }
+  },
+  "stats-light-full": {
+    page: "pages/stats.html",
+    width: 1100,
+    height: 1500,
+    seed: () => studySeed(),
+    stubOptions: { theme: "light" },
+    async run(page) {
+      await page.shot("stats-light-full.png");
+    }
   }
 };

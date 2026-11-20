@@ -167,6 +167,13 @@ The **LODVault** icon will appear in your browser toolbar.
 - **Streak:** a day counts when you clear the Today queue or do at least 10 reviews. Each 7 counted days earn a streak freeze (up to 2), which covers a missed day automatically. Days before you updated to this version count whenever you reviewed anything. Daily totals sync, so the streak is the same on every device
 - Listening plays automatically when a card appears. Click the speaker or press **P** to replay. If browser autoplay is blocked or LOD audio is unavailable, try the speaker again, reveal the answer, or skip the card. Listening uses LOD audio and needs a network connection; reverse direction is disabled in this mode
 
+### Track your progress
+- Click **Progress** in the popup or the Flashcards header to open the stats page
+- A year of study as a heatmap (❄ marks a day a streak freeze covered), your streak, best streak and freezes
+- Reviews due over the next 30 days, retention on mature reviews (21+ days since the previous review) against your target, and **words you know**: words you'd recall with at least 90% probability now. Until a word has the new scheduler's memory data, this is estimated from its review interval, and the page says so
+- Average time per card once reviews record it, and your words by part of speech and, once LOD word details are downloaded, by *Schwätzt Dir Lëtzebuergesch?* level
+- Pick optional **rest days** that neither count towards nor break your streak. They apply from the day you choose them
+
 ### Use LOD Lens on other sites
 - Select a Luxembourgish word or short phrase on a supported page
 - Click the floating **LODVault** trigger, use the page context menu, or press **Alt+Shift+L**
