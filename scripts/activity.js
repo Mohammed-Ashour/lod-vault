@@ -361,7 +361,12 @@
 
   let writeQueue = Promise.resolve();
   function enqueue(task) {
-    const result = writeQueue.then(task, task);
+    // Extension pages and the worker share an origin, but not this queue.
+    // Web Locks serializes their read-modify-write cycles as well.
+    const locked = () => globalThis.navigator?.locks?.request
+      ? globalThis.navigator.locks.request("lodVault.activity", task)
+      : task();
+    const result = writeQueue.then(locked, locked);
     writeQueue = result.catch(() => {});
     return result;
   }
