@@ -165,7 +165,7 @@ The **LODVault** icon will appear in your browser toolbar.
 - A year of study as a heatmap (❄ marks a day a streak freeze covered), your streak, best streak and freezes
 - Reviews due over the next 30 days, retention on mature reviews (21+ days since the previous review) against your target, and **words you know**: words you'd recall with at least 90% probability now. Until a word has the new scheduler's memory data, this is estimated from its review interval, and the page says so
 - Average time per card once reviews record it, and your words by part of speech and, once LOD word details are downloaded, by *Schwätzt Dir Lëtzebuergesch?* level
-- Pick optional **rest days** that neither count towards nor break your streak
+- Pick optional **rest days** that neither count towards nor break your streak. They apply from the day you choose them
 
 ### Use LOD Lens on other sites
 - Select a Luxembourgish word or short phrase on a supported page
