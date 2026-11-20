@@ -2851,7 +2851,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         if (Number.isInteger(Number(day)) && Number(day) > 0 && normalizeDay(value)) result.h[day] = normalizeDay(value);
       }
       result.c = {};
-      for (const [id, days] of Object.entries(raw.c)) {
+      for (const [id, days] of Object.entries(raw.c).sort(([a], [b]) => a.localeCompare(b))) {
         if (!/^[a-f0-9]{32}$/.test(id) || !days || typeof days !== "object") continue;
         const clean = {};
         for (const [day, value] of Object.entries(days)) {
@@ -2904,7 +2904,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     if (local.c || remote.c) {
       merged.h = mergeActivity({ d: local.h || {} }, { d: remote.h || {} }).d;
       merged.c = {};
-      for (const id of new Set([...Object.keys(local.c || {}), ...Object.keys(remote.c || {})])) {
+      for (const id of [...new Set([...Object.keys(local.c || {}), ...Object.keys(remote.c || {})])].sort()) {
         merged.c[id] = mergeActivity({ d: local.c?.[id] }, { d: remote.c?.[id] }).d;
       }
       projectCounters(merged);

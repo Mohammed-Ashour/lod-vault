@@ -104,5 +104,5 @@ try {
 } finally {
   if (chrome.exitCode === null && !chrome.killed) await new Promise(resolve => { chrome.once('exit', resolve); chrome.kill(); });
   rejectPending(Error('Popup verification finished'));
-  await rm(profile, { recursive: true, force: true });
+  await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
