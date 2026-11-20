@@ -4,7 +4,7 @@
   <p><strong>Your personal vocabulary vault for lod.lu</strong></p>
   <p>
     Save Luxembourgish words as you browse, study with flashcards,<br/>
-    add notes, and export your list — all without leaving the dictionary.
+    add notes, and export your list from the dictionary.
   </p>
   <p>
     <a href="https://lod.lu">lod.lu</a> ·
@@ -32,7 +32,7 @@ The popup opens on a **Today** panel with today's due and new words, your streak
 
 <img src="docs/screenshots/page-banner.png" width="640" alt="LODVault banner injected under a lod.lu article heading" />
 
-A banner is injected directly under the article heading on every `lod.lu/artikel/…` page. Save to Favorites or Study, see the translation summary, and add a personal note — without leaving the dictionary.
+A banner appears under the heading on each `lod.lu/artikel/…` page. Save the word to Favorites or Study, read its translations or add a note.
 
 ---
 
@@ -42,7 +42,7 @@ Add tags with **+ Tag** on each word. The **Decks** button saves filters for tag
 
 <img src="docs/screenshots/vault-blue-night.png" width="780" alt="LODVault vault — Blue Night redesign" /> <img src="docs/screenshots/vault-blue-night-light.png" width="780" alt="LODVault vault — Blue Night light mode" />
 
-The vault renders your saved words as an editorial document — serif entries, hairlines, translations and examples — with search, language filter and sort. Exports are grouped behind a single **Export ▾** menu (HTML / Anki), and the page theme follows the same ☀/☾ toggle.
+The Vault lists your saved words with translations, examples and notes. Search, filter by language or change the sort order. Use **Export ▾** to download HTML or Anki files.
 
 ---
 
@@ -50,7 +50,7 @@ The vault renders your saved words as an editorial document — serif entries, h
 
 <img src="docs/screenshots/flashcards-blue-night.png" width="780" alt="LODVault flashcards — Blue Night redesign" /> <img src="docs/screenshots/flashcards-blue-night-light.png" width="780" alt="LODVault flashcards — Blue Night light mode" />
 
-All session setup (deck, order, size, mode, new words per day) is grouped behind one **Session ▾** menu; the active deck and card count sit quietly beside the title. A serif stat line replaces the old emoji tiles, and the flip card keeps Reveal / Hard / Good / Easy one tap away.
+Open **Session ▾** to choose a deck, study mode and daily limits. Reveal an answer, then choose Again, Good or Easy. Each button shows when the word will return. You can enable Hard in the session settings, undo your last grade and resume a session after closing the tab.
 
 ---
 
@@ -58,7 +58,7 @@ All session setup (deck, order, size, mode, new words per day) is grouped behind
 
 [LOD — Lëtzebuerger Online Dictionnaire](https://lod.lu) is the official Luxembourgish dictionary. It is well-designed and comprehensive, but it has no way to save words, track vocabulary, or study what you have looked up.
 
-**LODVault** is a browser extension that adds that layer on top of LOD. It lives inside the pages you already use and gives you a personal, local vocabulary vault — no account required, no external backend, and optional browser sync when you want it.
+**LODVault** is a browser extension that adds that layer on top of LOD. It saves words locally as you browse LOD. No account is required. You can also enable browser sync.
 
 ---
 
@@ -260,7 +260,7 @@ the official Luxembourgish dictionary maintained by the
 under the Luxembourg Ministry of Culture.
 
 All dictionary content, word definitions, and translations belong to LOD and their respective rights holders.  
-LODVault only adds a personal save layer — it does not reproduce or redistribute any dictionary content.
+LODVault stores the words and dictionary details you save for personal study. Dictionary content belongs to LOD and its respective rights holders.
 
 ---
 

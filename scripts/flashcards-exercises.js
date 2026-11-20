@@ -140,7 +140,7 @@
       : result.correct && result.grade === GRADE.HARD ? "is-close"
         : result.correct ? "is-correct" : "is-wrong";
     const label = result.label || (result.verdict === "typo" ? "Typo?"
-      : result.correct ? (result.grade === GRADE.HARD ? "Correct, almost" : "Correct") : "Not quite");
+      : result.correct ? (result.grade === GRADE.HARD ? "Correct, check the spelling" : "Correct") : "Not quite");
     box.append(verdictChip(doc, kind, label));
     if (diff) box.append(grader().renderDiff(doc, diff));
     const notes = el(doc, "ul", "answer-notes");
@@ -237,7 +237,7 @@
     const prompt = el(doc, "p", "ex-prompt");
     prompt.append(el(doc, "span", "ex-blank", "___"), " ", el(doc, "strong", "ex-word", lemma), " ?");
     root.append(prompt);
-    root.append(el(doc, "p", "ex-hint", "Which demonstrative goes with it? (d' is both feminine and neuter)"));
+    root.append(el(doc, "p", "ex-hint", "Choose deen, déi or dat. The article d' can be feminine or neuter."));
     const choices = el(doc, "div", "ex-choices");
     choices.setAttribute("role", "group");
     choices.setAttribute("aria-label", "Gender");
@@ -695,13 +695,13 @@
     title.id = "leech-title";
     title.append(el(doc, "span", "leech-flag", "⚑"), ` ${lexicon?.lemma || entry?.word || ""} keeps slipping`);
     dialog.append(title);
-    dialog.append(el(doc, "p", "leech-copy", `Forgotten ${lapses} times after you knew it. A fresh hook usually helps more than another review.`));
+    dialog.append(el(doc, "p", "leech-copy", `Missed in ${lapses} reviews. Add a memory aid, choose fewer meanings or pause this word.`));
 
     const noteLabel = el(doc, "label", "leech-label", "Your mnemonic or note");
     const noteBox = el(doc, "textarea", "leech-note");
     noteBox.rows = 2;
     noteBox.value = note;
-    noteBox.placeholder = "A picture, a rhyme or a sentence of your own";
+    noteBox.placeholder = "Write a sentence that helps you remember";
     noteLabel.append(noteBox);
     dialog.append(noteLabel);
 

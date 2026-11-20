@@ -101,7 +101,7 @@
       textarea.disabled = false;
       textarea.placeholder = savedEntry
         ? "Add a note for this word..."
-        : "Add a note — saving will add this word to Study...";
+        : "Add a note. Saving also adds this word to Study.";
 
       if (!isDirty && (!isFocused || !isSameEntry)) {
         textarea.value = savedValue;
@@ -116,7 +116,7 @@
       }
 
       if (!isDirty) {
-        setCurrentNoteStatus(savedValue ? "Saved with this word." : "Add a short note — it saves automatically.");
+        setCurrentNoteStatus(savedValue ? "Saved with this word." : "Add a note. It saves automatically.");
       }
     }
 
