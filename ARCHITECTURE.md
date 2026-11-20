@@ -71,6 +71,8 @@ Dependencies point from page controllers toward these helpers. Layout changes mu
 5. Flashcards reads entries and review metadata and persists review progress through the existing store. `buildTodayQueue` in `scripts/store-core.js` is the single definition of what is due today, shared by the popup, Flashcards and the toolbar badge.
 6. Review progress syncs in its own `lodVault.p.*` keys, outside the manifest and format version. Each key is a hash bucket, so one review rewrites one item. Words have priority over the quota: progress takes the space left after an 8 KB margin, up to 24 KB, and the most recently reviewed words are kept. Only the latest review per word travels, so older review history stays on the device that recorded it. The review log stays complete in JSON backups. Builds before 2.4.0 count these keys against the quota but can't remove them, so a vault with more than about 76 KB of synced words can show sync as paused on an older build until it updates.
 
+7. Saved words (Favorites or Study) get a local lexicon record in `lodVault.lx.<ID>` (`scripts/lexicon-store.js`), parsed by `LodVaultLensLookup.parseLexicon` from the same `/api/lb/entry/<ID>` response the flattened entry comes from. It keeps what the flattened entry drops: gender, every plural with its n-rule form, auxiliary and participles, conjugation, comparison, and up to 12 senses with stable `meaningID`s, per-language `[translation, clarifier]` pairs and up to three examples whose inflected headwords are stored as character spans. It is local-only and never synced. The background keeps the last LOD entry responses from its Lens proxy for ten minutes, so the lookup that leads to a save also fills the lexicon. Words saved earlier, records older than 90 days and pages that ask for a session's words (`lodvault:lexicon-hydrate`) go through a queue with at most two requests at once and exponential backoff on 429, 5xx and network errors; a missing article is not asked for again for 30 days (`lodVault.lxMiss`). `lodVault.lxIndex` holds `[fetchedAt, bytes]` per record so reconciliation and the 12 MB soft budget don't read every record; over budget, favourites-only records give way to words in Study. Deleting a word removes its record. JSON backups include the records only when asked; restore keeps the newer copy.
+
 ## Module ownership boundaries
 
 - `styles/blue-night.css`: shared tokens, buttons, menus and companion-page header behavior. Generated export tokens in `scripts/entry-presenter.js` must match theme changes.
@@ -81,6 +83,7 @@ Dependencies point from page controllers toward these helpers. Layout changes mu
 - `scripts/popup-app.js`: module wiring, storage/tab events, autosave, feedback and delete/Undo.
 - `scripts/preview.js` and `styles/preview.css`: live Vault editing and remaining-height iframe layout.
 - `scripts/flashcards.js` and `styles/flashcards.css`: review behavior and responsive card/session controls.
+- `scripts/lexicon-store.js`: lexicon records, their index and the background hydration queue. `parseLexicon` in `scripts/lens-lookup.js` is separate from the flattened-entry parser and must stay pure.
 - `scripts/background-impl.js`: toolbar due badge, refreshed on entry and review changes and by a `chrome.alarms` alarm at local midnight.
 
 ## Architecture change protocol

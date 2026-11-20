@@ -613,6 +613,8 @@ textarea:disabled, input:disabled { opacity: 0.35; cursor: not-allowed; }
 }
 .history-import-label { font-size: 11.5px; color: var(--muted); }
 .history-import-select { flex: 1; height: 30px; font-size: 11.5px; }
+.backup-lexicon-option { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.backup-lexicon-option input { margin: 0; accent-color: var(--accent); }
 
 /* status chip */
 .status-chip {

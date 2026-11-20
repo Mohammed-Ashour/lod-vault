@@ -15,6 +15,7 @@ const IIFE_SCRIPTS = [
   "shared.js",
   "lod-article.js",
   "lens-lookup.js",
+  "lexicon-store.js",
   "compress.js",
   "sync.js",
   "sync-coordinator.js",
