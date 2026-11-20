@@ -51,6 +51,28 @@ test('store review capture survives capped history, deletion and resurrection', 
   assert.equal((await a.activity.readLocal()).d[day][0], 126);
 });
 
+test('backup replay preserves counters without copying local identity or double counting', async () => {
+  const a = device(); const b = device();
+  const date = new Date().toISOString(); const day = a.activity.toDayNumber(date);
+  await a.activity.captureReview({date}, (extra) => a.chrome.storage.local.set(extra));
+  const backup = await a.activity.readLocal();
+  await b.activity.applyRemote(backup); await b.activity.applyRemote(backup);
+  await b.activity.captureReview({date}, (extra) => b.chrome.storage.local.set(extra));
+  const merged = await b.activity.readLocal();
+  assert.equal(merged.d[day][0], 2);
+  assert.equal(Object.keys(merged.c).length, 2);
+  assert.notEqual(a.storageData['lodVault.activityDevice'], b.storageData['lodVault.activityDevice']);
+});
+
+test('failed atomic review persistence leaves activity unchanged; overflow refuses the review', async () => {
+  const date = new Date().toISOString(); const a = device();
+  await assert.rejects(a.activity.captureReview({date}, async () => { throw new Error('disk'); }), /disk/);
+  assert.deepEqual(plain((await a.activity.readLocal()).d), {});
+  const day = a.activity.toDayNumber(date); const id = 'a'.repeat(32);
+  const b = device({'lodVault.activityDevice': id, 'lodVault.activity': {d: {}, h: {}, c: {[id]: {[day]: [1000000, 0, 0]}}}});
+  await assert.rejects(b.activity.captureReview({date}, async () => assert.fail('must not persist')), /capacity/);
+});
+
 test('migration retains conservative legacy floor and counts future work once', async () => {
   const date = new Date().toISOString();
   const probe = device(); const day = probe.activity.toDayNumber(date);
