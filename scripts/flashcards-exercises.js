@@ -163,6 +163,11 @@
     } else {
       actions.append(button(doc, "btn-primary ex-continue", "Continue", () => finish(result.grade)));
     }
+    if (result.verdict !== "typo") {
+      actions.append(result.correct
+        ? button(doc, "btn-ghost ex-easy", "Too easy", () => finish(GRADE.EASY, { override: "easy" }))
+        : button(doc, "btn-ghost ex-override", "I was right", () => finish(GRADE.GOOD, { override: "correct" })));
+    }
     box.append(actions);
     root.append(box);
     actions.querySelector("button")?.focus();
