@@ -414,16 +414,10 @@
         store.getSettings(),
         typeof store.getFlashcardMeta === "function" ? store.getFlashcardMeta() : Promise.resolve({})
       ]);
-      const lexiconApi = globalThis.LodVaultLexicon;
-      let lexicon = null;
-      if (document.getElementById("export-include-lexicon")?.checked && typeof lexiconApi?.getLexicons === "function") {
-        try {
-          lexicon = await lexiconApi.getLexicons(entries.map((entry) => entry.id));
-        } catch {
-          lexicon = null;
-        }
-      }
-      const json = store.buildJsonExport(entries, { settings, flashcardMeta, lexicon });
+      const sections = await store.collectBackupSections({
+        exclude: document.getElementById("export-include-lexicon")?.checked ? [] : ["lexicon"]
+      });
+      const json = store.buildJsonExport(entries, { settings, flashcardMeta, sections });
       const date = new Date().toISOString().slice(0, 10);
       store.downloadTextFile(`lodvault-export-${date}.json`, json, "application/json");
 

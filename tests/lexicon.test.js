@@ -548,7 +548,7 @@ test("JSON backups include the lexicon only when asked, and restore it for saved
 
   const haus = record("HAUS1");
   const backup = store.buildJsonExport(entries, { lexicon: { HAUS1: haus, VISIT1: record("VISIT1") } });
-  assert.deepEqual(JSON.parse(backup).lexicon.HAUS1, haus);
+  assert.deepEqual(JSON.parse(backup).sections.lexicon.HAUS1, haus);
 
   const withVisit = JSON.parse(backup);
   withVisit.entries.push({ id: "VISIT1", word: "Visit", url: "https://lod.lu/artikel/VISIT1", history: true });
@@ -557,6 +557,30 @@ test("JSON backups include the lexicon only when asked, and restore it for saved
   assert.deepEqual(plain(storageData["lodVault.lx.HAUS1"]), haus);
   assert.equal(storageData["lodVault.lx.VISIT1"], undefined);
   assert.equal((await lexicon.getUsage()).count, 1);
+});
+
+test("registered backup sections round-trip alongside legacy lexicon imports", async () => {
+  const { store, lexicon, storageData } = loadLexicon();
+  await lexicon.saveLexicon(record("HAUS1"));
+  const restored = {};
+  for (const name of ["tags", "activity"]) {
+    store.registerBackupSection(name, {
+      exportData: async () => ({ value: name }),
+      importData: async (value) => { restored[name] = value; }
+    });
+  }
+  const sections = await store.collectBackupSections();
+  assert.deepEqual(plain(sections.lexicon.HAUS1), record("HAUS1"));
+  assert.equal("lexicon" in await store.collectBackupSections({ exclude: ["lexicon"] }), false);
+  await lexicon.removeLexicons(["HAUS1"]);
+  const entries = [{ id: "HAUS1", word: "Haus", url: "https://lod.lu/artikel/HAUS1", study: true }];
+  const result = await store.importJson(store.buildJsonExport(entries, { sections }));
+  assert.equal(result.lexiconCount, 1);
+  assert.deepEqual(plain(restored), { tags: { value: "tags" }, activity: { value: "activity" } });
+  await lexicon.removeLexicons(["HAUS1"]);
+  const legacy = await store.importJson(JSON.stringify({ entries, lexicon: { HAUS1: record("HAUS1") } }));
+  assert.equal(legacy.lexiconCount, 1);
+  assert.deepEqual(plain(storageData["lodVault.lx.HAUS1"]), record("HAUS1"));
 });
 
 test("every script a page loads is packaged in the release zip", () => {

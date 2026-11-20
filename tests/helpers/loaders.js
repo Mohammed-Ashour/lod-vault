@@ -492,6 +492,9 @@ async function loadPopupScript({
     normalizeFlashcardSettings: shared.store.normalizeFlashcardSettings,
     buildTodayQueue: shared.store.buildTodayQueue,
     FLASHCARD_SETTINGS_KEY: "lodVault.flashcardSettings",
+    collectBackupSections(options) {
+      return shared.store.collectBackupSections(options);
+    },
     buildJsonExport(entriesToExport, options) {
       return shared.store.buildJsonExport(entriesToExport, options);
     },

@@ -1763,6 +1763,46 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return merged;
   }
 
+  // Optional backup sections owned by other modules.
+  const backupSections = new Map();
+
+  function registerBackupSection(name, handlers = {}) {
+    const key = cleanText(name);
+    if (!key || typeof handlers.exportData !== "function" || typeof handlers.importData !== "function") return;
+    backupSections.set(key, handlers);
+  }
+
+  async function collectBackupSections(options = {}) {
+    const exclude = new Set(Array.isArray(options.exclude) ? options.exclude : []);
+    const sections = {};
+    for (const [name, handlers] of backupSections) {
+      if (exclude.has(name)) continue;
+      try {
+        const value = await handlers.exportData();
+        if (value != null) sections[name] = value;
+      } catch (error) {
+        console.warn(`[LODVault] Could not export ${name}:`, error?.message || error);
+      }
+    }
+    return sections;
+  }
+
+  async function applyBackupSections(sections, context = {}) {
+    if (!sections || typeof sections !== "object" || Array.isArray(sections)) return [];
+    const applied = [];
+    for (const [name, value] of Object.entries(sections)) {
+      const handlers = backupSections.get(name);
+      if (!handlers) continue;
+      try {
+        await handlers.importData(value, context);
+        applied.push(name);
+      } catch (error) {
+        console.warn(`[LODVault] Could not restore ${name}:`, error?.message || error);
+      }
+    }
+    return applied;
+  }
+
   function buildJsonExport(entries, options = {}) {
     const normalizedSettings = normalizeSettings(options.settings || DEFAULT_SETTINGS);
     const settings = {
@@ -1783,7 +1823,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         settings,
         entries: entries.map(normalizeEntry),
         flashcardMeta,
-        ...(lexicon ? { lexicon } : {})
+        ...(options.sections || lexicon ? { sections: { ...(lexicon ? { lexicon } : {}), ...options.sections } } : {})
       },
       null,
       2
@@ -1924,13 +1964,13 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
       // Restored before the entries are written, so the lexicon hydrator that
       // reacts to the new entries finds the records and doesn't refetch them.
-      let lexiconCount = 0;
-      const incomingLexicon = !Array.isArray(parsed) ? parsed?.lexicon : null;
-      const lexiconApi = globalThis.LodVaultLexicon;
-      if (incomingLexicon && typeof lexiconApi?.importLexicons === "function") {
-        const savedIds = Object.keys(entryMap).filter((id) => entryMap[id]?.favorite || entryMap[id]?.study);
-        lexiconCount = await lexiconApi.importLexicons(incomingLexicon, savedIds).catch(() => 0);
-      }
+      const incomingSections = !Array.isArray(parsed) ? { ...parsed?.sections } : {};
+      if (!incomingSections.lexicon && parsed?.lexicon) incomingSections.lexicon = parsed.lexicon;
+      const backupContext = {
+        savedIds: Object.keys(entryMap).filter((id) => entryMap[id]?.favorite || entryMap[id]?.study),
+        lexiconCount: 0
+      };
+      const sections = await applyBackupSections(incomingSections, backupContext);
 
       try {
         const flashcardMeta = Object.keys(incomingFlashcardMeta).length
@@ -1956,7 +1996,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         newCount,
         mergeCount,
         restoreCount,
-        ...(incomingLexicon ? { lexiconCount } : {})
+        ...(sections.length ? { sections } : {}),
+        ...(incomingSections.lexicon ? { lexiconCount: backupContext.lexiconCount } : {})
       };
     });
   }
@@ -3378,6 +3419,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     removeEntry,
     restoreEntry,
     markPortableBackupExported,
+    registerBackupSection,
+    collectBackupSections,
+    applyBackupSections,
     buildJsonExport,
     importJson,
     previewJsonImport,
@@ -5149,6 +5193,15 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       }
     };
   }
+
+  globalThis.LodVaultStore?.registerBackupSection?.("lexicon", {
+    exportData: getAllLexicons,
+    async importData(value, context = {}) {
+      const savedIds = context.savedIds || Object.values(await globalThis.LodVaultStore.getEntryMap())
+        .filter((entry) => entry.favorite || entry.study).map((entry) => entry.id);
+      context.lexiconCount = await importLexicons(value, savedIds);
+    }
+  });
 
   globalThis.LodVaultLexicon = {
     KEY_PREFIX,

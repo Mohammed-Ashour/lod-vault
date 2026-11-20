@@ -516,6 +516,15 @@
     };
   }
 
+  globalThis.LodVaultStore?.registerBackupSection?.("lexicon", {
+    exportData: getAllLexicons,
+    async importData(value, context = {}) {
+      const savedIds = context.savedIds || Object.values(await globalThis.LodVaultStore.getEntryMap())
+        .filter((entry) => entry.favorite || entry.study).map((entry) => entry.id);
+      context.lexiconCount = await importLexicons(value, savedIds);
+    }
+  });
+
   globalThis.LodVaultLexicon = {
     KEY_PREFIX,
     INDEX_KEY,
