@@ -2314,9 +2314,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     }
   }
 
-  async function saveFlashcardMeta(meta) {
+  async function saveFlashcardMeta(meta, extra = {}) {
     try {
-      await chrome.storage.local.set({ [FLASHCARD_META_KEY]: meta });
+      await chrome.storage.local.set({ ...extra, [FLASHCARD_META_KEY]: meta });
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
@@ -2475,6 +2475,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       const meta = await getFlashcardMeta();
       const existing = meta[entryId] || {};
 
+      const activityMeta = globalThis.LodVaultActivity ? JSON.parse(JSON.stringify(meta)) : null;
       const reviews = Array.isArray(existing.reviews) ? existing.reviews : [];
       reviews.push({
         date: nowIso(),
@@ -2499,7 +2500,15 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         interval
       };
 
-      await saveFlashcardMeta(meta);
+      if (globalThis.LodVaultActivity?.captureReview) {
+        await globalThis.LodVaultActivity.captureReview({
+          date: reviews[reviews.length - 1].date,
+          isNew: !existing.totalReviews,
+          meta: activityMeta
+        }, (extra) => saveFlashcardMeta(meta, extra));
+      } else {
+        await saveFlashcardMeta(meta);
+      }
       return meta[entryId];
     });
   }
@@ -2836,7 +2845,40 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     if (rest) result.w = rest;
     const since = Math.floor(Number(raw.s));
     if (Number.isFinite(since) && since > 0) result.s = since;
+    if (raw.c && typeof raw.c === "object" && !Array.isArray(raw.c)) {
+      result.h = {};
+      for (const [day, value] of Object.entries(raw.h || {})) {
+        if (Number.isInteger(Number(day)) && Number(day) > 0 && normalizeDay(value)) result.h[day] = normalizeDay(value);
+      }
+      result.c = {};
+      for (const [id, days] of Object.entries(raw.c)) {
+        if (!/^[a-f0-9]{32}$/.test(id) || !days || typeof days !== "object") continue;
+        const clean = {};
+        for (const [day, value] of Object.entries(days)) {
+          if (Number.isInteger(Number(day)) && Number(day) > 0 && normalizeDay(value)) clean[day] = normalizeDay(value);
+        }
+        result.c[id] = clean;
+      }
+      projectCounters(result);
+    }
     return result;
+  }
+
+  function projectCounters(record) {
+    const totals = {};
+    for (const days of Object.values(record.c || {})) {
+      for (const [day, value] of Object.entries(days)) {
+        const total = totals[day] ||= [0, 0, 0];
+        total[0] += value[0];
+        total[1] += value[1];
+      }
+    }
+    for (const day of new Set([...Object.keys(record.h || {}), ...Object.keys(totals)])) {
+      const base = record.h?.[day] || [0, 0, 0];
+      const count = totals[day] || [0, 0, 0];
+      const floor = record.d[day] || [0, 0, 0];
+      record.d[day] = [Math.max(floor[0], base[0] + count[0]), Math.max(floor[1], base[1] + count[1]), floor[2] | base[2]];
+    }
   }
 
   function pickAnchor(left, right) {
@@ -2846,10 +2888,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return right[1] > left[1] ? right : left;
   }
 
-  // Day totals only grow: a merge keeps the larger count for each day, so two
-  // devices converge whatever order they sync in. Reviews from another device
-  // reach this one's review log with progress, so the larger count is usually
-  // the full one.
+  // Legacy d totals are floors. h is the pre-capture baseline; c holds
+  // grow-only per-device day counters. Merge components by max, then sum.
+  // Old clients can still read d and cannot erase captured work.
   function mergeActivity(localRaw, remoteRaw) {
     const local = normalizeActivity(localRaw);
     const remote = normalizeActivity(remoteRaw);
@@ -2859,6 +2900,14 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       merged.d[day] = current
         ? [Math.max(current[0], value[0]), Math.max(current[1], value[1]), current[2] | value[2]]
         : value;
+    }
+    if (local.c || remote.c) {
+      merged.h = mergeActivity({ d: local.h || {} }, { d: remote.h || {} }).d;
+      merged.c = {};
+      for (const id of new Set([...Object.keys(local.c || {}), ...Object.keys(remote.c || {})])) {
+        merged.c[id] = mergeActivity({ d: local.c?.[id] }, { d: remote.c?.[id] }).d;
+      }
+      projectCounters(merged);
     }
     const anchor = pickAnchor(local.b || null, remote.b || null);
     if (anchor) merged.b = anchor;
@@ -3011,6 +3060,10 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     for (const [key, value] of Object.entries(record.d)) {
       if (Number(key) > cutoff) pruned.d[key] = value;
     }
+    if (pruned.c) {
+      pruned.h = Object.fromEntries(Object.entries(pruned.h || {}).filter(([day]) => Number(day) > cutoff));
+      pruned.c = Object.fromEntries(Object.entries(pruned.c).map(([id, days]) => [id, Object.fromEntries(Object.entries(days).filter(([day]) => Number(day) > cutoff))]).filter(([, days]) => Object.keys(days).length));
+    }
     // An anchor newer than the cutoff already accounts for the dropped days.
     pruned.b = record.b && record.b[0] > cutoff ? record.b : anchorAt(record, cutoff);
     return pruned;
@@ -3055,8 +3108,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return !today.dueCount && !today.newCount && !learning;
   }
 
-  // Folds this device's review logs into the day totals. Called by the
-  // background worker whenever review progress changes, and on startup.
+  // Seed legacy records from retained logs only until durable capture starts.
+  // Later progress changes (including remote schedules) never add attempts.
   async function recordFromLocal({ now = new Date() } = {}) {
     return enqueue(async () => {
       const s = store();
@@ -3070,16 +3123,19 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         ? s.normalizeFlashcardMetaMap(data[metaKey])
         : (data[metaKey] || {});
       const today = toDayNumber(now);
-      const derived = computeDailyFromMeta(meta, { sinceDay: today - SYNC_DAYS });
+      const derived = previous.c ? {} : computeDailyFromMeta(meta, { sinceDay: today - SYNC_DAYS });
       // Nothing studied yet: no record, and no sync write for it.
       if (!Object.keys(derived).length && !Object.keys(previous.d).length) {
         return { changed: false, activity: previous };
       }
 
-      if (derived[today]?.[0] && typeof s.getEntries === "function") {
+      if ((derived[today]?.[0] || previous.d[today]?.[0]) && typeof s.getEntries === "function") {
         try {
           const entries = await s.getEntries();
-          if (isQueueCleared(entries, meta, data[settingsKey], now)) derived[today][2] |= FLAG_CLEARED;
+          if (isQueueCleared(entries, meta, data[settingsKey], now)) {
+            derived[today] ||= [0, 0, 0];
+            derived[today][2] |= FLAG_CLEARED;
+          }
         } catch {
           // Without entries the 10-review rule still applies.
         }
@@ -3087,6 +3143,30 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
       const next = pruneActivity(mergeActivity(previous, { d: derived, s: previous.s || today }), { now });
       return writeIfChanged(previous, next);
+    });
+  }
+
+  // Called only by serialized local review mutations, never by remote progress.
+  // persist must atomically write these extra keys alongside the review metadata.
+  async function captureReview({ date, isNew = false, meta = {} }, persist) {
+    return enqueue(async () => {
+      const previous = await readLocal();
+      const day = toDayNumber(date);
+      if (!day) throw new Error("Invalid activity review date");
+      const identityKey = "lodVault.activityDevice";
+      const data = await chrome.storage.local.get([identityKey]);
+      const id = /^[a-f0-9]{32}$/.test(data[identityKey] || "") ? data[identityKey]
+        : Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (n) => n.toString(16).padStart(2, "0")).join("");
+      const next = previous.c ? previous : mergeActivity(previous, { d: computeDailyFromMeta(meta) });
+      if (!next.c) { next.h = JSON.parse(JSON.stringify(next.d)); next.c = {}; }
+      const days = next.c[id] ||= {};
+      const count = days[day] ||= [0, 0, 0];
+      if (count[0] >= 1e6) throw new Error("Activity counter capacity exceeded");
+      count[0] += 1;
+      if (isNew) count[1] += 1;
+      next.s ||= day;
+      projectCounters(next);
+      return persist({ [ACTIVITY_KEY]: pruneActivity(next, { now: new Date(date) }), [identityKey]: id });
     });
   }
 
@@ -3156,6 +3236,35 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return applyRemote(value);
   }
 
+  // Only real news is pushed: a day total another device lacks, a rest-day
+  // change, or a streak anchor sync doesn't have yet. A different anchor day on
+  // its own (two devices either side of midnight) isn't worth a write.
+  function hasNews(localRaw, remoteRaw) {
+    const local = buildSyncValue(localRaw);
+    if (!local) return false;
+    if (!remoteRaw) return true;
+    const remote = normalizeActivity(remoteRaw);
+    const merged = mergeActivity(remote, local);
+    return JSON.stringify(merged.c || null) !== JSON.stringify(remote.c || null)
+      || JSON.stringify(merged.h || null) !== JSON.stringify(remote.h || null)
+      || JSON.stringify(merged.d) !== JSON.stringify(remote.d)
+      || JSON.stringify(merged.w || null) !== JSON.stringify(remote.w || null)
+      || Boolean(local.b && !remote.b);
+  }
+
+  const syncRecord = {
+    name: "activity",
+    localKey: ACTIVITY_KEY,
+    syncKey: SYNC_ACTIVITY_KEY,
+    buildSyncValue: (local) => buildSyncValue(local),
+    async applyRemote(remote) {
+      const result = await applyRemote(remote);
+      return { changed: Boolean(result?.changed), record: result?.activity };
+    },
+    hasNews
+  };
+  globalThis.LodVaultSyncRecords = [...(globalThis.LodVaultSyncRecords || []), syncRecord];
+
   store().registerBackupSection?.("activity", {
     exportData: exportBackupSection,
     importData: importBackupSection
@@ -3183,6 +3292,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     buildSyncValue,
     readLocal,
     recordFromLocal,
+    captureReview,
     applyRemote,
     setRestDays,
     getStreakInfo,
@@ -5008,7 +5118,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     if (!remoteActivity) return true;
     const remote = activity.normalizeActivity(remoteActivity);
     const merged = activity.mergeActivity(remote, local);
-    return stableStringify(merged.d) !== stableStringify(remote.d)
+    return stableStringify(merged.c || null) !== stableStringify(remote.c || null)
+      || stableStringify(merged.h || null) !== stableStringify(remote.h || null)
+      || stableStringify(merged.d) !== stableStringify(remote.d)
       || stableStringify(merged.w || null) !== stableStringify(remote.w || null)
       || Boolean(local.b && !remote.b);
   }
