@@ -810,8 +810,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   function isMissingMutationReceiver(error) {
     const message = String(error || "");
     return message.includes("Could not establish connection")
-      || message.includes("Receiving end does not exist")
-      || message.includes("message port closed");
+      || message.includes("Receiving end does not exist");
   }
 
   function runVaultIo(task) {
@@ -825,22 +824,14 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       return directHandler(...args);
     }
 
+    let response;
     try {
-      const response = await chrome.runtime.sendMessage({
+      response = await chrome.runtime.sendMessage({
         type: STORE_MUTATION_MESSAGE_TYPE,
         method,
         args
       });
 
-      if (!response?.ok) {
-        const error = response?.error ? new Error(response.error) : new Error(`Store mutation failed: ${method}`);
-        if (isExtensionContextInvalidated(error)) {
-          throw createRefreshPageError();
-        }
-        throw error;
-      }
-
-      return response.result;
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
@@ -850,6 +841,13 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       }
       throw error;
     }
+    // A worker error is not evidence that the request was never delivered.
+    if (!response?.ok) {
+      const error = new Error(response?.error || `Store mutation failed: ${method}`);
+      if (isExtensionContextInvalidated(error)) throw createRefreshPageError();
+      throw error;
+    }
+    return response.result;
   }
 
   function normalizeEntry(entry = {}) {
@@ -2753,9 +2751,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     }
   }
 
-  async function saveFlashcardMeta(meta) {
+  async function saveFlashcardMeta(meta, extra = {}) {
     try {
-      await chrome.storage.local.set({ [FLASHCARD_META_KEY]: meta });
+      await chrome.storage.local.set({ ...extra, [FLASHCARD_META_KEY]: meta });
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
@@ -3164,9 +3162,19 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         pausedAt: existing?.pausedAt,
         leech: existing?.leech
       });
+      // Activity migration needs the metadata before this review was appended.
+      const activityMeta = { ...meta };
       meta[cardId] = record;
 
-      await saveFlashcardMeta(meta);
+      if (globalThis.LodVaultActivity?.captureReview) {
+        await globalThis.LodVaultActivity.captureReview({
+          date,
+          isNew: !existing?.totalReviews,
+          meta: activityMeta
+        }, (extra) => saveFlashcardMeta(meta, extra));
+      } else {
+        await saveFlashcardMeta(meta);
+      }
       return { previous, record };
     });
   }

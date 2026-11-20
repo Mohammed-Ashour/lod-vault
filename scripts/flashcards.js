@@ -4,6 +4,7 @@ const state = {
   filter: "today",
   revealed: false,
   ratingInProgress: false,
+  reviewSaveFailed: false,
   index: 0,
   orderMode: "smart",
   direction: "fwd",
@@ -1133,7 +1134,7 @@ function onMcOptionClick(event) {
 async function rateCard(grade) {
   // The review is saved asynchronously, so a double click or repeated key would
   // otherwise record it twice and skip the next card.
-  if (state.ratingInProgress || !state.revealed || !state.deck.length) return;
+  if (state.ratingInProgress || state.reviewSaveFailed || !state.revealed || !state.deck.length) return;
   const entry = currentEntry();
   if (!entry) return;
   // A word deleted in another tab must not get review data for a missing entry.
@@ -1145,6 +1146,14 @@ async function rateCard(grade) {
   state.ratingInProgress = true;
   try {
     await recordRating(entry, grade);
+  } catch (error) {
+    // The worker may have committed before its reply was lost. Do not offer
+    // another rating in this page or count an unconfirmed result in the session.
+    state.reviewSaveFailed = true;
+    elements.ratingBar?.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    elements.mcOptions?.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    if (elements.cardStatus) elements.cardStatus.textContent = "Review save could not be confirmed. It may already be saved. Reload and check progress before reviewing again.";
+    console.error("Review save could not be confirmed", error);
   } finally {
     state.ratingInProgress = false;
   }

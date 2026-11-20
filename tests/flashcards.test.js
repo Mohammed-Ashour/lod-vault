@@ -943,3 +943,19 @@ test("revealing announces the answer and the grade keys, and moves focus to Good
   await wait(dom, 5);
   assert.equal(doc.activeElement.id, "flip-card");
 });
+
+
+test("unconfirmed review save blocks another grade and does not count a session result", async () => {
+  let calls = 0;
+  const { dom, api } = await loadFlashcardsScript({
+    entries: [makeEntry()],
+    storeOverrides: { async recordFlashcardReview() { calls++; throw new Error("message port closed"); } }
+  });
+  await revealAndRate(dom, 3);
+  assert.equal(api.state.sessionResults.length, 0);
+  assert.equal(api.state.reviewSaveFailed, true);
+  assert.match(dom.window.document.getElementById("card-status").textContent, /may already be saved/);
+  dom.window.document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "2", bubbles: true }));
+  await wait(dom);
+  assert.equal(calls, 1);
+});
