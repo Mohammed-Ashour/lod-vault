@@ -14,7 +14,9 @@ const state = {
   sessionIndex: 0,
   sessionResults: [],
   resumableSession: null,
-  dailyTarget: 10,
+  settings: null,
+  cardShownAt: 0,
+  cardShownKey: "",
   flashcardMeta: {},
   today: null,
   stats: { streak: 0, todayCount: 0, dueCount: 0, newCount: 0, learningCount: 0, masteredCount: 0 }
@@ -57,7 +59,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.deckFilter = document.getElementById("deck-filter");
   elements.orderMode = document.getElementById("order-mode");
   elements.sessionSize = document.getElementById("session-size");
-  elements.dailyTarget = document.getElementById("daily-target");
+  elements.newPerDay = document.getElementById("new-per-day");
+  elements.maxReviews = document.getElementById("max-reviews");
+  elements.retention = document.getElementById("retention");
+  elements.maxInterval = document.getElementById("max-interval");
+  elements.showHard = document.getElementById("show-hard");
   elements.directionToggle = document.getElementById("direction-toggle");
   elements.modeSelect = document.getElementById("mode-select");
   elements.mcOptions = document.getElementById("mc-options");
@@ -94,7 +100,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.ratingBar = document.getElementById("rating-bar");
   elements.summaryOverlay = document.getElementById("summary-overlay");
   elements.summaryTotal = document.getElementById("summary-total");
-  elements.summaryHard = document.getElementById("summary-hard");
+  elements.summaryAgain = document.getElementById("summary-again");
   elements.summaryGood = document.getElementById("summary-good");
   elements.summaryEasy = document.getElementById("summary-easy");
   elements.openPreview = document.getElementById("open-preview");
@@ -109,7 +115,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.deckFilter?.addEventListener("change", onDeckFilterChange);
   elements.orderMode?.addEventListener("change", onOrderModeChange);
   elements.sessionSize?.addEventListener("change", onSessionSizeChange);
-  elements.dailyTarget?.addEventListener("change", onDailyTargetChange);
+  for (const control of [elements.newPerDay, elements.maxReviews, elements.retention, elements.maxInterval, elements.showHard]) {
+    control?.addEventListener("change", onSchedulingSettingChange);
+  }
   elements.directionToggle?.addEventListener("click", toggleDirection);
   elements.modeSelect?.addEventListener("change", onModeChange);
   elements.mcOptions?.addEventListener("click", onMcOptionClick);
@@ -148,8 +156,10 @@ async function loadEntries() {
 }
 
 function todayQueue() {
+  const settings = currentSettings();
   return LodVaultStore.buildTodayQueue(state.entries, state.flashcardMeta, {
-    dailyTarget: state.dailyTarget
+    newPerDay: settings.newPerDay,
+    maxReviewsPerDay: settings.maxReviewsPerDay
   });
 }
 
@@ -183,16 +193,40 @@ async function loadFlashcardState() {
   if (!local) return;
 
   const saved = await local.get([FLASHCARD_SETTINGS_KEY, FLASHCARD_SESSION_KEY]);
-  state.dailyTarget = LodVaultStore.normalizeFlashcardDailyTarget(saved[FLASHCARD_SETTINGS_KEY]);
+  state.settings = LodVaultStore.normalizeFlashcardSettings(saved[FLASHCARD_SETTINGS_KEY]);
   state.resumableSession = saved[FLASHCARD_SESSION_KEY] || null;
-  state.mode = STUDY_MODES.has(saved[FLASHCARD_SETTINGS_KEY]?.mode) ? saved[FLASHCARD_SETTINGS_KEY].mode : "self";
-  if (elements.dailyTarget) elements.dailyTarget.value = state.dailyTarget ? String(state.dailyTarget) : "off";
+  state.mode = STUDY_MODES.has(state.settings.mode) ? state.settings.mode : "self";
+  renderSettingControls();
   if (elements.modeSelect) elements.modeSelect.value = state.mode;
+}
+
+function currentSettings() {
+  if (!state.settings) state.settings = LodVaultStore.normalizeFlashcardSettings({});
+  return state.settings;
+}
+
+// Select values are strings; "none" stands for a null (no limit) setting.
+function settingToValue(value) {
+  return value === null ? "none" : String(value);
+}
+
+function valueToSetting(value) {
+  return value === "none" ? null : Number(value);
+}
+
+function renderSettingControls() {
+  const settings = currentSettings();
+  if (elements.newPerDay) elements.newPerDay.value = settingToValue(settings.newPerDay);
+  if (elements.maxReviews) elements.maxReviews.value = settingToValue(settings.maxReviewsPerDay);
+  if (elements.retention) elements.retention.value = String(settings.retention);
+  if (elements.maxInterval) elements.maxInterval.value = String(settings.maxInterval);
+  if (elements.showHard) elements.showHard.checked = settings.showHard;
 }
 
 async function saveSettings() {
   const local = chrome.storage?.local;
-  if (local) await local.set({ [FLASHCARD_SETTINGS_KEY]: { dailyTarget: state.dailyTarget || null, mode: state.mode } });
+  state.settings = { ...currentSettings(), mode: state.mode };
+  if (local) await local.set({ [FLASHCARD_SETTINGS_KEY]: { ...state.settings } });
 }
 
 async function saveSession() {
@@ -315,9 +349,11 @@ function computeStats() {
 function describeDailyProgress(today) {
   if (!today) return { text: "", complete: false };
   const reviewsPart = `${today.reviewsToday}/${today.reviewsToday + today.dueCount} reviews`;
-  const newPart = state.dailyTarget
-    ? `${today.newToday}/${today.newToday + today.newCount} new`
-    : `${today.newToday} new · no new-word limit`;
+  const limit = currentSettings().newPerDay;
+  const newPart = limit === null
+    ? `${today.newToday} new · no new-word limit`
+    : limit === 0 && !today.newToday ? "new words paused"
+      : `${today.newToday}/${today.newToday + today.newCount} new`;
   const complete = today.reviewedToday > 0 && !today.dueCount && !today.newCount;
   const parts = [`${complete ? "Done for today" : "Today"}: ${reviewsPart} · ${newPart}`];
   if (today.newReduced) parts.push("fewer new words while the backlog is large");
@@ -365,13 +401,24 @@ async function onSessionSizeChange(event) {
   rebuildDeck();
 }
 
-async function onDailyTargetChange(event) {
-  const target = Number(event.target.value);
-  state.dailyTarget = LodVaultStore.FLASHCARD_DAILY_TARGETS.includes(target) ? target : 0;
+async function onSchedulingSettingChange() {
+  const before = currentSettings();
+  state.settings = LodVaultStore.normalizeFlashcardSettings({
+    ...currentSettings(),
+    newPerDay: elements.newPerDay ? valueToSetting(elements.newPerDay.value) : currentSettings().newPerDay,
+    maxReviewsPerDay: elements.maxReviews ? valueToSetting(elements.maxReviews.value) : currentSettings().maxReviewsPerDay,
+    retention: elements.retention ? Number(elements.retention.value) : currentSettings().retention,
+    maxInterval: elements.maxInterval ? Number(elements.maxInterval.value) : currentSettings().maxInterval,
+    showHard: elements.showHard ? elements.showHard.checked : currentSettings().showHard
+  });
   await saveSettings();
   computeStats();
   renderStats();
-  if (state.filter === "today" && !state.sessionResults.length) rebuildDeck();
+  // Only the daily limits change what Today holds; the rest re-labels the card.
+  const queueChanged = before.newPerDay !== state.settings.newPerDay
+    || before.maxReviewsPerDay !== state.settings.maxReviewsPerDay;
+  if (queueChanged && state.filter === "today" && !state.sessionResults.length) rebuildDeck();
+  else renderDeck();
 }
 
 function onModeChange(event) {
@@ -485,12 +532,9 @@ function onKeyDown(event) {
     toggleReveal();
   } else if (cardMode() === "mc" && event.key >= "1" && event.key <= "4") {
     elements.mcOptions?.querySelectorAll("button")[Number(event.key) - 1]?.click();
-  } else if (event.key === "1") {
-    rateCard(1);
-  } else if (event.key === "2") {
-    rateCard(2);
-  } else if (event.key === "3") {
-    rateCard(3);
+  } else if (/^[1-4]$/.test(event.key)) {
+    const grade = gradeButtons()[Number(event.key) - 1]?.grade;
+    if (grade) rateCard(grade);
   } else if (state.mode === "listening" && (event.key === "p" || event.key === "P")) {
     playCardAudio();
   } else if (event.key === "r" || event.key === "R") {
@@ -748,16 +792,22 @@ function renderDeck() {
   if (elements.nextCard) elements.nextCard.disabled = !canNavigate();
 
   if (state.revealed && count > 0) {
+    renderRatingBar(entry);
     elements.ratingBar?.classList.remove("is-hidden");
   } else {
     elements.ratingBar?.classList.add("is-hidden");
+  }
+  const shownKey = `${entry.id}:${state.sessionActive ? state.sessionIndex : state.index}`;
+  if (shownKey !== state.cardShownKey) {
+    state.cardShownKey = shownKey;
+    state.cardShownAt = Date.now();
   }
 
   if (elements.shortcutHint) {
     const shortcuts = [
       mode === "mc" ? "1–4 choose" : "Space reveal",
       canNavigate() ? "← → navigate" : "",
-      mode === "mc" ? "" : "1 / 2 / 3 rate",
+      mode === "mc" ? "" : gradeButtons().map((button, index) => `${index + 1} ${button.label}`).join(" · "),
       listening ? "P replay" : "R flip direction"
     ];
     elements.shortcutHint.textContent = shortcuts.filter(Boolean).join(" · ");
@@ -769,6 +819,55 @@ function renderDeck() {
       if (elements.cardHint) elements.cardHint.textContent = "No pronunciation available. Reveal the answer or skip this card.";
     }
   }
+}
+
+const GRADE_LABELS = { 1: "Again", 2: "Hard", 3: "Good", 4: "Easy" };
+
+// Again / Good / Easy by default; "Show Hard" adds Hard between them.
+function gradeButtons() {
+  const grades = currentSettings().showHard ? [1, 2, 3, 4] : [1, 3, 4];
+  return grades.map((grade) => ({ grade, label: GRADE_LABELS[grade] }));
+}
+
+function formatInterval(preview) {
+  if (!preview) return "";
+  if (!preview.days) return `<${preview.minutes || 10}m`;
+  const days = preview.days;
+  if (days < 30) return `${days}d`;
+  if (days < 365) return `${Math.round(days / 3.04) / 10}mo`;
+  return `${Math.round(days / 36.5) / 10}y`;
+}
+
+// Practice decks only log reviews of words that aren't due, so they show no
+// intervals: the schedule stays as it is.
+function reviewKind(entry) {
+  if (state.filter === "today" || state.filter === "due") return "r";
+  return "p";
+}
+
+function renderRatingBar(entry) {
+  if (!elements.ratingBar) return;
+  let preview = null;
+  try {
+    preview = LodVaultStore.previewFlashcardIntervals?.(state.flashcardMeta[entry.id], {
+      settings: currentSettings(),
+      cardId: entry.id,
+      kind: reviewKind(entry),
+      meta: state.flashcardMeta
+    }) || null;
+  } catch {
+    preview = null;
+  }
+  const buttons = gradeButtons();
+  const key = `${buttons.map((button) => button.grade).join("")}:${JSON.stringify(preview)}`;
+  if (elements.ratingBar.dataset.key === key) return;
+  elements.ratingBar.dataset.key = key;
+  elements.ratingBar.style.setProperty("--grades", String(buttons.length));
+  LodVaultStore.setHtml(elements.ratingBar, buttons.map(({ grade, label }, index) => {
+    const interval = formatInterval(preview?.[grade]);
+    const title = `${label} (${index + 1})${interval ? `, next in ${interval}` : ""}`;
+    return `<button type="button" class="btn-ghost rating-button rating-${label.toLowerCase()}" data-grade="${grade}" title="${LodVaultStore.escapeHtml(title)}">${label}<small>${index + 1}${interval ? ` · ${LodVaultStore.escapeHtml(interval)}` : ""}</small></button>`;
+  }).join(""));
 }
 
 function renderEmptyState() {
@@ -906,10 +1005,9 @@ function showNext() {
 }
 
 function onRatingClick(event) {
-  const button = event.target.closest("[data-rating]");
+  const button = event.target.closest("[data-grade]");
   if (!button) return;
-  const rating = Number(button.dataset.rating);
-  rateCard(rating);
+  rateCard(Number(button.dataset.grade));
 }
 
 function onMcOptionClick(event) {
@@ -930,11 +1028,11 @@ function onMcOptionClick(event) {
     if (currentEntry()?.id !== entry.id) return;
     state.mcLocked = false;
     state.revealed = true;
-    void rateCard(correct ? 2 : 1);
+    void rateCard(correct ? 3 : 1);
   }, 700);
 }
 
-async function rateCard(rating) {
+async function rateCard(grade) {
   // The review is saved asynchronously, so a double click or repeated key would
   // otherwise record it twice and skip the next card.
   if (state.ratingInProgress || !state.revealed || !state.deck.length) return;
@@ -948,13 +1046,13 @@ async function rateCard(rating) {
 
   state.ratingInProgress = true;
   try {
-    await recordRating(entry, rating);
+    await recordRating(entry, grade);
   } finally {
     state.ratingInProgress = false;
   }
 }
 
-async function recordRating(entry, rating) {
+async function recordRating(entry, grade) {
   // Studying Today moves on from an older saved session, whose cards may now
   // have been reviewed here.
   if (state.filter === "today" && state.resumableSession) {
@@ -962,17 +1060,18 @@ async function recordRating(entry, rating) {
   }
 
   if (typeof LodVaultStore.recordFlashcardReview === "function") {
-    await LodVaultStore.recordFlashcardReview(entry.id, rating, cardDirection(entry));
+    const ms = state.cardShownAt ? Date.now() - state.cardShownAt : 0;
+    await LodVaultStore.recordFlashcardReview(entry.id, grade, cardDirection(entry), { kind: reviewKind(entry), ms });
     await loadFlashcardMeta();
     computeStats();
     renderStats();
   }
 
-  state.sessionResults.push({ entryId: entry.id, rating, direction: cardDirection(entry) });
+  state.sessionResults.push({ entryId: entry.id, grade, direction: cardDirection(entry) });
 
   if (state.sessionActive) {
     // A missed word comes back once before the session ends.
-    if (rating === 1 && state.sessionCards.filter((card) => card.id === entry.id).length === 1) {
+    if (grade === 1 && state.sessionCards.filter((card) => card.id === entry.id).length === 1) {
       state.sessionCards.push(entry);
     }
     state.sessionIndex += 1;
@@ -990,21 +1089,27 @@ async function recordRating(entry, rating) {
   }
 }
 
+// Sessions saved by older builds recorded rating 1..3 (Hard, Good, Easy).
+function resultGrade(result) {
+  if (result.grade) return result.grade;
+  return { 1: 1, 2: 3, 3: 4 }[result.rating] || 3;
+}
+
 function showSummary() {
   stopCardAudio();
   // A missed card comes back in the session; the summary counts each card
   // once, by how it went the first time.
   const firstTry = new Map();
   for (const result of state.sessionResults) {
-    if (!firstTry.has(result.entryId)) firstTry.set(result.entryId, result.rating);
+    if (!firstTry.has(result.entryId)) firstTry.set(result.entryId, resultGrade(result));
   }
-  const ratings = [...firstTry.values()];
-  const hard = ratings.filter((rating) => rating === 1).length;
-  const good = ratings.filter((rating) => rating === 2).length;
-  const easy = ratings.filter((rating) => rating === 3).length;
+  const grades = [...firstTry.values()];
+  const again = grades.filter((grade) => grade === 1).length;
+  const good = grades.filter((grade) => grade === 2 || grade === 3).length;
+  const easy = grades.filter((grade) => grade === 4).length;
 
   if (elements.summaryTotal) elements.summaryTotal.textContent = firstTry.size;
-  if (elements.summaryHard) elements.summaryHard.textContent = hard;
+  if (elements.summaryAgain) elements.summaryAgain.textContent = again;
   if (elements.summaryGood) elements.summaryGood.textContent = good;
   if (elements.summaryEasy) elements.summaryEasy.textContent = easy;
 

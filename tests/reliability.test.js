@@ -242,7 +242,7 @@ test("a double click on a rating records one review and doesn't skip a card", as
   const wordBefore = document.getElementById("card-word")?.textContent;
 
   document.getElementById("flip-card").click();
-  const ratingGood = document.querySelector('[data-rating="2"]');
+  const ratingGood = document.querySelector('[data-grade="3"]');
   ratingGood.click();
   ratingGood.click();
   await wait(40);

@@ -1268,7 +1268,7 @@ test("popup Today keeps the default target when storage reads fail", async () =>
   const { dom } = await loadPopupScript({
     entries: makeEntries(30),
     storeOverrides: {
-      async getFlashcardDailyTarget() {
+      async getFlashcardSettings() {
         throw new Error("storage unavailable");
       }
     }

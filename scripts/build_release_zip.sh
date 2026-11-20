@@ -64,6 +64,7 @@ cp \
   scripts/popup-sync.js \
   scripts/preview.js \
   scripts/shared.js \
+  scripts/srs.js \
   scripts/selection-trigger.js \
   scripts/store-core.js \
   scripts/sync-coordinator.js \

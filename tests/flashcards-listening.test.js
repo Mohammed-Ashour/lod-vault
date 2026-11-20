@@ -102,13 +102,14 @@ test("listening persists, supports keyboard reveal and ratings, and replays a Ha
   await tick();
   assert.equal(s.ratings.length, 0, "must reveal before rating");
   s.doc.dispatchEvent(new s.dom.window.KeyboardEvent("keydown", { key: " ", bubbles: true }));
-  s.doc.querySelector('[data-rating="1"]').click();
+  s.doc.querySelector('[data-grade="1"]').click();
   await tick();
-  assert.deepEqual(s.ratings[0], ["HAUS1", 1, "fwd"]);
+  assert.deepEqual(s.ratings[0].slice(0, 3), ["HAUS1", 1, "fwd"]);
+  assert.equal(s.ratings[0][3].kind, "r");
   assert.equal(s.plays.length, 2, "same-word retry plays again");
   assert.equal(s.doc.getElementById("card-answer").textContent, "");
   s.doc.getElementById("flip-card").click();
-  s.doc.querySelector('[data-rating="2"]').click();
+  s.doc.querySelector('[data-grade="3"]').click();
   await tick();
   assert.equal(s.doc.getElementById("summary-overlay").classList.contains("is-hidden"), false);
   s.mode("listening");
@@ -206,7 +207,7 @@ test("browse-mode storage echoes preserve playback but a changed current word pl
   s.mode("listening");
   assert.equal(s.api.state.sessionActive, false);
   s.doc.getElementById("flip-card").click();
-  s.doc.querySelector('[data-rating="2"]').click();
+  s.doc.querySelector('[data-grade="3"]').click();
   await tick();
   assert.deepEqual(s.plays.map(p => p.id), ["HAUS1", "BAM1"]);
   const stops = s.stops;

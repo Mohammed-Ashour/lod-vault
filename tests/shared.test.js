@@ -1338,40 +1338,155 @@ test("buildAnkiExport skips entries without a word", () => {
   assert.match(lines[4], /^Haus\t/);
 });
 
-test("scheduler: due reviews grow the interval from the start of the local day", () => {
+test("scheduler: a new word takes two steps in the session, then falls due on a whole day", async () => {
   const { store } = loadSharedStore();
   const now = new Date(2026, 5, 10, 20, 30);
-  const first = store.computeFlashcardDueAt({}, 2, now);
-  assert.equal(first.interval, 1);
-  assert.equal(new Date(first.dueAt).getTime(), new Date(2026, 5, 11).getTime());
+  const first = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: now.toISOString(), ms: 4200 });
+  assert.equal(first.previous, null);
+  assert.equal(first.record.srs, 1);
+  assert.equal(first.record.st, 1);
+  assert.equal(first.record.interval, 0);
+  assert.equal(first.record.dueAt, new Date(now.getTime() + 10 * 60000).toISOString());
+  assert.deepEqual({ ...first.record.reviews[0] }, { date: now.toISOString(), rating: 2, direction: "fwd", grade: 3, kind: "l", ms: 4200 });
+  assert.equal(store.isFlashcardDue(first.record, now), true);
 
-  const easy = store.computeFlashcardDueAt({}, 3, now);
-  assert.equal(easy.interval, 2);
-
-  const due = { interval: 4, dueAt: new Date(2026, 5, 10).toISOString() };
-  assert.equal(store.computeFlashcardDueAt(due, 2, now).interval, 8);
-  assert.equal(store.computeFlashcardDueAt(due, 3, now).interval, 10);
-  assert.equal(store.computeFlashcardDueAt(due, 1, now).interval, 1);
+  const later = new Date(now.getTime() + 15 * 60000);
+  const second = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: later.toISOString() });
+  assert.equal(second.record.st, 2);
+  assert.equal(second.record.interval, 3);
+  assert.equal(second.record.dueAt, new Date(2026, 5, 13).toISOString());
+  // Fields older builds read are still written, on their 1..3 scale.
+  assert.equal(second.record.goodCount, 2);
+  assert.equal(second.record.totalReviews, 2);
 });
 
-test("scheduler: practising early leaves the schedule alone unless the word was missed", () => {
+test("scheduler: Again on a review card relearns it and counts a lapse; Easy and Again map to the old scale", async () => {
+  const now = new Date(2026, 5, 10, 9);
+  const { store } = loadSharedStore({
+    "lodVault.flashcardMeta": {
+      HAUS1: {
+        reviews: [], totalReviews: 6, lastReviewedAt: new Date(2026, 5, 1, 9).toISOString(), dueAt: new Date(2026, 5, 9).toISOString(), interval: 8,
+        srs: 1, s: 8, d: 5, st: 2, step: 0, lapses: 0
+      }
+    }
+  });
+  const missed = await store.recordFlashcardReview("HAUS1", 1, "fwd", { now: now.toISOString() });
+  assert.equal(missed.record.st, 3);
+  assert.equal(missed.record.lapses, 1);
+  assert.ok(missed.record.s < 8);
+  assert.equal(missed.record.reviews.at(-1).rating, 1);
+  assert.equal(missed.record.hardCount, 1);
+  const back = await store.recordFlashcardReview("HAUS1", 4, "fwd", { now: new Date(now.getTime() + 600000).toISOString() });
+  assert.equal(back.record.st, 2);
+  assert.equal(back.record.reviews.at(-1).rating, 3);
+  assert.equal(back.record.easyCount, 1);
+});
+
+test("scheduler: practising a word that isn't due leaves its schedule alone unless it was missed", async () => {
+  const now = new Date(2026, 5, 10, 9);
+  const card = {
+    reviews: [], totalReviews: 3, lastReviewedAt: new Date(2026, 5, 8).toISOString(), dueAt: new Date(2026, 5, 20).toISOString(), interval: 12,
+    srs: 1, s: 12, d: 5, st: 2, step: 0, lapses: 0
+  };
+  const { store } = loadSharedStore({ "lodVault.flashcardMeta": { HAUS1: card } });
+  const practised = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: now.toISOString(), kind: "p" });
+  assert.equal(practised.record.dueAt, card.dueAt);
+  assert.equal(practised.record.s, 12);
+  assert.equal(practised.record.interval, 12);
+  assert.equal(practised.record.reviews.at(-1).kind, "p");
+  assert.equal(store.previewFlashcardIntervals(practised.record, { now, kind: "p" }), null);
+
+  const missed = await store.recordFlashcardReview("HAUS1", 1, "fwd", { now: now.toISOString(), kind: "p" });
+  assert.equal(missed.record.dueAt, new Date(2026, 5, 11).toISOString());
+  assert.equal(missed.record.s, 12);
+  assert.equal(missed.record.lapses, 0);
+
+  // Practice reviews aren't today's reviews.
+  const entries = [{ id: "HAUS1", word: "Haus" }];
+  assert.equal(store.buildTodayQueue(entries, { HAUS1: { ...practised.record } }, { now }).reviewedToday, 0);
+});
+
+test("scheduler: intervals stop at the chosen cap", async () => {
+  const now = new Date(2026, 5, 10, 9);
+  const card = {
+    reviews: [], totalReviews: 9, lastReviewedAt: new Date(2025, 5, 10).toISOString(), dueAt: new Date(2026, 5, 1).toISOString(), interval: 300,
+    srs: 1, s: 300, d: 3, st: 2
+  };
+  const capped = loadSharedStore({ "lodVault.flashcardMeta": { HAUS1: card } });
+  const cappedInterval = (await capped.store.recordFlashcardReview("HAUS1", 4, "fwd", { now: now.toISOString() })).record.interval;
+  // Fuzz may only bring a capped interval in, never past the cap.
+  assert.ok(cappedInterval <= 365 && cappedInterval >= 365 - 19, String(cappedInterval));
+  const longer = loadSharedStore({ "lodVault.flashcardMeta": { HAUS1: card }, "lodVault.flashcardSettings": { maxInterval: 3650 } });
+  assert.ok((await longer.store.recordFlashcardReview("HAUS1", 4, "fwd", { now: now.toISOString() })).record.interval > 365);
+});
+
+test("scheduler: a card from an older build migrates on its next review and previews intervals before", async () => {
+  const now = new Date(2026, 5, 10, 9);
+  const day = (n) => new Date(2026, 5, n, 9).toISOString();
+  const legacy = {
+    reviews: [{ date: day(1), rating: 2, direction: "fwd" }, { date: day(2), rating: 2, direction: "fwd" }, { date: day(4), rating: 3, direction: "fwd" }],
+    totalReviews: 3, goodCount: 2, easyCount: 1, lastReviewedAt: day(4), dueAt: new Date(2026, 5, 9).toISOString(), interval: 5
+  };
+  const { store } = loadSharedStore({ "lodVault.flashcardMeta": { HAUS1: legacy } });
+  const before = await store.getFlashcardMeta();
+  assert.equal(before.HAUS1.srs, undefined);
+  assert.equal(before.HAUS1.dueAt, legacy.dueAt);
+  const preview = store.previewFlashcardIntervals(before.HAUS1, { now, cardId: "HAUS1" });
+  assert.ok(preview[3].days > 5);
+
+  const { record } = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: now.toISOString() });
+  assert.equal(record.srs, 1);
+  assert.equal(record.st, 2);
+  assert.equal(record.interval, preview[3].days);
+});
+
+test("undo restores a card exactly, but never over a newer review", async () => {
   const { store } = loadSharedStore();
   const now = new Date(2026, 5, 10, 9);
-  const card = { interval: 4, dueAt: new Date(2026, 5, 12).toISOString() };
+  const first = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: now.toISOString() });
+  const second = await store.recordFlashcardReview("HAUS1", 1, "fwd", { now: new Date(now.getTime() + 60000).toISOString() });
+  assert.deepEqual(second.previous, JSON.parse(JSON.stringify(first.record)));
 
-  assert.deepEqual({ ...store.computeFlashcardDueAt(card, 2, now) }, card);
-  assert.deepEqual({ ...store.computeFlashcardDueAt(card, 3, now) }, card);
+  const stale = await store.undoFlashcardReview("HAUS1", first.previous, first.record.reviews.at(-1).date);
+  assert.equal(stale.ok, false);
+  assert.equal((await store.getFlashcardMeta()).HAUS1.totalReviews, 2);
 
-  const missed = store.computeFlashcardDueAt(card, 1, now);
-  assert.equal(missed.interval, 1);
-  assert.equal(new Date(missed.dueAt).getTime(), new Date(2026, 5, 11).getTime());
+  assert.equal((await store.undoFlashcardReview("HAUS1", second.previous, second.record.reviews.at(-1).date)).ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify((await store.getFlashcardMeta()).HAUS1)), JSON.parse(JSON.stringify(first.record)));
+  assert.equal((await store.undoFlashcardReview("HAUS1", first.previous, first.record.reviews.at(-1).date)).ok, true);
+  assert.equal((await store.getFlashcardMeta()).HAUS1, undefined);
 });
 
-test("scheduler: intervals stop at the cap", () => {
+test("flashcard settings migrate the old daily target and reject unknown values", () => {
   const { store } = loadSharedStore();
-  const now = new Date(2026, 5, 10);
-  const card = { interval: 300, dueAt: new Date(2026, 5, 1).toISOString() };
-  assert.equal(store.computeFlashcardDueAt(card, 3, now).interval, store.FLASHCARD_MAX_INTERVAL_DAYS);
+  const defaults = store.normalizeFlashcardSettings({});
+  assert.deepEqual({ ...defaults }, { newPerDay: 10, maxReviewsPerDay: null, retention: 0.9, showHard: false, autoplay: "reveal", maxInterval: 365, mode: "self" });
+  assert.equal(store.normalizeFlashcardSettings({ dailyTarget: 20 }).newPerDay, 20);
+  assert.equal(store.normalizeFlashcardSettings({ dailyTarget: 5, mode: "mc" }).mode, "mc");
+  assert.equal(store.normalizeFlashcardSettings({ dailyTarget: null }).newPerDay, null);
+  assert.equal(store.normalizeFlashcardSettings({ dailyTarget: 7 }).newPerDay, 10);
+  assert.equal(store.normalizeFlashcardSettings({ newPerDay: 0, dailyTarget: 20 }).newPerDay, 0);
+  assert.equal(store.normalizeFlashcardSettings({ retention: 0.5, maxReviewsPerDay: 75, autoplay: "loud" }).retention, 0.9);
+  assert.equal(store.normalizeFlashcardSettings({ maxReviewsPerDay: 100 }).maxReviewsPerDay, 100);
+});
+
+test("Today queue: newPerDay 0 pauses new words and a review limit caps what is offered, not what is due", () => {
+  const { store } = loadSharedStore();
+  const now = new Date(2026, 5, 10, 9);
+  const entries = [];
+  const meta = {};
+  for (let index = 0; index < 60; index += 1) {
+    entries.push({ id: `D${index}`, word: `d${index}` });
+    meta[`D${index}`] = { totalReviews: 2, reviews: [], dueAt: new Date(2026, 5, 1).toISOString() };
+  }
+  entries.push({ id: "NEW", word: "new", study: true });
+  const paused = store.buildTodayQueue(entries, meta, { now, newPerDay: 0 });
+  assert.equal(paused.newCount, 0);
+  const capped = store.buildTodayQueue(entries, meta, { now, newPerDay: 10, maxReviewsPerDay: 50 });
+  assert.equal(capped.dueCount, 60);
+  assert.equal(capped.dueEntries.length, 50);
+  assert.equal(capped.queue.length, 51);
+  assert.equal(store.buildTodayQueue(entries, meta, { now, newPerDay: null }).newCount, 1);
 });
 
 test("a card is due for the whole local day, including older timestamped schedules", () => {
@@ -1384,12 +1499,20 @@ test("a card is due for the whole local day, including older timestamped schedul
 
 test("repeated reviews in one sitting don't inflate the interval", async () => {
   const { store } = loadSharedStore();
-  for (let index = 0; index < 5; index += 1) {
-    await store.recordFlashcardReview("HAUS1", 2, "fwd");
+  const now = new Date(2026, 5, 10, 9).getTime();
+  const intervals = [];
+  let record;
+  for (let index = 0; index < 6; index += 1) {
+    ({ record } = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: new Date(now + index * 60000).toISOString() }));
+    intervals.push(record.interval);
   }
-  const meta = await store.getFlashcardMeta();
-  assert.equal(meta.HAUS1.interval, 1);
-  assert.equal(meta.HAUS1.totalReviews, 5);
+  // Two learning steps, then graduation; more Goods the same day add nothing
+  // to stability (recall is certain minutes later).
+  assert.equal(record.st, 2);
+  assert.equal(record.s, 3.173);
+  assert.deepEqual(intervals.slice(0, 3), [0, 3, 4]);
+  assert.deepEqual(intervals.slice(3), [4, 4, 4]);
+  assert.equal(record.totalReviews, 6);
 });
 
 test("streak survives until a whole day has been missed", () => {

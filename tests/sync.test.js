@@ -1486,3 +1486,94 @@ test("skill-card progress travels with its word and is dropped with it", async (
   await tombstoned.sync.SyncAdapter.pullAll({ repush: false });
   assert.deepEqual(Object.keys(await tombstoned.store.getFlashcardMeta()), []);
 });
+
+// expandProgress as shipped in 2.4.0, to check what an older device reads.
+function expandProgress240(store, compact = {}) {
+  const unixToIso = (value) => (Number.isFinite(value) && value > 0 ? new Date(value * 1000).toISOString() : "");
+  const review = Array.isArray(compact.r) && unixToIso(compact.r[0])
+    ? [{ date: unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd" }]
+    : [];
+  return store.normalizeFlashcardMeta({
+    reviews: review,
+    totalReviews: compact.n,
+    hardCount: compact.h,
+    goodCount: compact.g,
+    easyCount: compact.e,
+    lastReviewedAt: unixToIso(compact.l),
+    dueAt: unixToIso(compact.d),
+    interval: compact.v
+  });
+}
+
+function fsrsCard(overrides = {}) {
+  const lastReviewedAt = "2026-06-10T09:00:00.000Z";
+  return makeCard({
+    reviews: [{ date: lastReviewedAt, rating: 3, direction: "fwd", grade: 4, kind: "r" }],
+    easyCount: 1,
+    interval: 23,
+    dueAt: "2026-07-03T00:00:00.000Z",
+    srs: 1,
+    s: 21.123456,
+    d: 4.27,
+    st: 2,
+    step: 0,
+    lapses: 2,
+    ...overrides
+  });
+}
+
+test("FSRS state travels to another device, and a 2.4.0 device still reads the schedule", async () => {
+  const laptop = loadSyncScript({
+    "lodVault.entries": { HAUS1: makeLocalEntry() },
+    "lodVault.flashcardMeta": { HAUS1: fsrsCard({ suspended: true }) }
+  });
+  await laptop.sync.SyncAdapter.pushAll();
+  const [key] = progressKeys(laptop.syncStorageData);
+  const [record] = laptop.syncStorageData[key];
+  assert.deepEqual({ ...record }, {
+    i: "HAUS1", n: 3, l: Date.parse("2026-06-10T09:00:00.000Z") / 1000, d: Date.parse("2026-07-03T00:00:00.000Z") / 1000, v: 23, g: 3, e: 1,
+    s: 2112, f: 43, t: 2, x: 2, u: 1, r: [Date.parse("2026-06-10T09:00:00.000Z") / 1000, 3, 0, 4]
+  });
+
+  const desktop = loadSyncScript({ sync: laptop.syncStorageData });
+  await desktop.sync.SyncAdapter.init();
+  const card = (await desktop.store.getFlashcardMeta()).HAUS1;
+  assert.equal(card.srs, 1);
+  assert.equal(card.s, 21.12);
+  assert.equal(card.d, 4.3);
+  assert.equal(card.st, 2);
+  assert.equal(card.lapses, 2);
+  assert.equal(card.suspended, true);
+  assert.equal(card.reviews[0].grade, 4);
+  assert.equal(card.dueAt, "2026-07-03T00:00:00.000Z");
+
+  // A 2.4.0 build ignores the new keys and keeps the due date, interval and
+  // a rating on its own 1..3 scale.
+  const old = expandProgress240(desktop.store, record);
+  assert.equal(old.dueAt, "2026-07-03T00:00:00.000Z");
+  assert.equal(old.interval, 23);
+  assert.equal(old.reviews[0].rating, 3);
+  assert.equal(old.totalReviews, 3);
+});
+
+test("progress from a 2.4.0 device arrives as a legacy card and is scheduled by FSRS on its next review", async () => {
+  const old = loadSyncScript({
+    "lodVault.entries": { HAUS1: makeLocalEntry() },
+    "lodVault.flashcardMeta": { HAUS1: makeCard() }
+  });
+  await old.sync.SyncAdapter.pushAll();
+  const [record] = old.syncStorageData[progressKeys(old.syncStorageData)[0]];
+  assert.equal("s" in record, false);
+  assert.equal(record.r.length, 3);
+
+  const device = loadSyncScript({ sync: old.syncStorageData });
+  await device.sync.SyncAdapter.init();
+  const card = (await device.store.getFlashcardMeta()).HAUS1;
+  assert.equal(card.srs, undefined);
+  assert.equal(card.dueAt, "2026-06-12T00:00:00.000Z");
+  const preview = device.store.previewFlashcardIntervals(card, { now: new Date("2026-06-12T09:00:00.000Z") });
+  assert.ok(preview[3].days >= 2);
+  const { record: reviewed } = await device.store.recordFlashcardReview("HAUS1", 3, "fwd", { now: "2026-06-12T09:00:00.000Z" });
+  assert.equal(reviewed.srs, 1);
+  assert.equal(reviewed.totalReviews, 4);
+});

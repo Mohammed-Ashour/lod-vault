@@ -2197,19 +2197,43 @@
 
   const FLASHCARD_META_KEY = "lodVault.flashcardMeta";
   const FLASHCARD_SETTINGS_KEY = "lodVault.flashcardSettings";
-  const FLASHCARD_DAILY_TARGETS = [5, 10, 20];
-  const FLASHCARD_DEFAULT_DAILY_TARGET = 10;
   const FLASHCARD_MAX_INTERVAL_DAYS = 365;
+  // Choices offered by the Session menu. null means "no limit".
+  const FLASHCARD_SETTING_CHOICES = Object.freeze({
+    newPerDay: Object.freeze([0, 5, 10, 15, 20, null]),
+    maxReviewsPerDay: Object.freeze([null, 50, 100, 200]),
+    retention: Object.freeze([0.85, 0.9, 0.95]),
+    maxInterval: Object.freeze([365, 3650]),
+    autoplay: Object.freeze(["front", "reveal", "off"]),
+    mode: Object.freeze(["self", "mc", "listening"])
+  });
+  const FLASHCARD_DEFAULT_SETTINGS = Object.freeze({
+    newPerDay: 10,
+    maxReviewsPerDay: null,
+    retention: 0.9,
+    showHard: false,
+    autoplay: "reveal",
+    maxInterval: FLASHCARD_MAX_INTERVAL_DAYS,
+    mode: "self"
+  });
+  const FLASHCARD_STEP_DELAY_MS = 10 * 60 * 1000;
+  const REVIEW_KINDS = new Set(["r", "l", "p"]);
 
   function normalizeFlashcardMeta(meta = {}) {
     const reviews = Array.isArray(meta.reviews) ? meta.reviews.slice(-100) : [];
     const cleanReviews = reviews
       .filter((r) => r && typeof r === "object")
-      .map((r) => ({
-        date: cleanText(r.date) || nowIso(),
-        rating: [1, 2, 3].includes(Number(r.rating)) ? Number(r.rating) : 2,
-        direction: r.direction === "rev" ? "rev" : "fwd"
-      }));
+      .map((r) => {
+        const review = {
+          date: cleanText(r.date) || nowIso(),
+          rating: [1, 2, 3].includes(Number(r.rating)) ? Number(r.rating) : 2,
+          direction: r.direction === "rev" ? "rev" : "fwd"
+        };
+        if ([1, 2, 3, 4].includes(Number(r.grade))) review.grade = Number(r.grade);
+        if (REVIEW_KINDS.has(r.kind)) review.kind = r.kind;
+        if (Number(r.ms) > 0) review.ms = Math.round(Number(r.ms));
+        return review;
+      });
 
     const totalReviews = Math.max(0, Number(meta.totalReviews) || cleanReviews.length);
     const interval = Math.max(0, Number(meta.interval) || 0);
@@ -2228,7 +2252,7 @@
         : getLocalDayStart(new Date()).toISOString();
     }
 
-    return {
+    const normalized = {
       reviews: cleanReviews,
       totalReviews,
       hardCount: Math.max(0, Number(meta.hardCount) || 0),
@@ -2238,6 +2262,21 @@
       dueAt,
       interval
     };
+    // FSRS state, written by builds from 2.5 on. A card without it is
+    // migrated the first time it is scheduled again.
+    if (Number(meta.srs) === 1 && Number(meta.s) > 0 && Number(meta.d) > 0) {
+      normalized.srs = 1;
+      normalized.s = Number(meta.s);
+      normalized.d = Math.min(10, Math.max(1, Number(meta.d)));
+      normalized.st = [0, 1, 2, 3].includes(Number(meta.st)) ? Number(meta.st) : 2;
+      normalized.step = Math.max(0, Math.floor(Number(meta.step) || 0));
+      normalized.lapses = Math.max(0, Math.floor(Number(meta.lapses) || 0));
+      const scheduledAt = cleanText(meta.sr);
+      if (Number.isFinite(Date.parse(scheduledAt))) normalized.sr = scheduledAt;
+    }
+    if (meta.suspended === true) normalized.suspended = true;
+    if (meta.leech === true) normalized.leech = true;
+    return normalized;
   }
 
   async function getFlashcardMeta() {
@@ -2270,15 +2309,42 @@
     }
   }
 
-  function normalizeFlashcardDailyTarget(settings) {
-    const target = settings?.dailyTarget;
-    if (FLASHCARD_DAILY_TARGETS.includes(Number(target))) return Number(target);
-    return target === null ? 0 : FLASHCARD_DEFAULT_DAILY_TARGET;
+  function pickChoice(value, choices, fallback) {
+    if (value === null && choices.includes(null)) return null;
+    const number = typeof value === "string" ? value : Number(value);
+    return choices.includes(number) ? number : fallback;
   }
 
-  async function getFlashcardDailyTarget() {
+  // Flashcard settings are local to the device. Builds before 2.5 stored only
+  // dailyTarget (5/10/20, or null for no limit), which becomes newPerDay.
+  function normalizeFlashcardSettings(raw = {}) {
+    const settings = raw && typeof raw === "object" ? raw : {};
+    const choices = FLASHCARD_SETTING_CHOICES;
+    const defaults = FLASHCARD_DEFAULT_SETTINGS;
+    let newPerDay;
+    if ("newPerDay" in settings) {
+      newPerDay = pickChoice(settings.newPerDay, choices.newPerDay, defaults.newPerDay);
+    } else if ("dailyTarget" in settings) {
+      newPerDay = settings.dailyTarget === null
+        ? null
+        : pickChoice(settings.dailyTarget, choices.newPerDay, defaults.newPerDay);
+    } else {
+      newPerDay = defaults.newPerDay;
+    }
+    return {
+      newPerDay,
+      maxReviewsPerDay: pickChoice(settings.maxReviewsPerDay ?? null, choices.maxReviewsPerDay, defaults.maxReviewsPerDay),
+      retention: pickChoice(settings.retention, choices.retention, defaults.retention),
+      showHard: settings.showHard === true,
+      autoplay: choices.autoplay.includes(settings.autoplay) ? settings.autoplay : defaults.autoplay,
+      maxInterval: pickChoice(settings.maxInterval, choices.maxInterval, defaults.maxInterval),
+      mode: choices.mode.includes(settings.mode) ? settings.mode : defaults.mode
+    };
+  }
+
+  async function getFlashcardSettings() {
     const data = await chrome.storage.local.get([FLASHCARD_SETTINGS_KEY]);
-    return normalizeFlashcardDailyTarget(data[FLASHCARD_SETTINGS_KEY]);
+    return normalizeFlashcardSettings(data[FLASHCARD_SETTINGS_KEY]);
   }
 
   function getLocalDayStart(value = new Date(), offsetDays = 0) {
@@ -2295,28 +2361,6 @@
     const dueTime = Date.parse(card?.dueAt || "");
     if (!Number.isFinite(dueTime)) return Boolean(Number(card?.totalReviews));
     return dueTime < getLocalDayStart(now, 1).getTime();
-  }
-
-  function computeFlashcardDueAt(existing, rating, now = new Date()) {
-    const normalizedRating = [1, 2, 3].includes(Number(rating)) ? Number(rating) : 2;
-    const previous = existing.interval || 0;
-    const scheduled = previous > 0 && Number.isFinite(Date.parse(existing.dueAt || ""));
-
-    // Practising ahead of schedule is not evidence the word can wait longer, so
-    // only a Hard rating changes a card that isn't due yet.
-    if (normalizedRating !== 1 && scheduled && !isFlashcardDue(existing, now)) {
-      return { dueAt: existing.dueAt, interval: previous };
-    }
-
-    let interval = 1;
-    if (normalizedRating === 2) {
-      interval = previous ? Math.ceil(previous * 2) : 1;
-    } else if (normalizedRating === 3) {
-      interval = previous ? Math.ceil(previous * 2.5) : 2;
-    }
-    interval = Math.min(interval, FLASHCARD_MAX_INTERVAL_DAYS);
-
-    return { dueAt: getLocalDayStart(now, interval).toISOString(), interval };
   }
 
   // Reviews are stored as UTC timestamps; days and streaks follow the learner's
@@ -2393,14 +2437,21 @@
 
   // The one definition of "what should I study today", shared by the popup,
   // the flashcards page and the toolbar badge. Every due card comes first,
-  // most overdue first. New Study-list words follow, up to the new-word limit
-  // (options.newPerDay, or the older options.dailyTarget; 0 means no limit).
+  // most overdue first. New Study-list words follow, up to the new-word limit:
+  // options.newPerDay (0 = none, null = no limit) or, from older callers,
+  // options.dailyTarget (0 = no limit). options.maxReviewsPerDay caps the due
+  // cards offered today; dueCount still counts them all.
   // All "today" numbers count cards, not button presses: a card retried in a
   // session, or practised again, is one card.
   function buildTodayQueue(entries = [], meta = {}, options = {}) {
     const now = options.now || new Date();
-    const limitOption = options.newPerDay ?? options.dailyTarget;
-    const newLimit = Math.max(0, Number(limitOption) || 0);
+    let newLimit = Infinity;
+    if (typeof options.newPerDay === "number" && Number.isFinite(options.newPerDay)) {
+      newLimit = Math.max(0, options.newPerDay);
+    } else if (options.newPerDay === undefined && Number(options.dailyTarget) > 0) {
+      newLimit = Number(options.dailyTarget);
+    }
+    const reviewLimit = Number(options.maxReviewsPerDay) > 0 ? Number(options.maxReviewsPerDay) : Infinity;
     const todayKey = toLocalDateKey(now);
     const due = [];
     const fresh = [];
@@ -2415,7 +2466,8 @@
         if (!dateKey) continue;
         reviewDays.add(dateKey);
         (dayCards[dateKey] ||= new Set()).add(id);
-        if (dateKey === todayKey) reviewedTodayIds.add(id);
+        // Practising a word that wasn't due isn't one of today's reviews.
+        if (dateKey === todayKey && review?.kind !== "p") reviewedTodayIds.add(id);
       }
       if (isCoreCardId(id) && isFirstReviewedOn(card, todayKey)) newToday += 1;
     }
@@ -2446,66 +2498,199 @@
     // twice a normal day's cards) halves them until it is under control.
     let todayLimit = newLimit;
     let newReduced = false;
-    if (newLimit) {
+    if (newLimit && Number.isFinite(newLimit)) {
       const usual = Math.max(newLimit, usualDailyCards(dayCards, todayKey));
       if (due.length > usual * 2) {
         todayLimit = Math.ceil(newLimit / 2);
         newReduced = true;
       }
     }
-    const newSlots = todayLimit ? Math.max(0, todayLimit - newToday) : fresh.length;
+    const newSlots = Number.isFinite(todayLimit) ? Math.max(0, todayLimit - newToday) : fresh.length;
     const newEntries = fresh.slice(0, newSlots);
     const reviewedToday = reviewedTodayIds.size;
+    const reviewsToday = Math.max(0, reviewedToday - newToday);
+    const dueOffered = Number.isFinite(reviewLimit) ? due.slice(0, Math.max(0, reviewLimit - reviewsToday)) : due;
 
     return {
-      dueEntries: due,
+      dueEntries: dueOffered,
       newEntries,
-      queue: [...due, ...newEntries],
+      queue: [...dueOffered, ...newEntries],
       dueCount: due.length,
       newCount: newEntries.length,
       reviewedToday,
       newToday,
-      reviewsToday: Math.max(0, reviewedToday - newToday),
-      newLimit: todayLimit,
+      reviewsToday,
+      newLimit: Number.isFinite(todayLimit) ? todayLimit : null,
+      reviewLimit: Number.isFinite(reviewLimit) ? reviewLimit : null,
       newReduced,
       streak: computeFlashcardStreak(Array.from(reviewDays).sort().reverse())
     };
   }
 
-  async function recordFlashcardReviewDirect(entryId, rating, direction) {
-    if (!entryId) throw new Error("Missing entry id.");
-    return runVaultIo(async () => {
-      const normalizedRating = [1, 2, 3].includes(Number(rating)) ? Number(rating) : 2;
-      const normalizedDirection = direction === "rev" ? "rev" : "fwd";
-      const meta = await getFlashcardMeta();
-      const existing = meta[entryId] || {};
+  function getSrs() {
+    const srs = globalThis.LodVaultSrs;
+    if (!srs) throw new Error("Scheduling is unavailable on this page.");
+    return srs;
+  }
 
-      const reviews = Array.isArray(existing.reviews) ? existing.reviews : [];
-      reviews.push({
-        date: nowIso(),
-        rating: normalizedRating,
-        direction: normalizedDirection
-      });
-
-      const trimmed = reviews.slice(-100);
-      const hardCount = trimmed.filter((r) => r.rating === 1).length;
-      const goodCount = trimmed.filter((r) => r.rating === 2).length;
-      const easyCount = trimmed.filter((r) => r.rating === 3).length;
-      const { dueAt, interval } = computeFlashcardDueAt(existing, normalizedRating);
-
-      meta[entryId] = {
-        reviews: trimmed,
-        totalReviews: (existing.totalReviews || 0) + 1,
-        hardCount,
-        goodCount,
-        easyCount,
-        lastReviewedAt: nowIso(),
-        dueAt,
-        interval
+  // A card's FSRS state, migrating a card scheduled by an older build on the
+  // fly. Nothing is saved here; the next review writes the migrated state.
+  function getFlashcardSrsCard(meta) {
+    const srs = getSrs();
+    if (!meta || !Number(meta.totalReviews)) return srs.initCard();
+    if (meta.srs === 1) {
+      return {
+        s: meta.s,
+        d: meta.d,
+        st: meta.st,
+        step: meta.step || 0,
+        lapses: meta.lapses || 0,
+        reps: meta.totalReviews,
+        last: meta.sr || meta.lastReviewedAt || null
       };
+    }
+    return srs.migrateLegacy(meta);
+  }
+
+  // How many review cards fall due on each day from today, for load balancing.
+  function buildDueLoad(meta = {}, now = new Date(), skipId = "") {
+    const today = getLocalDayStart(now).getTime();
+    const counts = new Map();
+    for (const [id, card] of Object.entries(meta || {})) {
+      if (id === skipId || !card?.totalReviews || card.suspended) continue;
+      const due = Date.parse(card.dueAt || "");
+      if (!Number.isFinite(due)) continue;
+      const day = Math.round((getLocalDayStart(new Date(due)).getTime() - today) / 86400000);
+      if (day > 0) counts.set(day, (counts.get(day) || 0) + 1);
+    }
+    return (day) => counts.get(day) || 0;
+  }
+
+  function schedulingOptions(settings, cardId, meta, now) {
+    const normalized = normalizeFlashcardSettings(settings);
+    return {
+      retention: normalized.retention,
+      maxInterval: normalized.maxInterval,
+      cardId,
+      load: meta ? buildDueLoad(meta, now, cardId) : undefined
+    };
+  }
+
+  // Practising a word that isn't due (Favorites, All saved, Study practice)
+  // is logged but doesn't move its schedule. A miss brings it back tomorrow
+  // at the latest, without resetting what it had learned.
+  function isPracticeReview(existing, card, kind, now) {
+    return kind === "p"
+      && Boolean(existing?.totalReviews)
+      && card.st === 2
+      && !isFlashcardDue(existing, now);
+  }
+
+  // The interval the buttons promise: { [grade]: { days, minutes } }.
+  function previewFlashcardIntervals(meta, options = {}) {
+    const now = options.now ? new Date(options.now) : new Date();
+    const card = getFlashcardSrsCard(meta);
+    if (isPracticeReview(meta, card, options.kind, now)) return null;
+    return getSrs().previewIntervals(card, now, schedulingOptions(options.settings, options.cardId || "", options.meta, now));
+  }
+
+  function legacyRating(grade) {
+    if (grade === 1) return 1;
+    return grade === 4 ? 3 : 2;
+  }
+
+  // Grades: 1 Again, 2 Hard, 3 Good, 4 Easy. Kinds: "r" review, "l" learning
+  // step, "p" practice. Returns the record before and after, for Undo.
+  // Older fields (rating 1..3, interval, dueAt, counts) are still written so a
+  // 2.4.0 build reading synced progress keeps a sensible schedule.
+  async function recordFlashcardReviewDirect(cardId, grade, direction, options = {}) {
+    if (!cardId) throw new Error("Missing card id.");
+    return runVaultIo(async () => {
+      const g = [1, 2, 3, 4].includes(Number(grade)) ? Number(grade) : 3;
+      const normalizedDirection = direction === "rev" ? "rev" : "fwd";
+      const now = options?.now ? new Date(options.now) : new Date();
+      const date = now.toISOString();
+      const [meta, settings] = await Promise.all([getFlashcardMeta(), getFlashcardSettings()]);
+      const existing = meta[cardId] || null;
+      const previous = existing ? structuredCloneSafe(existing) : null;
+      const card = getFlashcardSrsCard(existing);
+      const practice = isPracticeReview(existing, card, options?.kind, now);
+      const rating = legacyRating(g);
+
+      let schedule;
+      let kind;
+      if (practice) {
+        kind = "p";
+        let dueAt = existing.dueAt;
+        if (g === 1) {
+          const tomorrow = getLocalDayStart(now, 1).toISOString();
+          if (!(Date.parse(dueAt) <= Date.parse(tomorrow))) dueAt = tomorrow;
+        }
+        schedule = { card, dueAt, interval: existing.interval || 0, scheduledAt: existing.sr || existing.lastReviewedAt };
+      } else {
+        kind = card.st === 2 ? "r" : "l";
+        const result = getSrs().review(card, g, now, schedulingOptions(settings, cardId, meta, now));
+        schedule = {
+          card: result.card,
+          dueAt: result.card.st === 2
+            ? getLocalDayStart(now, result.days).toISOString()
+            : new Date(now.getTime() + FLASHCARD_STEP_DELAY_MS).toISOString(),
+          interval: result.days,
+          scheduledAt: date
+        };
+      }
+
+      const review = { date, rating, direction: normalizedDirection, grade: g, kind };
+      if (Number(options?.ms) > 0) review.ms = Math.min(Math.round(Number(options.ms)), 3600000);
+      const reviews = [...(existing?.reviews || []), review].slice(-100);
+
+      const record = normalizeFlashcardMeta({
+        reviews,
+        totalReviews: (existing?.totalReviews || 0) + 1,
+        hardCount: (existing?.hardCount || 0) + (rating === 1 ? 1 : 0),
+        goodCount: (existing?.goodCount || 0) + (rating === 2 ? 1 : 0),
+        easyCount: (existing?.easyCount || 0) + (rating === 3 ? 1 : 0),
+        lastReviewedAt: date,
+        dueAt: schedule.dueAt,
+        interval: schedule.interval,
+        srs: 1,
+        s: schedule.card.s,
+        d: schedule.card.d,
+        st: schedule.card.st,
+        step: schedule.card.step,
+        lapses: schedule.card.lapses,
+        sr: schedule.scheduledAt,
+        suspended: existing?.suspended,
+        leech: existing?.leech
+      });
+      meta[cardId] = record;
 
       await saveFlashcardMeta(meta);
-      return meta[entryId];
+      return { previous, record };
+    });
+  }
+
+  function structuredCloneSafe(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  // Undo puts a card back exactly as it was before one review, but only while
+  // that review is still the card's latest: a review synced in from another
+  // device since then is kept.
+  async function undoFlashcardReviewDirect(cardId, previous, reviewDate) {
+    if (!cardId) throw new Error("Missing card id.");
+    return runVaultIo(async () => {
+      const meta = await getFlashcardMeta();
+      const current = meta[cardId];
+      const latest = current?.reviews?.[current.reviews.length - 1];
+      if (!latest || latest.date !== reviewDate) return { ok: false };
+      if (previous && typeof previous === "object") {
+        meta[cardId] = normalizeFlashcardMeta(previous);
+      } else {
+        delete meta[cardId];
+      }
+      await saveFlashcardMeta(meta);
+      return { ok: true, record: meta[cardId] || null };
     });
   }
 
@@ -2531,8 +2716,12 @@
     return runStoreMutation("applyRemoteFlashcardMeta", [remoteMap, deletedMap], applyRemoteFlashcardMetaDirect);
   }
 
-  async function recordFlashcardReview(entryId, rating, direction) {
-    return runStoreMutation("recordFlashcardReview", [entryId, rating, direction], recordFlashcardReviewDirect);
+  async function recordFlashcardReview(cardId, grade, direction, options = {}) {
+    return runStoreMutation("recordFlashcardReview", [cardId, grade, direction, options], recordFlashcardReviewDirect);
+  }
+
+  async function undoFlashcardReview(cardId, previous, reviewDate) {
+    return runStoreMutation("undoFlashcardReview", [cardId, previous, reviewDate], undoFlashcardReviewDirect);
   }
 
   async function getSyncIssue() {
@@ -2572,8 +2761,9 @@
     queueDamagedHistoryEntries,
     FLASHCARD_META_KEY,
     FLASHCARD_SETTINGS_KEY,
-    FLASHCARD_DAILY_TARGETS,
     FLASHCARD_MAX_INTERVAL_DAYS,
+    FLASHCARD_SETTING_CHOICES,
+    FLASHCARD_DEFAULT_SETTINGS,
     DEFAULT_SETTINGS,
     EXPORT_VERSION,
     MAX_SYNC_LANGUAGES,
@@ -2633,13 +2823,15 @@
     applyRemoteVaultStateDirect,
     normalizeFlashcardMeta,
     normalizeFlashcardMetaMap,
-    normalizeFlashcardDailyTarget,
-    getFlashcardDailyTarget,
+    normalizeFlashcardSettings,
+    getFlashcardSettings,
+    getFlashcardSrsCard,
+    previewFlashcardIntervals,
+    undoFlashcardReview,
     getFlashcardMeta,
     saveFlashcardMeta,
     recordFlashcardReview,
     applyRemoteFlashcardMeta,
-    computeFlashcardDueAt,
     computeFlashcardStreak,
     isFlashcardDue,
     buildTodayQueue,

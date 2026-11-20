@@ -190,6 +190,7 @@ function loadSharedStore(initialStorage = {}, options = {}) {
 
   context.globalThis = context;
   runScripts(context, [
+    "scripts/srs.js",
     "scripts/store-core.js",
     "scripts/note-autosave.js",
     "scripts/entry-presenter.js",
@@ -239,6 +240,7 @@ function loadSyncScript(initialStorage = {}, options = {}) {
 
   context.globalThis = context;
   runScripts(context, [
+    "scripts/srs.js",
     "scripts/store-core.js",
     "scripts/note-autosave.js",
     "scripts/entry-presenter.js",
@@ -482,9 +484,10 @@ async function loadPopupScript({
     async getFlashcardMeta() {
       return structuredClone(flashcardMeta);
     },
-    async getFlashcardDailyTarget() {
-      return dailyTarget;
+    async getFlashcardSettings() {
+      return shared.store.normalizeFlashcardSettings({ dailyTarget });
     },
+    normalizeFlashcardSettings: shared.store.normalizeFlashcardSettings,
     buildTodayQueue: shared.store.buildTodayQueue,
     FLASHCARD_SETTINGS_KEY: "lodVault.flashcardSettings",
     buildJsonExport(entriesToExport, options) {
@@ -646,8 +649,8 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localSt
     computeFlashcardStreak: shared.store.computeFlashcardStreak,
     toLocalDateKey: shared.store.toLocalDateKey,
     isFlashcardDue: shared.store.isFlashcardDue,
-    normalizeFlashcardDailyTarget: shared.store.normalizeFlashcardDailyTarget,
-    FLASHCARD_DAILY_TARGETS: shared.store.FLASHCARD_DAILY_TARGETS,
+    normalizeFlashcardSettings: shared.store.normalizeFlashcardSettings,
+    previewFlashcardIntervals: shared.store.previewFlashcardIntervals,
     buildTodayQueue: shared.store.buildTodayQueue,
     FLASHCARD_SETTINGS_KEY: "lodVault.flashcardSettings",
     escapeHtml: shared.store.escapeHtml,
