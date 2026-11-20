@@ -43,6 +43,13 @@ test("normalizeAnswer applies NFC, straight apostrophes, single spaces and drops
   assert.equal(grader.normalizeAnswer("A:pel", { aliases: true }), "Äpel");
 });
 
+test("wrong-answer correction and diff use the same closest alternative", () => {
+  const result = check("xxxxxx", ["aaaaaa", "xxxxzz"]);
+  assert.equal(result.verdict, "wrong");
+  assert.equal(result.matched, "xxxxzz");
+  assert.equal(result.diff.filter((part) => part.type !== "extra").map((part) => part.text).join(""), result.matched);
+});
+
 test("an exact answer is correct and graded Good", () => {
   const result = check("Haiser", "Haiser");
   assert.equal(result.verdict, "exact");
