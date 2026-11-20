@@ -588,13 +588,44 @@ for (const stage of ["fetch", "commit"]) test(`hydration cannot resurrect deleti
     fetchEntryJson: async () => { if (stage === "fetch") { entered(); await gate; } return fixture("HAUS1"); }
   });
   const pending = hydrator.hydrateOne("HAUS1");
-  await started;
+  // Old implementations may complete without reaching the guarded read.
+  // Race completion against the gate so that negative controls fail, not hang.
+  await Promise.race([started, pending]);
+  if (stage === "commit") assert.ok(reads >= 2, "membership must be checked again at commit");
   const before = map;
   map = {};
   const deletion = hydrator.handleEntriesChanged(before, map);
   release();
   await Promise.all([pending, deletion]);
   assert.equal(storageData["lodVault.lx.HAUS1"], undefined);
+});
+
+test("delete and re-save during hydration preserves the replacement request", async () => {
+  const { lexicon, lookup, storageData } = loadLexicon();
+  let map = { HAUS1: { id: "HAUS1", study: true } };
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let fetches = 0;
+  const hydrator = lexicon.createHydrator({
+    now: () => NOW,
+    getEntryMap: async () => map,
+    parse: lookup.parseLexicon,
+    fetchEntryJson: async () => {
+      if (++fetches === 1) await gate;
+      return fixture("HAUS1");
+    }
+  });
+  hydrator.enqueue("HAUS1");
+  await waitFor(() => fetches === 1);
+  const before = map;
+  map = {};
+  await hydrator.handleEntriesChanged(before, map);
+  map = before;
+  await hydrator.handleEntriesChanged({}, map);
+  release();
+  await hydrator.whenIdle();
+  assert.equal(fetches, 2);
+  assert.ok(storageData["lodVault.lx.HAUS1"]);
 });
 
 test("example parser ignores nested unknown, gloss and attribute wrappers in a real fixture", () => {

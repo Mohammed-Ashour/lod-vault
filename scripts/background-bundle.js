@@ -4916,6 +4916,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     const running = new Set();
     const responses = new Map();
     const generations = new Map();
+    const rerun = new Set();
     let failures = 0;
     let pausedUntil = 0;
     let wakeTimer = null;
@@ -4941,7 +4942,10 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     function enqueue(ids, { front = false } = {}) {
       const list = (Array.isArray(ids) ? ids : [ids]).map(cleanId).filter(Boolean);
       for (const id of front ? [...list].reverse() : list) {
-        if (running.has(id)) continue;
+        if (running.has(id)) {
+          rerun.add(id);
+          continue;
+        }
         if (queued.has(id)) {
           if (!front) continue;
           queue.splice(queue.indexOf(id), 1);
@@ -4989,7 +4993,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
           })
           .then((outcome) => {
             running.delete(id);
-            if (outcome === "deferred") enqueue([id]);
+            const requestedAgain = rerun.delete(id);
+            if (outcome === "deferred" || requestedAgain) enqueue([id]);
             else pump();
             notifyIdle();
           });
@@ -5111,6 +5116,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       for (const id of removed) {
         generations.set(id, (generations.get(id) || 0) + 1);
         responses.delete(id);
+        rerun.delete(id);
         queued.delete(id);
         const position = queue.indexOf(id);
         if (position !== -1) queue.splice(position, 1);
