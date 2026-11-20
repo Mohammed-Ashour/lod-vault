@@ -100,4 +100,8 @@ Run `npm test`, `npm run test:ui`, `npm run test:popup` and `npm run lint` for c
 
 ## Future clarifications
 
+Phase 2 supplies standalone parser, registry, grader and exercise components, not an integrated Flashcards session. Remaining work includes session loading and lexicon prefetch, skill settings persistence and per-skill grades/queue wiring, live sibling burial, retries/resume/undo, focus and suspend mutations, `fs` preservation and sync, core meaning/MC rendering, and core-before-skill sync priority. Phase 1 and Phase 3 remediation require separate combined integration verification. The Phase 2 recorder is `scripts/record-phase2-flow.mjs`, distinct from Phase 1 capture tooling.
+
+Leech panels contain focus while mounted. Hosts must call the returned panel's `destroy()` on teardown; removal also releases the focus listener. Close restores the opener, while Save and Pause report callbacks without closing. Exercise controllers must be destroyed when replaced; destroyed controllers and retained feedback actions cannot report grades.
+
 The actual Chrome action window is checked through a debugging pipe in an isolated profile, separately from page emulation. Its host can clamp height and add gutter space. Firefox rendering, screen-reader output and increased zoom still require manual verification. Page geometry checks alone cannot validate native popup auto-sizing.
