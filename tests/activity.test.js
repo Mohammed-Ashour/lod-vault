@@ -319,7 +319,7 @@ test("JSON backups carry daily activity and restore merges it", async () => {
   storageData["lodVault.activity"] = { d: { [TODAY_REAL - 9]: [2, 0, 0] } };
   parsed.entries = [{ id: "W1", word: "Haus", url: "https://lod.lu/artikel/W1", favorite: true }];
   const result = await store.importJson(JSON.stringify(parsed));
-  assert.deepEqual(plain(result.sections), ["activity"]);
+  assert.deepEqual(plain(result.sections), ["lexicon", "activity"]);
   const restored = await localActivity.readLocal();
   assert.deepEqual(plain(restored.d), { [TODAY_REAL - 10]: [10, 1, 0], [TODAY_REAL - 9]: [2, 0, 0] });
 });

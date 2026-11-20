@@ -39,7 +39,7 @@ test('offline same-card device work converges independently of winning schedule,
 });
 
 test('store review capture survives capped history, deletion and resurrection', async () => {
-  const a = device();
+  const a = device({ 'lodVault.entries': { HOUSE1: { id: 'HOUSE1', word: 'Haus', url: 'https://lod.lu/artikel/HOUSE1', study: true } } });
   for (let i = 0; i < 125; i++) await a.store.recordFlashcardReview('HOUSE1', 2, 'fwd');
   const meta = await a.store.getFlashcardMeta();
   assert.equal(meta.HOUSE1.reviews.length, 100);
