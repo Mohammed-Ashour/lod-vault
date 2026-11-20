@@ -61,6 +61,24 @@ function play(skill, id, extra = {}) {
   };
 }
 
+test("exercise feedback allows explicit grade overrides once", () => {
+  const right = play("g", "HAUS1");
+  right.key("l");
+  right.$(".ex-easy").click();
+  right.$(".ex-continue").click();
+  assert.equal(right.graded.length, 1);
+  assert.equal(right.graded[0].grade, 4);
+  assert.equal(right.graded[0].detail.override, "easy");
+
+  const wrong = play("g", "HAUS1");
+  wrong.key("j");
+  wrong.$(".ex-override").click();
+  wrong.$(".ex-continue").click();
+  assert.equal(wrong.graded.length, 1);
+  assert.equal(wrong.graded[0].grade, 3);
+  assert.equal(wrong.graded[0].detail.override, "correct");
+});
+
 test("articles follow gender and the n-rule", () => {
   const { api } = setup();
   assert.deepEqual(plain(api.articles("Mann", "m")), { definite: "de", indefinite: "e", dative: "dem" });
