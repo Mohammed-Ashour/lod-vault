@@ -719,6 +719,9 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localSt
   };
 
   context.globalThis = context;
+  for (const name of ["lexicon-store", "answer-grader", "card-registry", "flashcards-exercises"]) {
+    vm.runInNewContext(fs.readFileSync(path.join(repoRoot, `scripts/${name}.js`), "utf8"), context, { filename: `scripts/${name}.js` });
+  }
   vm.runInNewContext(source, context, { filename: "scripts/flashcards.js" });
 
   dom.window.document.dispatchEvent(new dom.window.Event("DOMContentLoaded", { bubbles: true }));

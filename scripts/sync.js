@@ -410,12 +410,15 @@
     let records = Object.entries(flashcardMeta || {})
       .filter(([id, card]) => entryMap?.[store.baseCardId(id)] && card.totalReviews)
       .sort(([leftId, left], [rightId, right]) => (
-        isoToUnix(right.lastReviewedAt) - isoToUnix(left.lastReviewedAt)
+        Number(store.baseCardId(leftId) !== leftId) - Number(store.baseCardId(rightId) !== rightId)
+        || isoToUnix(right.lastReviewedAt) - isoToUnix(left.lastReviewedAt)
         || leftId.localeCompare(rightId)
       ))
       .map(([id, card]) => compactProgress(id, card));
 
-    // Most recently studied words survive when progress doesn't all fit.
+    // Optional skills never displace core progress. Within each group keep
+    // the most recent reviews. Check the exact core-only payload before
+    // applying the existing proportional trim to core records.
     while (records.length) {
       const sorted = [...records].sort((left, right) => left.i.localeCompare(right.i));
       const payload = {};
@@ -426,7 +429,10 @@
       }
       const bytes = estimateSyncWriteSize(payload);
       if (bytes <= budget) return payload;
-      records = records.slice(0, Math.floor(records.length * (budget / bytes) * 0.9));
+      const last = records[records.length - 1];
+      records = records.slice(0, store.baseCardId(last.i) !== last.i
+        ? records.length - 1
+        : Math.floor(records.length * (budget / bytes) * 0.9));
     }
     return {};
   }

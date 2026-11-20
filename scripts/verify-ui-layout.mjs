@@ -186,6 +186,21 @@ try {
     await evaluate(`document.getElementById('download-html').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
     check(await evaluate(`document.getElementById('export-trigger').getAttribute('aria-expanded')==='false' && document.activeElement.id==='export-trigger'`), 'Escape closes Export and restores focus');
   }
+  await navigate('flashcards', 375, 740);
+  await evaluate(`LodVaultLexicon.getLexicon=async(id)=>({id,lemma:'goen',pos:'verb',senses:[{n:1,tr:{en:[['to go']]}}]});
+    document.getElementById('mode-select').value='writing';
+    document.getElementById('mode-select').dispatchEvent(new Event('change'));`);
+  await sleep(100);
+  check(await evaluate(`document.activeElement.matches('.ex-input') && getComputedStyle(document.getElementById('flashcard')).display==='none'`), 'Writing focuses input and hides the answer card');
+  await send('Input.insertText', { text: 'goen' });
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r', windowsVirtualKeyCode: 13 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+  await sleep(100);
+  check(await evaluate(`document.querySelector('.ex-feedback')?.textContent.includes('Correct')`), 'Native Enter checks the writing answer');
+  check(await evaluate(`document.documentElement.scrollWidth<=innerWidth`), 'Writing feedback fits narrow screen');
+  await click('.ex-continue');
+  await sleep(100);
+  check(await evaluate(`document.querySelector('.ex-input') || document.getElementById('session-summary').getAttribute('aria-hidden')!=='true'`), 'Writing Continue advances the session');
   assert.deepEqual(runtimeErrors, [], 'No uncaught browser errors');
   console.log(`${checks.length} real-page layout checks passed against Chrome. Baseline: ${baseline}.`);
   console.log(checks.map(name => `  ${name}`).join('\n'));

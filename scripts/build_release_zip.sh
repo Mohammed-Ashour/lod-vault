@@ -46,6 +46,9 @@ cp \
   scripts/decks.js \
   scripts/entry-presenter.js \
   scripts/flashcards.js \
+  scripts/answer-grader.js \
+  scripts/card-registry.js \
+  scripts/flashcards-exercises.js \
   scripts/lens-lookup.js \
   scripts/lexicon-store.js \
   scripts/lens-overlay-shell.js \
