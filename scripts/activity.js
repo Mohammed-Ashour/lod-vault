@@ -442,6 +442,33 @@
     return applyRemote(value);
   }
 
+  // Only real news is pushed: a day total another device lacks, a rest-day
+  // change, or a streak anchor sync doesn't have yet. A different anchor day on
+  // its own (two devices either side of midnight) isn't worth a write.
+  function hasNews(localRaw, remoteRaw) {
+    const local = buildSyncValue(localRaw);
+    if (!local) return false;
+    if (!remoteRaw) return true;
+    const remote = normalizeActivity(remoteRaw);
+    const merged = mergeActivity(remote, local);
+    return JSON.stringify(merged.d) !== JSON.stringify(remote.d)
+      || JSON.stringify(merged.w || null) !== JSON.stringify(remote.w || null)
+      || Boolean(local.b && !remote.b);
+  }
+
+  const syncRecord = {
+    name: "activity",
+    localKey: ACTIVITY_KEY,
+    syncKey: SYNC_ACTIVITY_KEY,
+    buildSyncValue: (local) => buildSyncValue(local),
+    async applyRemote(remote) {
+      const result = await applyRemote(remote);
+      return { changed: Boolean(result?.changed), record: result?.activity };
+    },
+    hasNews
+  };
+  globalThis.LodVaultSyncRecords = [...(globalThis.LodVaultSyncRecords || []), syncRecord];
+
   store().registerBackupSection?.("activity", {
     exportData: exportBackupSection,
     importData: importBackupSection
@@ -471,6 +498,7 @@
     recordFromLocal,
     applyRemote,
     setRestDays,
+    hasNews,
     getStreakInfo,
     watch,
     watchStreak

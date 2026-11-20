@@ -93,6 +93,12 @@ Keep storage schemas, permissions, dictionary privacy and review scheduling unch
 
 Run `npm test`, `npm run test:ui`, `npm run test:popup` and `npm run lint` for changes to these UI contracts. The browser check uses an isolated profile and fixtures, not real vault data.
 
+## Tags and saved decks
+
+`scripts/decks.js` owns local `lodVault.tags` and compact synced `lodVault.t`. The versioned record holds per-tag word lists and saved filters, each with a last-write timestamp and deletion tombstones. Concurrent edits to the same tag use last-write-wins, not per-word merging. Saved decks currently live in this record rather than settings. Each synced item is capped below 8 KB; excess tags remain local.
+
+Activity and tags register small-record handlers in `LodVaultSyncRecords`. Sync and the background coordinator read those handlers for replication and capacity accounting. JSON backup includes tags and decks. `vault-tags.js` adds live tag controls to the Vault iframe and a saved-filter dialog to its parent page. Flashcards loads this module through narrow deck-selection hooks; scheduling is unchanged. Optional lexicon records supply level and gender filters. Missing lexicon data produces no level matches, rather than network requests.
+
 ## Future clarifications
 
 The actual Chrome action window is checked through a debugging pipe in an isolated profile, separately from page emulation. Its host can clamp height and add gutter space. Firefox rendering, screen-reader output and increased zoom still require manual verification. Page geometry checks alone cannot validate native popup auto-sizing.

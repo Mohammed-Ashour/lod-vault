@@ -38,6 +38,8 @@ A banner is injected directly under the article heading on every `lod.lu/artikel
 
 ### Vault
 
+Add tags with **+ Tag** on each word. The **Decks** button saves filters for tag, part of speech, gender, level, Favorites/Study, leech status and due date. Flashcards lists saved filters under **My decks**. Level filters require downloaded lexicon details; they do not download category word lists. Tags and saved decks sync together within an 8 KB item budget; overflow stays local. JSON backups retain both.
+
 <img src="docs/screenshots/vault-blue-night.png" width="780" alt="LODVault vault — Blue Night redesign" /> <img src="docs/screenshots/vault-blue-night-light.png" width="780" alt="LODVault vault — Blue Night light mode" />
 
 The vault renders your saved words as an editorial document — serif entries, hairlines, translations and examples — with search, language filter and sort. Exports are grouped behind a single **Export ▾** menu (HTML / Anki), and the page theme follows the same ☀/☾ toggle.

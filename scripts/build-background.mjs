@@ -14,6 +14,7 @@ const IIFE_SCRIPTS = [
   "store-core.js",
   "shared.js",
   "activity.js",
+  "decks.js",
   "reminders.js",
   "lod-article.js",
   "lens-lookup.js",
