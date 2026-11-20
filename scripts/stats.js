@@ -43,8 +43,10 @@
     if (!card?.totalReviews) return null;
     const srs = globalThis.LodVaultSrs;
     if (hasFsrs(card) && typeof srs?.retrievability === "function") {
-      const value = Number(srs.retrievability(card, now));
-      if (Number.isFinite(value)) return value;
+      const value = srs.retrievability({
+        ...card, last: card.sr || card.lastReviewedAt, st: card.st ?? 2
+      }, now);
+      if (value !== null && Number.isFinite(value)) return value;
     }
     const last = Date.parse(card.lastReviewedAt || "");
     if (!Number.isFinite(last)) return null;
