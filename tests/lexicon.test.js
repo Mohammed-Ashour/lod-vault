@@ -570,3 +570,40 @@ test("every script a page loads is packaged in the release zip", () => {
     }
   }
 });
+
+for (const stage of ["fetch", "commit"]) test(`hydration cannot resurrect deletion during ${stage}`, async () => {
+  const { lexicon, lookup, storageData } = loadLexicon();
+  let map = { HAUS1: { id: "HAUS1", study: true } };
+  let release, entered;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { entered = resolve; });
+  let reads = 0;
+  const hydrator = lexicon.createHydrator({
+    now: () => NOW,
+    getEntryMap: async () => {
+      if (stage === "commit" && ++reads === 2) { entered(); await gate; }
+      return map;
+    },
+    parse: lookup.parseLexicon,
+    fetchEntryJson: async () => { if (stage === "fetch") { entered(); await gate; } return fixture("HAUS1"); }
+  });
+  const pending = hydrator.hydrateOne("HAUS1");
+  await started;
+  const before = map;
+  map = {};
+  const deletion = hydrator.handleEntriesChanged(before, map);
+  release();
+  await Promise.all([pending, deletion]);
+  assert.equal(storageData["lodVault.lx.HAUS1"], undefined);
+});
+
+test("example parser ignores nested unknown, gloss and attribute wrappers in a real fixture", () => {
+  const { lookup } = loadLexicon();
+  const raw = fixture("HAUS1");
+  const example = raw.microStructures[0].grammaticalUnits[0].meanings[0].examples[0];
+  const baseline = plain(lookup.parseLexicon(raw, { now: NOW }));
+  for (const type of ["unknown", "gloss", "attribute"]) {
+    example.parts.find(part => part.type === "text").parts.unshift({ type, parts: [{ type: "word", content: "SECRET" }] });
+  }
+  assert.deepEqual(plain(lookup.parseLexicon(raw, { now: NOW })), baseline);
+});
