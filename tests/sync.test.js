@@ -1525,14 +1525,14 @@ function fsrsCard(overrides = {}) {
 test("FSRS state travels to another device, and a 2.4.0 device still reads the schedule", async () => {
   const laptop = loadSyncScript({
     "lodVault.entries": { HAUS1: makeLocalEntry() },
-    "lodVault.flashcardMeta": { HAUS1: fsrsCard({ suspended: true }) }
+    "lodVault.flashcardMeta": { HAUS1: fsrsCard({ suspended: true, pausedAt: "2026-06-11T09:00:00.000Z" }) }
   });
   await laptop.sync.SyncAdapter.pushAll();
   const [key] = progressKeys(laptop.syncStorageData);
   const [record] = laptop.syncStorageData[key];
   assert.deepEqual({ ...record }, {
     i: "HAUS1", n: 3, l: Date.parse("2026-06-10T09:00:00.000Z") / 1000, d: Date.parse("2026-07-03T00:00:00.000Z") / 1000, v: 23, g: 3, e: 1,
-    s: 2112, f: 43, t: 2, x: 2, u: 1, r: [Date.parse("2026-06-10T09:00:00.000Z") / 1000, 3, 0, 4]
+    s: 2112, f: 43, t: 2, x: 2, u: 1, w: Date.parse("2026-06-11T09:00:00.000Z") / 1000, r: [Date.parse("2026-06-10T09:00:00.000Z") / 1000, 3, 0, 4]
   });
 
   const desktop = loadSyncScript({ sync: laptop.syncStorageData });
@@ -1544,6 +1544,7 @@ test("FSRS state travels to another device, and a 2.4.0 device still reads the s
   assert.equal(card.st, 2);
   assert.equal(card.lapses, 2);
   assert.equal(card.suspended, true);
+  assert.equal(card.pausedAt, "2026-06-11T09:00:00.000Z");
   assert.equal(card.reviews[0].grade, 4);
   assert.equal(card.dueAt, "2026-07-03T00:00:00.000Z");
 

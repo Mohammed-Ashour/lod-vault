@@ -1688,3 +1688,62 @@ test("merging keeps reviews made in the same second and re-applying writes nothi
   assert.equal(result.changed, false);
   assert.equal(storageData["lodVault.flashcardMeta"].HAUS1.reviews.length, 2);
 });
+
+test("Today queue: learning cards first, then reviews weakest first, with a new word after every four", () => {
+  const { store } = loadSharedStore();
+  const now = new Date(2026, 5, 10, 9);
+  const daysAgo = (n) => new Date(2026, 5, 10 - n, 9).toISOString();
+  const entries = [];
+  const meta = {};
+  const add = (id, card, extra = {}) => {
+    entries.push({ id, word: id, ...extra });
+    if (card) meta[id] = { totalReviews: 3, reviews: [], ...card };
+  };
+  // Stability 10, last seen 10 days ago: R = 0.9. Stability 2, 10 days: much weaker.
+  add("STRONG", { srs: 1, s: 10, d: 5, st: 2, sr: daysAgo(10), dueAt: daysAgo(0) });
+  add("WEAK", { srs: 1, s: 2, d: 5, st: 2, sr: daysAgo(10), dueAt: daysAgo(8) });
+  add("MID", { srs: 1, s: 5, d: 5, st: 2, sr: daysAgo(10), dueAt: daysAgo(5) });
+  add("LEGACY", { interval: 1, lastReviewedAt: daysAgo(30), dueAt: daysAgo(29) });
+  add("STEP", { srs: 1, s: 3, d: 5, st: 1, step: 1, sr: now.toISOString(), dueAt: new Date(now.getTime() + 600000).toISOString() });
+  add("PAUSED", { srs: 1, s: 2, d: 5, st: 2, sr: daysAgo(10), dueAt: daysAgo(8), suspended: true });
+  add("N1", null, { study: true, createdAt: daysAgo(3) });
+  add("N2", null, { study: true, createdAt: daysAgo(2) });
+
+  const today = store.buildTodayQueue(entries, meta, { now, newPerDay: 10 });
+  assert.deepEqual(Array.from(today.queue, (entry) => entry.id), ["STEP", "LEGACY", "WEAK", "MID", "STRONG", "N1", "N2"]);
+  assert.deepEqual(Array.from(today.learning, (entry) => entry.id), ["STEP"]);
+  assert.equal(today.dueCount, 5);
+  assert.equal(today.learningCount, 1);
+  assert.equal(today.suspendedCount, 1);
+
+  // Every fourth review is followed by a new word.
+  const many = [];
+  const manyMeta = {};
+  for (let index = 0; index < 8; index += 1) {
+    many.push({ id: `R${index}`, word: `r${index}` });
+    manyMeta[`R${index}`] = { totalReviews: 2, reviews: [], dueAt: daysAgo(1), interval: 1, lastReviewedAt: daysAgo(2 + index) };
+  }
+  many.push({ id: "NA", word: "na", study: true }, { id: "NB", word: "nb", study: true }, { id: "NC", word: "nc", study: true });
+  const ids = Array.from(store.buildTodayQueue(many, manyMeta, { now, newPerDay: 10 }).queue, (entry) => entry.id);
+  assert.deepEqual(ids.map((id) => id.startsWith("N") ? "N" : "R").join(""), "RRRRNRRRRNN");
+});
+
+test("pausing a word keeps its progress, takes it out of Today and syncs as the later change", async () => {
+  const now = new Date(2026, 5, 10, 9);
+  const card = { reviews: [], totalReviews: 3, lastReviewedAt: new Date(2026, 5, 1).toISOString(), dueAt: new Date(2026, 5, 9).toISOString(), interval: 4 };
+  const { store } = loadSharedStore({ "lodVault.flashcardMeta": { HAUS1: card } });
+  const paused = await store.setFlashcardSuspended("HAUS1", true);
+  assert.equal(paused.changed, true);
+  assert.equal(paused.record.suspended, true);
+  assert.ok(paused.record.pausedAt);
+  assert.equal(store.buildTodayQueue([{ id: "HAUS1", word: "Haus" }], await store.getFlashcardMeta(), { now }).dueCount, 0);
+  assert.equal((await store.setFlashcardSuspended("NOPE1", true)).changed, false);
+
+  // A remote record with an older review but a later pause decision wins the pause.
+  const later = new Date(Date.parse(paused.record.pausedAt) + 60000).toISOString();
+  await store.applyRemoteFlashcardMeta({ HAUS1: { ...card, pausedAt: later } }, {});
+  const merged = (await store.getFlashcardMeta()).HAUS1;
+  assert.equal(merged.suspended, undefined);
+  assert.equal(merged.pausedAt, later);
+  assert.equal(merged.totalReviews, 3);
+});

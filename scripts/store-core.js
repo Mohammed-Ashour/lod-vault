@@ -1293,8 +1293,16 @@
     const known = new Set(local.reviews.map((review) => `${toWholeSeconds(review.date)}:${review.rating}`));
     const added = remote.reviews.filter((review) => !known.has(`${toWholeSeconds(review.date)}:${review.rating}`));
 
+    // Pausing isn't a review, so it carries its own time and the later
+    // change wins, whichever record holds the schedule.
+    const pauseSource = toWholeSeconds(remote.pausedAt) > toWholeSeconds(local.pausedAt) ? remote : local;
+    const merged = { ...(remoteWins ? remote : local) };
+    delete merged.suspended;
+    delete merged.pausedAt;
+    if (pauseSource.suspended) merged.suspended = true;
+    if (pauseSource.pausedAt) merged.pausedAt = pauseSource.pausedAt;
     return {
-      ...(remoteWins ? remote : local),
+      ...merged,
       reviews: [...local.reviews, ...added]
         .sort((left, right) => Date.parse(left.date) - Date.parse(right.date))
         .slice(-100),
@@ -2275,6 +2283,8 @@
       if (Number.isFinite(Date.parse(scheduledAt))) normalized.sr = scheduledAt;
     }
     if (meta.suspended === true) normalized.suspended = true;
+    const pausedAt = cleanText(meta.pausedAt);
+    if (Number.isFinite(Date.parse(pausedAt))) normalized.pausedAt = pausedAt;
     if (meta.leech === true) normalized.leech = true;
     return normalized;
   }
@@ -2435,9 +2445,34 @@
     return counts.length ? counts[Math.floor(counts.length / 2)] : 0;
   }
 
+  // Retrievability of a due card now, for ordering. Cards from older builds
+  // use their interval as stability.
+  function estimateRecall(card, now = new Date()) {
+    const srs = globalThis.LodVaultSrs;
+    if (!srs || !card) return 1;
+    const last = card.sr || card.lastReviewedAt;
+    const recall = card.srs === 1
+      ? srs.retrievability({ s: card.s, d: card.d, st: card.st, last }, now)
+      : srs.retrievability({ s: Math.max(Number(card.interval) || 0, 1), d: 5, st: 2, last }, now);
+    return Number.isFinite(recall) ? recall : 1;
+  }
+
+  // A new word after every few reviews, so new words don't all wait until the
+  // end and reviews don't all wait behind new words.
+  const NEW_CARD_EVERY = 4;
+  function interleaveNewCards(reviews, fresh) {
+    const queue = [];
+    let next = 0;
+    reviews.forEach((entry, index) => {
+      queue.push(entry);
+      if ((index + 1) % NEW_CARD_EVERY === 0 && next < fresh.length) queue.push(fresh[next++]);
+    });
+    return queue.concat(fresh.slice(next));
+  }
+
   // The one definition of "what should I study today", shared by the popup,
-  // the flashcards page and the toolbar badge. Every due card comes first,
-  // most overdue first. New Study-list words follow, up to the new-word limit:
+  // the flashcards page and the toolbar badge. Cards in learning steps come
+  // first, then due reviews, weakest first, with a new word after every four. New Study-list words follow, up to the new-word limit:
   // options.newPerDay (0 = none, null = no limit) or, from older callers,
   // options.dailyTarget (0 = no limit). options.maxReviewsPerDay caps the due
   // cards offered today; dueCount still counts them all.
@@ -2472,10 +2507,19 @@
       if (isCoreCardId(id) && isFirstReviewedOn(card, todayKey)) newToday += 1;
     }
 
+    const learning = [];
+    let suspendedCount = 0;
     for (const entry of entries) {
       const card = meta?.[entry?.id];
+      // A paused word is neither reviewed nor introduced.
+      if (card?.suspended) {
+        suspendedCount += 1;
+        continue;
+      }
       if (card?.totalReviews) {
-        if (isFlashcardDue(card, now)) due.push(entry);
+        if (!isFlashcardDue(card, now)) continue;
+        if (card.st === 1 || card.st === 3) learning.push(entry);
+        else due.push(entry);
       } else if (entry?.study) {
         fresh.push(entry);
       }
@@ -2485,10 +2529,15 @@
       const time = Date.parse(meta[entry.id]?.dueAt || "");
       return Number.isFinite(time) ? time : 0;
     };
+    // Reviews go weakest first: lowest chance of recall now. Without FSRS
+    // state, the oldest due date stands in for it.
+    const recall = new Map(due.map((entry) => [entry.id, estimateRecall(meta[entry.id], now)]));
     due.sort((left, right) => (
-      (dueTime(left) - dueTime(right))
+      (recall.get(left.id) - recall.get(right.id))
+      || (dueTime(left) - dueTime(right))
       || String(left.id).localeCompare(String(right.id))
     ));
+    learning.sort((left, right) => (dueTime(left) - dueTime(right)) || String(left.id).localeCompare(String(right.id)));
     fresh.sort((left, right) => (
       (Date.parse(left.createdAt || "") || 0) - (Date.parse(right.createdAt || "") || 0)
       || String(left.id).localeCompare(String(right.id))
@@ -2512,10 +2561,14 @@
     const dueOffered = Number.isFinite(reviewLimit) ? due.slice(0, Math.max(0, reviewLimit - reviewsToday)) : due;
 
     return {
+      learning,
       dueEntries: dueOffered,
       newEntries,
-      queue: [...dueOffered, ...newEntries],
-      dueCount: due.length,
+      queue: [...learning, ...interleaveNewCards(dueOffered, newEntries)],
+      dueCount: learning.length + due.length,
+      learningCount: learning.length,
+      reviewCount: dueOffered.length,
+      suspendedCount,
       newCount: newEntries.length,
       reviewedToday,
       newToday,
@@ -2661,6 +2714,7 @@
         lapses: schedule.card.lapses,
         sr: schedule.scheduledAt,
         suspended: existing?.suspended,
+        pausedAt: existing?.pausedAt,
         leech: existing?.leech
       });
       meta[cardId] = record;
@@ -2718,6 +2772,28 @@
 
   async function recordFlashcardReview(cardId, grade, direction, options = {}) {
     return runStoreMutation("recordFlashcardReview", [cardId, grade, direction, options], recordFlashcardReviewDirect);
+  }
+
+  // Pausing keeps a word's progress but takes it out of Today until resumed.
+  async function setFlashcardSuspendedDirect(cardId, suspended) {
+    if (!cardId) throw new Error("Missing card id.");
+    return runVaultIo(async () => {
+      const meta = await getFlashcardMeta();
+      const current = meta[cardId];
+      if (!current?.totalReviews || Boolean(current.suspended) === Boolean(suspended)) {
+        return { changed: false, record: current || null };
+      }
+      const next = { ...current, pausedAt: nowIso() };
+      if (suspended) next.suspended = true;
+      else delete next.suspended;
+      meta[cardId] = normalizeFlashcardMeta(next);
+      await saveFlashcardMeta(meta);
+      return { changed: true, record: meta[cardId] };
+    });
+  }
+
+  async function setFlashcardSuspended(cardId, suspended) {
+    return runStoreMutation("setFlashcardSuspended", [cardId, suspended], setFlashcardSuspendedDirect);
   }
 
   async function undoFlashcardReview(cardId, previous, reviewDate) {
@@ -2828,6 +2904,8 @@
     getFlashcardSrsCard,
     previewFlashcardIntervals,
     undoFlashcardReview,
+    setFlashcardSuspended,
+    estimateRecall,
     getFlashcardMeta,
     saveFlashcardMeta,
     recordFlashcardReview,

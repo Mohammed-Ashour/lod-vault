@@ -328,6 +328,7 @@
       if (card.lapses) compact.x = card.lapses;
     }
     if (card.suspended) compact.u = 1;
+    if (card.pausedAt) compact.w = isoToUnix(card.pausedAt);
     // Only the latest review travels. That is enough for today's count and the
     // streak on other devices without spending quota on the whole log. Its
     // rating stays on the old 1..3 scale; the FSRS grade (1..4) is appended.
@@ -349,6 +350,7 @@
     return store.normalizeFlashcardMeta({
       ...srs,
       suspended: compact.u === 1,
+      pausedAt: unixToIso(compact.w),
       reviews: review,
       totalReviews: compact.n,
       hardCount: compact.h,
@@ -1222,7 +1224,8 @@
       const remote = remoteProgress[id];
       if (!remote) return isoToUnix(card.lastReviewedAt) > oldestKept;
       return remote.totalReviews !== card.totalReviews
-        || isoToUnix(remote.lastReviewedAt) !== isoToUnix(card.lastReviewedAt);
+        || isoToUnix(remote.lastReviewedAt) !== isoToUnix(card.lastReviewedAt)
+        || Boolean(remote.suspended) !== Boolean(card.suspended);
     });
   }
 

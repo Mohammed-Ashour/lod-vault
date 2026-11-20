@@ -129,9 +129,11 @@
 
     <section id="card-shell" class="card-shell is-hidden">
       <div class="card-meta">
-        <div id="progress" class="progress" aria-live="polite">1 / 1</div>
-        <div id="session-progress" class="session-progress is-hidden" aria-live="polite">Session: 0 / 0</div>
+        <div id="progress" class="progress">1 / 1</div>
+        <div id="session-progress" class="session-progress is-hidden">Session: 0 / 0</div>
+        <button id="end-session" class="text-link end-session" type="button" title="End the session and see the summary (Esc)">End session</button>
       </div>
+      <p id="card-status" class="sr-only" aria-live="polite"></p>
 
       <div id="flashcard" class="flashcard" role="button" tabindex="0" aria-label="Flashcard: click to reveal answer">
         <div class="card-inner">
@@ -164,11 +166,16 @@
       <div id="rating-bar" class="rating-bar is-hidden" role="group" aria-label="How well did you remember it?"></div>
 
       <p id="shortcut-hint" class="shortcut-hint"></p>
+      <div id="undo-toast" class="undo-toast is-hidden" role="status" aria-live="polite">
+        <span id="undo-toast-text"></span>
+        <button id="undo-button" class="text-link" type="button">Undo <kbd>U</kbd></button>
+      </div>
     </section>
 
     <section id="summary-overlay" class="summary-overlay is-hidden">
-      <div class="summary-card">
-        <h2>Session Complete</h2>
+      <div class="summary-card" role="dialog" aria-modal="true" aria-labelledby="summary-title" aria-describedby="summary-lede">
+        <h2 id="summary-title">Session complete</h2>
+        <p id="summary-lede" class="summary-lede"></p>
         <div class="summary-stats">
           <div class="summary-stat">
             <span class="summary-number" id="summary-total">0</span>
@@ -187,7 +194,13 @@
             <span class="summary-label">easy</span>
           </div>
         </div>
-        <button id="close-summary" class="btn-primary">Continue Studying</button>
+        <dl class="summary-details">
+          <div><dt>New words</dt><dd id="summary-new">0</dd></div>
+          <div><dt>Due tomorrow</dt><dd id="summary-tomorrow">0</dd></div>
+          <div><dt>Streak</dt><dd id="summary-streak">0 days</dd></div>
+        </dl>
+        <p id="summary-watch" class="summary-watch is-hidden"><b>Words to watch:</b> <span id="summary-watch-list"></span></p>
+        <button id="close-summary" class="btn-primary" type="button">Done</button>
       </div>
     </section>
   </main>
