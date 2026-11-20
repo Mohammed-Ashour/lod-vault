@@ -200,6 +200,7 @@ html.theme-switching *::after {
   transition: color 0.15s;
 }
 .text-link:hover { color: var(--accent-lt); }
+a.text-link { display: inline-block; text-decoration: none; }
 
 /* ── Menus (grouped actions) ─────────────────────────── */
 .menu-wrap { position: relative; }

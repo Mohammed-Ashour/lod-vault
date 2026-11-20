@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LODVault Progress</title>
+  <script src="../scripts/theme-init.js"></script>
+  <link rel="stylesheet" href="../styles/blue-night.css">
+  <link rel="stylesheet" href="../styles/stats.css">
+</head>
+<body>
+  <main class="app stats-app">
+    <header class="appbar">
+      <div class="title-lockup">
+        <div class="wordmark"><b>LOD</b>Vault</div>
+        <h1 class="page-title">Progress</h1>
+      </div>
+      <span id="stats-status" class="status" aria-live="polite">Loading…</span>
+      <nav class="toolbar" aria-label="Extension pages">
+        <button type="button" id="open-flashcards" class="text-link">Flashcards</button>
+        <button type="button" id="open-preview" class="text-link">Vault</button>
+        <button type="button" class="icon-btn theme-btn" aria-label="Switch to light">☀</button>
+      </nav>
+    </header>
+
+    <div class="stats-body">
+      <section aria-labelledby="summary-heading">
+        <h2 id="summary-heading" class="sr-only">Summary</h2>
+        <div id="stats-summary" class="stat-tiles"></div>
+      </section>
+
+      <section class="stats-card" aria-labelledby="heatmap-heading">
+        <h2 id="heatmap-heading">Last 12 months</h2>
+        <div id="stats-heatmap"></div>
+      </section>
+
+      <section class="stats-card" aria-labelledby="forecast-heading">
+        <h2 id="forecast-heading">Next 30 days</h2>
+        <div id="stats-forecast"></div>
+      </section>
+
+      <section class="stats-card" aria-labelledby="breakdown-heading">
+        <h2 id="breakdown-heading">Your words</h2>
+        <div id="stats-breakdown" class="breakdown-wrap"></div>
+      </section>
+
+      <section class="stats-card" aria-labelledby="streak-heading">
+        <h2 id="streak-heading">Streak rules</h2>
+        <p class="section-note">A day counts when you clear the Today queue or do at least 10 reviews. Every 7 counted days earn a freeze (up to 2), which covers a missed day automatically. Your streak and these totals sync between devices.</p>
+        <div id="stats-rest-days"></div>
+      </section>
+    </div>
+  </main>
+  <script src="../scripts/store-core.js"></script>
+  <script src="../scripts/entry-presenter.js"></script>
+  <script src="../scripts/shared.js"></script>
+  <script src="../scripts/activity.js"></script>
+  <script src="../scripts/theme.js"></script>
+  <script src="../scripts/stats.js"></script>
+</body>
+</html>

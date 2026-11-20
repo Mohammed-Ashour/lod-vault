@@ -42,6 +42,7 @@ flowchart TD
 - `manifest.json`: `pages/popup.html`, `scripts/background-bundle.js`, article content scripts and the `open-lod-lens` command.
 - `pages/preview.html`: `scripts/preview.js`, the live Vault and its generated iframe document.
 - `pages/flashcards.html`: `scripts/flashcards.js`, review sessions.
+- `pages/stats.html`: `scripts/stats.js` and `styles/stats.css`, the Progress page (heatmap, forecast, retention, words you know, breakdowns, rest days). It only reads storage, apart from saving rest days through `activity.js`. FSRS fields and `lodVault.lx.<ID>` word details are used when present; without them it estimates from intervals and says so.
 - `scripts/popup.js`: initializes the popup app and handles section navigation.
 - `package.json`: Node tests, background build and release/package lint commands. `scripts/build_release_zip.sh` emits Chrome and Firefox variants.
 
