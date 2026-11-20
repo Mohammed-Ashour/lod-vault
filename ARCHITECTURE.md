@@ -87,6 +87,7 @@ Dependencies point from page controllers toward these helpers. Layout changes mu
 - `scripts/preview.js` and `styles/preview.css`: live Vault editing and remaining-height iframe layout.
 - `scripts/flashcards.js` and `styles/flashcards.css`: review behavior and responsive card/session controls.
 - `scripts/lexicon-store.js`: lexicon records, their index and the background hydration queue. `parseLexicon` in `scripts/lens-lookup.js` is separate from the flattened-entry parser and must stay pure.
+- `scripts/answer-grader.js`: the shared typed-answer grader (`LodVaultAnswerGrader`) for flashcard exercises. Pure comparison (NFC, apostrophes, end punctuation, accent tolerance graded Hard, listed alternatives, n-rule forms, noun capitals, one-edit typo prompt for words of six or more letters, character diff) plus the ë/é/ä buttons and diff rendering.
 - `scripts/background-impl.js`: toolbar due badge, refreshed on entry and review changes and by a `chrome.alarms` alarm at local midnight.
 
 ## Architecture change protocol
