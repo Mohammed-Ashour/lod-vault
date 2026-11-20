@@ -359,13 +359,8 @@
           memory = { d: initDifficulty(grade), s: initStability(grade) };
         } else {
           const elapsed = elapsedDays(previous, time);
-          const r = forgettingCurve(elapsed, memory.s);
-          if (grade === GRADES.AGAIN) {
-            lapses += 1;
-            memory = { d: nextDifficulty(memory.d, grade), s: lapseStability(memory.d, memory.s, r) };
-          } else {
-            memory = { d: nextDifficulty(memory.d, grade), s: nextRecallStability(memory.d, memory.s, r, grade) };
-          }
+          if (grade === GRADES.AGAIN) lapses += 1;
+          memory = nextMemory(memory, elapsed, grade);
         }
         previous = time;
       }

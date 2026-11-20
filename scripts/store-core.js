@@ -372,8 +372,7 @@
   function isMissingMutationReceiver(error) {
     const message = String(error || "");
     return message.includes("Could not establish connection")
-      || message.includes("Receiving end does not exist")
-      || message.includes("message port closed");
+      || message.includes("Receiving end does not exist");
   }
 
   function runVaultIo(task) {
@@ -387,22 +386,14 @@
       return directHandler(...args);
     }
 
+    let response;
     try {
-      const response = await chrome.runtime.sendMessage({
+      response = await chrome.runtime.sendMessage({
         type: STORE_MUTATION_MESSAGE_TYPE,
         method,
         args
       });
 
-      if (!response?.ok) {
-        const error = response?.error ? new Error(response.error) : new Error(`Store mutation failed: ${method}`);
-        if (isExtensionContextInvalidated(error)) {
-          throw createRefreshPageError();
-        }
-        throw error;
-      }
-
-      return response.result;
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
@@ -412,6 +403,13 @@
       }
       throw error;
     }
+    // A worker error is not evidence that the request was never delivered.
+    if (!response?.ok) {
+      const error = new Error(response?.error || `Store mutation failed: ${method}`);
+      if (isExtensionContextInvalidated(error)) throw createRefreshPageError();
+      throw error;
+    }
+    return response.result;
   }
 
   function normalizeEntry(entry = {}) {
@@ -1279,27 +1277,43 @@
     return toWholeSeconds(incoming.lastReviewedAt) > toWholeSeconds(existing.lastReviewedAt) ? incoming : existing;
   }
 
-  // Two live devices are different: the latest review decides the schedule, and
-  // the review log and total combine. Sync carries timestamps in whole seconds,
-  // so they are compared at that precision: the same review read back from sync
-  // must not look like news, and merging the same data again changes nothing.
+  // Schedule, event history and pause are independent replicated state.
   function mergeSyncedFlashcardRecord(local, remote) {
     if (!local) return remote;
-    const localTime = toWholeSeconds(local.lastReviewedAt);
-    const remoteTime = toWholeSeconds(remote.lastReviewedAt);
-    const remoteWins = remoteTime > localTime
-      || (remoteTime === localTime && remote.totalReviews > local.totalReviews);
-
-    const known = new Set(local.reviews.map((review) => `${toWholeSeconds(review.date)}:${review.rating}`));
-    const added = remote.reviews.filter((review) => !known.has(`${toWholeSeconds(review.date)}:${review.rating}`));
-
-    return {
-      ...(remoteWins ? remote : local),
-      reviews: [...local.reviews, ...added]
-        .sort((left, right) => Date.parse(left.date) - Date.parse(right.date))
-        .slice(-100),
-      totalReviews: Math.max(local.totalReviews, remote.totalReviews)
-    };
+    const time = (value) => Date.parse(value) || 0;
+    const scheduleKeys = ["srs", "s", "d", "st", "step", "lapses", "sr", "dueAt", "interval"];
+    const scheduleValue = (record) => JSON.stringify(scheduleKeys.map((key) => record[key] ?? null));
+    const choose = (left, right, clock, tie) => clock(right) > clock(left)
+      || (clock(right) === clock(left) && tie(right) > tie(left)) ? right : left;
+    const schedule = choose(local, remote, (r) => time(r.sr || r.lastReviewedAt), scheduleValue);
+    const history = choose(local, remote, (r) => time(r.lastReviewedAt),
+      (r) => JSON.stringify([r.totalReviews, r.hardCount, r.goodCount, r.easyCount]));
+    const pause = choose(local, remote, (r) => time(r.pausedAt), (r) => Number(!!r.suspended));
+    const merged = { ...history };
+    for (const key of scheduleKeys) {
+      delete merged[key];
+      if (schedule[key] !== undefined) merged[key] = schedule[key];
+    }
+    delete merged.suspended;
+    delete merged.pausedAt;
+    if (pause.suspended) merged.suspended = true;
+    if (pause.pausedAt) merged.pausedAt = pause.pausedAt;
+    const signature = (r) => JSON.stringify([r.rating, r.direction, r.grade || null, r.kind || null, r.ms || null]);
+    const all = [...local.reviews, ...remote.reviews];
+    const events = new Map();
+    for (const event of all) {
+      // A seconds-only legacy echo cannot identify which precise event it was.
+      if (time(event.date) % 1000 === 0 && all.some((other) =>
+        time(other.date) % 1000 !== 0 && toWholeSeconds(other.date) === toWholeSeconds(event.date)
+        && other.rating === event.rating && other.direction === event.direction
+        && (!event.grade || other.grade === event.grade) && (!event.kind || other.kind === event.kind))) continue;
+      events.set(`${time(event.date)}:${signature(event)}`, event);
+    }
+    merged.reviews = [...events.values()].sort((a, b) => time(a.date) - time(b.date)
+      || signature(a).localeCompare(signature(b))).slice(-100);
+        // The merged log can hold events neither side's counter had seen.
+    merged.totalReviews = Math.max(local.totalReviews, remote.totalReviews, merged.reviews.length);
+    return normalizeFlashcardMeta(merged);
   }
 
   function mergeFlashcardMetaMaps(currentMap, incomingMap) {
@@ -2275,6 +2289,8 @@
       if (Number.isFinite(Date.parse(scheduledAt))) normalized.sr = scheduledAt;
     }
     if (meta.suspended === true) normalized.suspended = true;
+    const pausedAt = cleanText(meta.pausedAt);
+    if (Number.isFinite(Date.parse(pausedAt))) normalized.pausedAt = pausedAt;
     if (meta.leech === true) normalized.leech = true;
     return normalized;
   }
@@ -2298,9 +2314,9 @@
     }
   }
 
-  async function saveFlashcardMeta(meta) {
+  async function saveFlashcardMeta(meta, extra = {}) {
     try {
-      await chrome.storage.local.set({ [FLASHCARD_META_KEY]: meta });
+      await chrome.storage.local.set({ ...extra, [FLASHCARD_META_KEY]: meta });
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
@@ -2435,9 +2451,34 @@
     return counts.length ? counts[Math.floor(counts.length / 2)] : 0;
   }
 
+  // Retrievability of a due card now, for ordering. Cards from older builds
+  // use their interval as stability.
+  function estimateRecall(card, now = new Date()) {
+    const srs = globalThis.LodVaultSrs;
+    if (!srs || !card) return 1;
+    const last = card.sr || card.lastReviewedAt;
+    const recall = card.srs === 1
+      ? srs.retrievability({ s: card.s, d: card.d, st: card.st, last }, now)
+      : srs.retrievability({ s: Math.max(Number(card.interval) || 0, 1), d: 5, st: 2, last }, now);
+    return Number.isFinite(recall) ? recall : 1;
+  }
+
+  // A new word after every few reviews, so new words don't all wait until the
+  // end and reviews don't all wait behind new words.
+  const NEW_CARD_EVERY = 4;
+  function interleaveNewCards(reviews, fresh) {
+    const queue = [];
+    let next = 0;
+    reviews.forEach((entry, index) => {
+      queue.push(entry);
+      if ((index + 1) % NEW_CARD_EVERY === 0 && next < fresh.length) queue.push(fresh[next++]);
+    });
+    return queue.concat(fresh.slice(next));
+  }
+
   // The one definition of "what should I study today", shared by the popup,
-  // the flashcards page and the toolbar badge. Every due card comes first,
-  // most overdue first. New Study-list words follow, up to the new-word limit:
+  // the flashcards page and the toolbar badge. Cards in learning steps come
+  // first, then due reviews, weakest first, with a new word after every four. New Study-list words follow, up to the new-word limit:
   // options.newPerDay (0 = none, null = no limit) or, from older callers,
   // options.dailyTarget (0 = no limit). options.maxReviewsPerDay caps the due
   // cards offered today; dueCount still counts them all.
@@ -2472,10 +2513,19 @@
       if (isCoreCardId(id) && isFirstReviewedOn(card, todayKey)) newToday += 1;
     }
 
+    const learning = [];
+    let suspendedCount = 0;
     for (const entry of entries) {
       const card = meta?.[entry?.id];
+      // A paused word is neither reviewed nor introduced.
+      if (card?.suspended) {
+        suspendedCount += 1;
+        continue;
+      }
       if (card?.totalReviews) {
-        if (isFlashcardDue(card, now)) due.push(entry);
+        if (!isFlashcardDue(card, now)) continue;
+        if (card.st === 1 || card.st === 3) learning.push(entry);
+        else due.push(entry);
       } else if (entry?.study) {
         fresh.push(entry);
       }
@@ -2485,10 +2535,15 @@
       const time = Date.parse(meta[entry.id]?.dueAt || "");
       return Number.isFinite(time) ? time : 0;
     };
+    // Reviews go weakest first: lowest chance of recall now. Without FSRS
+    // state, the oldest due date stands in for it.
+    const recall = new Map(due.map((entry) => [entry.id, estimateRecall(meta[entry.id], now)]));
     due.sort((left, right) => (
-      (dueTime(left) - dueTime(right))
+      (recall.get(left.id) - recall.get(right.id))
+      || (dueTime(left) - dueTime(right))
       || String(left.id).localeCompare(String(right.id))
     ));
+    learning.sort((left, right) => (dueTime(left) - dueTime(right)) || String(left.id).localeCompare(String(right.id)));
     fresh.sort((left, right) => (
       (Date.parse(left.createdAt || "") || 0) - (Date.parse(right.createdAt || "") || 0)
       || String(left.id).localeCompare(String(right.id))
@@ -2512,10 +2567,14 @@
     const dueOffered = Number.isFinite(reviewLimit) ? due.slice(0, Math.max(0, reviewLimit - reviewsToday)) : due;
 
     return {
+      learning,
       dueEntries: dueOffered,
       newEntries,
-      queue: [...dueOffered, ...newEntries],
-      dueCount: due.length,
+      queue: [...learning, ...interleaveNewCards(dueOffered, newEntries)],
+      dueCount: learning.length + due.length,
+      learningCount: learning.length,
+      reviewCount: dueOffered.length,
+      suspendedCount,
       newCount: newEntries.length,
       reviewedToday,
       newToday,
@@ -2606,6 +2665,8 @@
   async function recordFlashcardReviewDirect(cardId, grade, direction, options = {}) {
     if (!cardId) throw new Error("Missing card id.");
     return runVaultIo(async () => {
+      const entries = await getEntries();
+      if (!entries.some((entry) => entry.id === baseCardId(cardId))) return { ok: false, reason: "missing-entry" };
       const g = [1, 2, 3, 4].includes(Number(grade)) ? Number(grade) : 3;
       const normalizedDirection = direction === "rev" ? "rev" : "fwd";
       const now = options?.now ? new Date(options.now) : new Date();
@@ -2661,11 +2722,22 @@
         lapses: schedule.card.lapses,
         sr: schedule.scheduledAt,
         suspended: existing?.suspended,
+        pausedAt: existing?.pausedAt,
         leech: existing?.leech
       });
+      // Activity migration needs the metadata before this review was appended.
+      const activityMeta = { ...meta };
       meta[cardId] = record;
 
-      await saveFlashcardMeta(meta);
+      if (globalThis.LodVaultActivity?.captureReview) {
+        await globalThis.LodVaultActivity.captureReview({
+          date,
+          isNew: !existing?.totalReviews,
+          meta: activityMeta
+        }, (extra) => saveFlashcardMeta(meta, extra));
+      } else {
+        await saveFlashcardMeta(meta);
+      }
       return { previous, record };
     });
   }
@@ -2684,8 +2756,15 @@
       const current = meta[cardId];
       const latest = current?.reviews?.[current.reviews.length - 1];
       if (!latest || latest.date !== reviewDate) return { ok: false };
-      if (previous && typeof previous === "object") {
-        meta[cardId] = normalizeFlashcardMeta(previous);
+      // A suspension synced from an older build carries no pausedAt; keep its
+      // pause when undoing its only review.
+      if ((previous && typeof previous === "object") || current.pausedAt || current.suspended) {
+        const restored = { ...(previous || {}) };
+        delete restored.suspended;
+        delete restored.pausedAt;
+        if (current.suspended) restored.suspended = true;
+        if (current.pausedAt) restored.pausedAt = current.pausedAt;
+        meta[cardId] = normalizeFlashcardMeta(restored);
       } else {
         delete meta[cardId];
       }
@@ -2718,6 +2797,28 @@
 
   async function recordFlashcardReview(cardId, grade, direction, options = {}) {
     return runStoreMutation("recordFlashcardReview", [cardId, grade, direction, options], recordFlashcardReviewDirect);
+  }
+
+  // Pausing keeps a word's progress but takes it out of Today until resumed.
+  async function setFlashcardSuspendedDirect(cardId, suspended) {
+    if (!cardId) throw new Error("Missing card id.");
+    return runVaultIo(async () => {
+      const meta = await getFlashcardMeta();
+      const current = meta[cardId];
+      if (!current?.totalReviews || Boolean(current.suspended) === Boolean(suspended)) {
+        return { changed: false, record: current || null };
+      }
+      const next = { ...current, pausedAt: nowIso() };
+      if (suspended) next.suspended = true;
+      else delete next.suspended;
+      meta[cardId] = normalizeFlashcardMeta(next);
+      await saveFlashcardMeta(meta);
+      return { changed: true, record: meta[cardId] };
+    });
+  }
+
+  async function setFlashcardSuspended(cardId, suspended) {
+    return runStoreMutation("setFlashcardSuspended", [cardId, suspended], setFlashcardSuspendedDirect);
   }
 
   async function undoFlashcardReview(cardId, previous, reviewDate) {
@@ -2828,6 +2929,8 @@
     getFlashcardSrsCard,
     previewFlashcardIntervals,
     undoFlashcardReview,
+    setFlashcardSuspended,
+    estimateRecall,
     getFlashcardMeta,
     saveFlashcardMeta,
     recordFlashcardReview,

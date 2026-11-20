@@ -4,6 +4,7 @@ const state = {
   filter: "today",
   revealed: false,
   ratingInProgress: false,
+  reviewSaveFailed: false,
   index: 0,
   orderMode: "smart",
   direction: "fwd",
@@ -15,6 +16,10 @@ const state = {
   sessionResults: [],
   resumableSession: null,
   settings: null,
+  sessionStartedAt: 0,
+  sessionDay: "",
+  reinserts: {},
+  undoStack: [],
   cardShownAt: 0,
   cardShownKey: "",
   flashcardMeta: {},
@@ -101,6 +106,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.summaryOverlay = document.getElementById("summary-overlay");
   elements.summaryTotal = document.getElementById("summary-total");
   elements.summaryAgain = document.getElementById("summary-again");
+  elements.summaryTitle = document.getElementById("summary-title");
+  elements.summaryLede = document.getElementById("summary-lede");
+  elements.summaryNew = document.getElementById("summary-new");
+  elements.summaryTomorrow = document.getElementById("summary-tomorrow");
+  elements.summaryStreak = document.getElementById("summary-streak");
+  elements.summaryWatch = document.getElementById("summary-watch");
+  elements.summaryWatchList = document.getElementById("summary-watch-list");
+  elements.undoToast = document.getElementById("undo-toast");
+  elements.undoToastText = document.getElementById("undo-toast-text");
+  elements.undoButton = document.getElementById("undo-button");
+  elements.endSession = document.getElementById("end-session");
+  elements.cardStatus = document.getElementById("card-status");
   elements.summaryGood = document.getElementById("summary-good");
   elements.summaryEasy = document.getElementById("summary-easy");
   elements.openPreview = document.getElementById("open-preview");
@@ -130,6 +147,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   elements.nextCard?.addEventListener("click", showNext);
   elements.ratingBar?.addEventListener("click", onRatingClick);
   elements.closeSummary?.addEventListener("click", closeSummary);
+  elements.undoButton?.addEventListener("click", () => void undoLastReview());
+  elements.endSession?.addEventListener("click", () => void endSessionEarly());
   elements.emptyStudyList?.addEventListener("click", openStudyList);
   document.addEventListener("keydown", onKeyDown);
   elements.openPreview?.addEventListener("click", () => {
@@ -141,8 +160,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   chooseInitialDeck();
   computeStats();
   renderStats();
+  const resumed = await resumeTodaySession();
   renderResumeSession();
-  rebuildDeck();
+  if (!resumed) rebuildDeck();
 }, { once: true });
 
 window.addEventListener("pagehide", () => {
@@ -229,10 +249,11 @@ async function saveSettings() {
   if (local) await local.set({ [FLASHCARD_SETTINGS_KEY]: { ...state.settings } });
 }
 
+// The session survives a closed tab, Today included: its order and the
+// learning steps still to come are part of it.
 async function saveSession() {
   const local = chrome.storage?.local;
-  // Today is rebuilt from the schedule on every visit, so it has nothing to resume.
-  if (!local || !state.sessionActive || state.filter === "today") return;
+  if (!local || !state.sessionActive) return;
   await local.set({
     [FLASHCARD_SESSION_KEY]: {
       filter: state.filter,
@@ -242,9 +263,50 @@ async function saveSession() {
       sessionSize: state.sessionSize,
       cardIds: state.sessionCards.map((entry) => entry.id),
       index: state.sessionIndex,
-      results: state.sessionResults
+      results: state.sessionResults,
+      reinserts: state.reinserts,
+      day: state.sessionDay || LodVaultStore.toLocalDateKey(),
+      startedAt: state.sessionStartedAt || Date.now()
     }
   });
+}
+
+// Opening Today continues today's session where it stopped. Cards no longer
+// due (reviewed on another device, deleted) drop out; a session from an
+// earlier day is discarded, since Today is rebuilt from the schedule.
+async function resumeTodaySession() {
+  const saved = state.resumableSession;
+  if (saved?.filter !== "today") return false;
+  state.resumableSession = null;
+  if (state.filter !== "today" || saved.day !== LodVaultStore.toLocalDateKey() || !Array.isArray(saved.cardIds)) {
+    await clearSavedSession();
+    return false;
+  }
+  const byId = new Map(state.entries.map((entry) => [entry.id, entry]));
+  const today = todayQueue();
+  const stillToday = new Set([...today.learning || [], ...today.queue].map((entry) => entry.id));
+  const index = Math.max(0, Number(saved.index) || 0);
+  const rated = saved.cardIds.slice(0, index).map((id) => byId.get(id)).filter(Boolean);
+  const remaining = saved.cardIds.slice(index).filter((id) => stillToday.has(id)).map((id) => byId.get(id)).filter(Boolean);
+  if (!remaining.length) {
+    await clearSavedSession();
+    return false;
+  }
+  stopCardAudio();
+  state.sessionCards = [...rated, ...remaining];
+  state.sessionIndex = rated.length;
+  state.sessionResults = Array.isArray(saved.results) ? saved.results : [];
+  state.reinserts = saved.reinserts && typeof saved.reinserts === "object" ? saved.reinserts : {};
+  state.sessionDay = saved.day;
+  state.sessionStartedAt = Number(saved.startedAt) || Date.now();
+  state.sessionActive = true;
+  state.deck = state.sessionCards;
+  state.index = state.sessionIndex;
+  state.revealed = false;
+  state.undoStack = [];
+  renderDeck();
+  await saveSession();
+  return true;
 }
 
 async function clearSavedSession() {
@@ -253,7 +315,7 @@ async function clearSavedSession() {
 }
 
 function renderResumeSession() {
-  const saved = state.resumableSession;
+  const saved = state.resumableSession?.filter === "today" ? null : state.resumableSession;
   const remaining = saved?.cardIds?.length - Number(saved?.index || 0);
   const canResume = Array.isArray(saved?.cardIds) && remaining > 0;
   elements.resumeSession?.classList.toggle("is-hidden", !canResume);
@@ -282,6 +344,10 @@ async function resumeSession() {
   state.sessionCards = cards;
   state.sessionIndex = index;
   state.sessionResults = Array.isArray(saved.results) ? saved.results : [];
+  state.reinserts = saved.reinserts && typeof saved.reinserts === "object" ? saved.reinserts : {};
+  state.sessionDay = saved.day || LodVaultStore.toLocalDateKey();
+  state.sessionStartedAt = Number(saved.startedAt) || Date.now();
+  state.undoStack = [];
   state.sessionActive = true;
   state.deck = cards;
   state.index = index;
@@ -495,23 +561,37 @@ function toggleDirection() {
 }
 
 function onKeyDown(event) {
-  if (
-    event.key === "Escape"
-    && elements.summaryOverlay
-    && !elements.summaryOverlay.classList.contains("is-hidden")
-  ) {
+  const target = event.target;
+  const typing = target?.tagName === "SELECT"
+    || target?.tagName === "INPUT"
+    || target?.tagName === "TEXTAREA"
+    || target?.isContentEditable;
+  const undoKey = !typing && !event.altKey && (
+    ((event.ctrlKey || event.metaKey) && (event.key === "z" || event.key === "Z") && !event.shiftKey)
+    || (!event.ctrlKey && !event.metaKey && (event.key === "u" || event.key === "U"))
+  );
+  if (undoKey && state.undoStack.length) {
     event.preventDefault();
-    closeSummary();
+    void undoLastReview();
     return;
   }
 
-  const target = event.target;
-  if (
-    target?.tagName === "SELECT"
-    || target?.tagName === "INPUT"
-    || target?.tagName === "TEXTAREA"
-    || target?.isContentEditable
-  ) {
+  if (isSummaryOpen()) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeSummary();
+    } else if (event.key === "Tab") {
+      // The dialog has one control; keep focus on it.
+      event.preventDefault();
+      elements.closeSummary?.focus?.();
+    }
+    return;
+  }
+
+  if (typing) return;
+  if (event.key === "Escape" && state.sessionActive && !document.getElementById("session-menu")?.classList.contains("is-open")) {
+    event.preventDefault();
+    void endSessionEarly();
     return;
   }
   // A focused control keeps Space and Enter for itself, but study keys still
@@ -638,13 +718,18 @@ function rebuildDeck({ preserveAudio = false } = {}) {
   const baseDeck = makeDeck(state.entries);
   const size = state.sessionSize === "all" ? baseDeck.length : Number(state.sessionSize);
   state.sessionCards = baseDeck.slice(0, Math.min(size, baseDeck.length));
-  state.sessionActive = state.sessionCards.length > 0 && (state.sessionSize !== "all" || state.filter === "today");
+  // Every deck is a session: rated cards don't come round again, and the
+  // end of the deck brings the summary.
+  state.sessionActive = state.sessionCards.length > 0;
   state.sessionIndex = 0;
   state.sessionResults = [];
-  state.deck = state.sessionActive ? state.sessionCards : baseDeck;
+  state.reinserts = {};
+  state.undoStack = [];
+  state.sessionStartedAt = Date.now();
+  state.sessionDay = LodVaultStore.toLocalDateKey();
+  state.deck = state.sessionCards;
   if (state.sessionActive) void saveSession();
-  // A session always starts at its first card, whatever the last one reached.
-  state.index = state.sessionActive ? 0 : Math.min(state.index, Math.max(state.deck.length - 1, 0));
+  state.index = 0;
   state.revealed = false;
   renderDeck();
 }
@@ -702,7 +787,7 @@ function renderDeck() {
     renderEmptyState();
     elements.emptyState?.classList.remove("is-hidden");
     elements.cardShell?.classList.add("is-hidden");
-    elements.summaryOverlay?.classList.add("is-hidden");
+    closeSummaryDialog();
     elements.mcOptions?.classList.add("is-hidden");
     state.mcKey = null;
     return;
@@ -710,21 +795,17 @@ function renderDeck() {
 
   elements.emptyState?.classList.add("is-hidden");
   elements.cardShell?.classList.remove("is-hidden");
-  elements.summaryOverlay?.classList.add("is-hidden");
+  closeSummaryDialog();
 
-  if (state.sessionActive) {
-    if (elements.progress) {
-      elements.progress.textContent = `Session ${state.sessionIndex + 1} / ${state.sessionCards.length}`;
-    }
-    if (elements.sessionProgress) {
-      elements.sessionProgress.textContent = `${state.sessionResults.length} rated · ${state.sessionCards.length - state.sessionResults.length} remaining`;
-      elements.sessionProgress.classList.remove("is-hidden");
-    }
-  } else {
-    if (elements.progress) {
-      elements.progress.textContent = `${state.index + 1} / ${count}`;
-    }
-    elements.sessionProgress?.classList.add("is-hidden");
+  // Learning steps add cards as the session goes, so "left" counts what is
+  // still ahead, retries included.
+  const left = state.sessionCards.length - state.sessionIndex;
+  if (elements.progress) {
+    elements.progress.textContent = `Session ${state.sessionIndex + 1} / ${state.sessionCards.length}`;
+  }
+  if (elements.sessionProgress) {
+    elements.sessionProgress.textContent = `${state.sessionIndex} done · ${left} left`;
+    elements.sessionProgress.classList.remove("is-hidden");
   }
 
   if (listening) {
@@ -961,6 +1042,24 @@ function toggleReveal() {
   if (cardMode() === "mc" || !state.deck.length) return;
   state.revealed = !state.revealed;
   renderDeck();
+  announceReveal();
+}
+
+// Screen readers hear the answer and the grading keys; focus moves to Good,
+// so Space or Enter grades Good and Tab reaches the other grades.
+function announceReveal() {
+  const entry = currentEntry();
+  if (!entry || !elements.cardStatus) return;
+  if (!state.revealed) {
+    elements.cardStatus.textContent = "";
+    return;
+  }
+  const keys = gradeButtons().map((button, index) => `${index + 1} ${button.label}`).join(", ");
+  elements.cardStatus.textContent = `Answer: ${entry.word}. Grade it: ${keys}.`;
+  const active = document.activeElement;
+  if (!active || active === document.body || active === elements.flipCard || elements.flashcard?.contains(active)) {
+    elements.ratingBar?.querySelector('[data-grade="3"]')?.focus?.({ preventScroll: true });
+  }
 }
 
 function canNavigate() {
@@ -1035,7 +1134,7 @@ function onMcOptionClick(event) {
 async function rateCard(grade) {
   // The review is saved asynchronously, so a double click or repeated key would
   // otherwise record it twice and skip the next card.
-  if (state.ratingInProgress || !state.revealed || !state.deck.length) return;
+  if (state.ratingInProgress || state.reviewSaveFailed || !state.revealed || !state.deck.length) return;
   const entry = currentEntry();
   if (!entry) return;
   // A word deleted in another tab must not get review data for a missing entry.
@@ -1047,6 +1146,14 @@ async function rateCard(grade) {
   state.ratingInProgress = true;
   try {
     await recordRating(entry, grade);
+  } catch (error) {
+    // The worker may have committed before its reply was lost. Do not offer
+    // another rating in this page or count an unconfirmed result in the session.
+    state.reviewSaveFailed = true;
+    elements.ratingBar?.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    elements.mcOptions?.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    if (elements.cardStatus) elements.cardStatus.textContent = "Review save could not be confirmed. It may already be saved. Reload and check progress before reviewing again.";
+    console.error("Review save could not be confirmed", error);
   } finally {
     state.ratingInProgress = false;
   }
@@ -1059,34 +1166,129 @@ async function recordRating(entry, grade) {
     await dismissResumableSession();
   }
 
+  const direction = cardDirection(entry);
+  const wasNew = !state.flashcardMeta[entry.id]?.totalReviews;
+  const ms = state.cardShownAt ? Math.min(Date.now() - state.cardShownAt, 600000) : 0;
+  const snapshot = {
+    cardIds: state.sessionCards.map((card) => card.id),
+    index: state.sessionIndex,
+    results: state.sessionResults.length,
+    reinserts: { ...state.reinserts }
+  };
+  let result = null;
   if (typeof LodVaultStore.recordFlashcardReview === "function") {
-    const ms = state.cardShownAt ? Date.now() - state.cardShownAt : 0;
-    await LodVaultStore.recordFlashcardReview(entry.id, grade, cardDirection(entry), { kind: reviewKind(entry), ms });
+    result = await LodVaultStore.recordFlashcardReview(entry.id, grade, direction, { kind: reviewKind(entry), ms });
+    if (result?.ok === false) return;
     await loadFlashcardMeta();
     computeStats();
     renderStats();
   }
 
-  state.sessionResults.push({ entryId: entry.id, grade, direction: cardDirection(entry) });
+  state.sessionResults.push({ entryId: entry.id, grade, direction, ms, wasNew });
+  const reviewDate = result?.record?.reviews?.[result.record.reviews.length - 1]?.date;
+  if (reviewDate) {
+    state.undoStack.push({ entryId: entry.id, word: entry.word, grade, previous: result.previous ?? null, reviewDate, snapshot });
+    if (state.undoStack.length > 20) state.undoStack.shift();
+    showUndoToast(`${GRADE_LABELS[grade]} · ${entry.word}`);
+  }
 
-  if (state.sessionActive) {
-    // A missed word comes back once before the session ends.
-    if (grade === 1 && state.sessionCards.filter((card) => card.id === entry.id).length === 1) {
-      state.sessionCards.push(entry);
-    }
-    state.sessionIndex += 1;
-    if (state.sessionIndex >= state.sessionCards.length) {
-      await clearSavedSession();
-      showSummary();
+  scheduleRetry(entry, grade, result?.record);
+  state.sessionIndex += 1;
+  if (state.sessionIndex >= state.sessionCards.length) {
+    await clearSavedSession();
+    showSummary();
+    return;
+  }
+  state.index = state.sessionIndex;
+  state.revealed = false;
+  await saveSession();
+  renderDeck();
+  focusCardControl();
+}
+
+// Learning steps are positions in the session: a new word comes back after
+// about three cards, then about eight, and a forgotten one after about four.
+// Without a learning record (a practice deck, an older store) a miss comes
+// back once.
+const LEARNING_GAP = 3;
+const SECOND_STEP_GAP = 8;
+const RELEARNING_GAP = 4;
+const MAX_RETRIES_PER_CARD = 6;
+
+function scheduleRetry(entry, grade, record) {
+  const count = state.reinserts[entry.id] || 0;
+  if (count >= MAX_RETRIES_PER_CARD) return;
+  let gap = null;
+  if (record && (record.st === 1 || record.st === 3)) {
+    gap = record.st === 3 ? RELEARNING_GAP : count === 0 ? LEARNING_GAP : SECOND_STEP_GAP;
+  } else if (grade === 1 && count === 0) {
+    gap = LEARNING_GAP;
+  }
+  if (gap === null) return;
+  if (state.sessionCards.slice(state.sessionIndex + 1).some((card) => card.id === entry.id)) return;
+  const position = Math.min(state.sessionCards.length, state.sessionIndex + 1 + gap);
+  state.sessionCards.splice(position, 0, entry);
+  state.reinserts[entry.id] = count + 1;
+}
+
+function focusCardControl() {
+  const active = document.activeElement;
+  if (!active || active === document.body || !active.isConnected || active.closest?.("#rating-bar, #mc-options")) {
+    elements.flipCard?.focus?.({ preventScroll: true });
+  }
+}
+
+let undoToastTimer = null;
+function showUndoToast(text) {
+  if (!elements.undoToast) return;
+  if (elements.undoToastText) elements.undoToastText.textContent = text;
+  elements.undoToast.classList.remove("is-hidden");
+  clearTimeout(undoToastTimer);
+  undoToastTimer = setTimeout(() => elements.undoToast?.classList.add("is-hidden"), 5000);
+}
+
+// Undo takes back the last review: its schedule, its place in the session and
+// any learning step it added. The card shows again, unrevealed.
+async function undoLastReview() {
+  if (state.ratingInProgress || typeof LodVaultStore.undoFlashcardReview !== "function") return;
+  const item = state.undoStack.pop();
+  if (!item) return;
+  state.ratingInProgress = true;
+  try {
+    const outcome = await LodVaultStore.undoFlashcardReview(item.entryId, item.previous, item.reviewDate);
+    if (!outcome?.ok) {
+      state.undoStack = [];
+      showUndoToast(`Can't undo: ${item.word} was reviewed again since.`);
       return;
     }
+    const byId = new Map(state.entries.map((entry) => [entry.id, entry]));
+    state.sessionCards = item.snapshot.cardIds.map((id) => byId.get(id)).filter(Boolean);
+    state.sessionIndex = Math.min(item.snapshot.index, Math.max(0, state.sessionCards.length - 1));
+    state.sessionResults = state.sessionResults.slice(0, item.snapshot.results);
+    state.reinserts = item.snapshot.reinserts;
+    state.sessionActive = state.sessionCards.length > 0;
+    state.deck = state.sessionCards;
     state.index = state.sessionIndex;
     state.revealed = false;
+    closeSummaryDialog();
+    await loadFlashcardMeta();
+    computeStats();
+    renderStats();
     await saveSession();
     renderDeck();
-  } else {
-    showNext();
+    elements.flipCard?.focus?.({ preventScroll: true });
+    showUndoToast(`Undone · ${item.word}`);
+  } finally {
+    state.ratingInProgress = false;
   }
+}
+
+// Ending early keeps every review so far and shows what was done.
+async function endSessionEarly() {
+  if (!state.sessionActive) return;
+  stopCardAudio();
+  await clearSavedSession();
+  showSummary({ early: state.sessionIndex < state.sessionCards.length });
 }
 
 // Sessions saved by older builds recorded rating 1..3 (Hard, Good, Easy).
@@ -1095,32 +1297,104 @@ function resultGrade(result) {
   return { 1: 1, 2: 3, 3: 4 }[result.rating] || 3;
 }
 
-function showSummary() {
+function formatDuration(ms) {
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds} s`;
+  return `${Math.round(seconds / 60)} min`;
+}
+
+function tomorrowForecast() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const saved = new Set(state.entries.map((entry) => entry.id));
+  return Object.entries(state.flashcardMeta).filter(([id, card]) => (
+    saved.has(id) && card?.totalReviews && !card.suspended && LodVaultStore.isFlashcardDue(card, tomorrow)
+  )).length;
+}
+
+function showSummary({ early = false } = {}) {
   stopCardAudio();
   // A missed card comes back in the session; the summary counts each card
   // once, by how it went the first time.
   const firstTry = new Map();
+  const missed = new Map();
+  let newWords = 0;
+  let activeMs = 0;
   for (const result of state.sessionResults) {
-    if (!firstTry.has(result.entryId)) firstTry.set(result.entryId, resultGrade(result));
+    if (!firstTry.has(result.entryId)) {
+      firstTry.set(result.entryId, resultGrade(result));
+      if (result.wasNew) newWords += 1;
+    }
+    if (resultGrade(result) === 1) missed.set(result.entryId, true);
+    activeMs += Number(result.ms) || 0;
   }
   const grades = [...firstTry.values()];
   const again = grades.filter((grade) => grade === 1).length;
   const good = grades.filter((grade) => grade === 2 || grade === 3).length;
   const easy = grades.filter((grade) => grade === 4).length;
+  const cards = firstTry.size;
 
-  if (elements.summaryTotal) elements.summaryTotal.textContent = firstTry.size;
+  if (elements.summaryTitle) elements.summaryTitle.textContent = early ? "Session ended" : "Session complete";
+  if (elements.summaryLede) {
+    const accuracy = cards ? Math.round(((cards - again) / cards) * 100) : 0;
+    elements.summaryLede.textContent = cards
+      ? `${cards} card${cards === 1 ? "" : "s"}${activeMs ? ` in ${formatDuration(activeMs)}` : ""} · ${accuracy}% right first time`
+      : "No cards rated this time.";
+  }
+  if (elements.summaryTotal) elements.summaryTotal.textContent = cards;
   if (elements.summaryAgain) elements.summaryAgain.textContent = again;
   if (elements.summaryGood) elements.summaryGood.textContent = good;
   if (elements.summaryEasy) elements.summaryEasy.textContent = easy;
+  if (elements.summaryNew) elements.summaryNew.textContent = String(newWords);
+  if (elements.summaryTomorrow) elements.summaryTomorrow.textContent = String(tomorrowForecast());
+  if (elements.summaryStreak) {
+    const streak = state.stats.streak;
+    elements.summaryStreak.textContent = `${streak} day${streak === 1 ? "" : "s"}`;
+  }
+  if (elements.summaryWatch) {
+    const byId = new Map(state.entries.map((entry) => [entry.id, entry]));
+    const words = [...missed.keys()].map((id) => byId.get(id)?.word).filter(Boolean);
+    elements.summaryWatch.classList.toggle("is-hidden", !words.length);
+    if (elements.summaryWatchList) elements.summaryWatchList.textContent = words.slice(0, 8).join(" · ");
+  }
 
   elements.cardShell?.classList.add("is-hidden");
-  elements.summaryOverlay?.classList.remove("is-hidden");
+  openSummaryDialog();
+}
+
+// The summary is a modal dialog: focus moves into it, the page behind is
+// inert, Tab stays inside, and closing returns focus.
+let summaryReturnFocus = null;
+function openSummaryDialog() {
+  if (!elements.summaryOverlay) return;
+  if (elements.summaryOverlay.classList.contains("is-hidden")) {
+    summaryReturnFocus = document.activeElement;
+  }
+  elements.summaryOverlay.classList.remove("is-hidden");
+  for (const region of document.querySelectorAll("main > :not(#summary-overlay)")) region.inert = true;
+  elements.closeSummary?.focus?.();
+}
+
+function closeSummaryDialog() {
+  if (!elements.summaryOverlay || elements.summaryOverlay.classList.contains("is-hidden")) return false;
+  elements.summaryOverlay.classList.add("is-hidden");
+  for (const region of document.querySelectorAll("main > :not(#summary-overlay)")) region.inert = false;
+  return true;
+}
+
+function isSummaryOpen() {
+  return Boolean(elements.summaryOverlay && !elements.summaryOverlay.classList.contains("is-hidden"));
 }
 
 function closeSummary() {
-  elements.summaryOverlay?.classList.add("is-hidden");
+  closeSummaryDialog();
   endSession();
   rebuildDeck();
+  const target = summaryReturnFocus?.isConnected && !summaryReturnFocus.closest?.(".is-hidden")
+    ? summaryReturnFocus
+    : elements.cardShell?.classList.contains("is-hidden") ? elements.emptyTitle : elements.flipCard;
+  target?.focus?.({ preventScroll: true });
+  summaryReturnFocus = null;
 }
 
 function endSession() {
@@ -1128,6 +1402,9 @@ function endSession() {
   state.sessionCards = [];
   state.sessionIndex = 0;
   state.sessionResults = [];
+  state.reinserts = {};
+  state.undoStack = [];
+  elements.undoToast?.classList.add("is-hidden");
   void clearSavedSession();
 }
 

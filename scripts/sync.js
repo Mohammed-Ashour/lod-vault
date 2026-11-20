@@ -315,6 +315,7 @@
       d: isoToUnix(card.dueAt),
       v: card.interval
     };
+    if (Date.parse(card.lastReviewedAt) % 1000) compact.lm = Date.parse(card.lastReviewedAt);
     if (card.hardCount) compact.h = card.hardCount;
     if (card.goodCount) compact.g = card.goodCount;
     if (card.easyCount) compact.e = card.easyCount;
@@ -326,29 +327,40 @@
       compact.f = Math.round(card.d * 10);
       compact.t = card.st;
       if (card.lapses) compact.x = card.lapses;
+      if (card.sr) compact.a = Date.parse(card.sr);
+      if (card.step) compact.b = card.step;
     }
     if (card.suspended) compact.u = 1;
+    if (card.pausedAt) {
+      compact.w = isoToUnix(card.pausedAt);
+      compact.wm = Date.parse(card.pausedAt);
+    }
     // Only the latest review travels. That is enough for today's count and the
     // streak on other devices without spending quota on the whole log. Its
     // rating stays on the old 1..3 scale; the FSRS grade (1..4) is appended.
     if (lastReview) {
       compact.r = [isoToUnix(lastReview.date), lastReview.rating, lastReview.direction === "rev" ? 1 : 0];
-      if (lastReview.grade) compact.r.push(lastReview.grade);
+      if (lastReview.grade || lastReview.kind) compact.r.push(lastReview.grade || null);
+      if (lastReview.kind) compact.r.push(lastReview.kind);
+      if (Date.parse(lastReview.date) % 1000) compact.rm = Date.parse(lastReview.date);
+      if (lastReview.ms) compact.rt = lastReview.ms;
     }
     return compact;
   }
 
   function expandProgress(compact = {}) {
-    const lastReviewedAt = unixToIso(compact.l);
+    const lastReviewedAt = Number.isFinite(compact.lm) ? new Date(compact.lm).toISOString() : unixToIso(compact.l);
     const review = Array.isArray(compact.r) && unixToIso(compact.r[0])
-      ? [{ date: unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd", grade: compact.r[3] }]
+      ? [{ date: Number.isFinite(compact.rm) ? new Date(compact.rm).toISOString() : unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd", grade: compact.r[3], kind: compact.r[4], ms: compact.rt }]
       : [];
     const srs = Number(compact.s) > 0 && Number(compact.f) > 0
-      ? { srs: 1, s: compact.s / 100, d: compact.f / 10, st: compact.t ?? 2, lapses: compact.x || 0 }
+      ? { srs: 1, s: compact.s / 100, d: compact.f / 10, st: compact.t ?? 2, lapses: compact.x || 0, step: compact.b || 0,
+          sr: Number.isFinite(compact.a) ? new Date(compact.a).toISOString() : lastReviewedAt }
       : {};
     return store.normalizeFlashcardMeta({
       ...srs,
       suspended: compact.u === 1,
+      pausedAt: Number.isFinite(compact.wm) ? new Date(compact.wm).toISOString() : unixToIso(compact.w),
       reviews: review,
       totalReviews: compact.n,
       hardCount: compact.h,
@@ -1222,7 +1234,8 @@
       const remote = remoteProgress[id];
       if (!remote) return isoToUnix(card.lastReviewedAt) > oldestKept;
       return remote.totalReviews !== card.totalReviews
-        || isoToUnix(remote.lastReviewedAt) !== isoToUnix(card.lastReviewedAt);
+        || isoToUnix(remote.lastReviewedAt) !== isoToUnix(card.lastReviewedAt)
+        || Boolean(remote.suspended) !== Boolean(card.suspended);
     });
   }
 

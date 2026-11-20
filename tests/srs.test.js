@@ -167,3 +167,14 @@ test("I already know this: straight to review with about a week", () => {
   assert.equal(result.card.s, 7);
   assert.equal(result.days, 7);
 });
+
+test("same-day legacy migration uses the reference memory transition", () => {
+  for (const [rating, grade] of [[2,3], [1,1]]) {
+    const reviews = ["2026-06-10T10:00:00Z", "2026-06-10T11:00:00Z"].map(date => ({date, rating}));
+    const expected = Srs.nextMemory(Srs.nextMemory(null, 0, grade), 0, grade);
+    const actual = Srs.migrateLegacy({reviews, totalReviews: 2});
+    assert.equal(actual.s, expected.s);
+    assert.equal(actual.d, expected.d);
+    assert.equal(actual.lapses, grade === 1 ? 1 : 0);
+  }
+});

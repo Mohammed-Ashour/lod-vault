@@ -202,10 +202,11 @@ test("audio controller reports rejected playback but ignores failures from stopp
   controller.stopAll();
 });
 
-test("browse-mode storage echoes preserve playback but a changed current word plays afresh", async () => {
+test("storage echoes in an All saved session preserve playback but a changed current word plays afresh", async () => {
   const s = await setup({ url: "https://extension.test/pages/flashcards.html?deck=all" });
   s.mode("listening");
-  assert.equal(s.api.state.sessionActive, false);
+  // Every deck is a session now (F7), All saved included.
+  assert.equal(s.api.state.sessionActive, true);
   s.doc.getElementById("flip-card").click();
   s.doc.querySelector('[data-grade="3"]').click();
   await tick();
@@ -219,9 +220,10 @@ test("browse-mode storage echoes preserve playback but a changed current word pl
   assert.equal(s.stops, stops);
   s.setEntries([entries[0]]);
   await s.api.handleStorageChange({ "lodVault.entries": { newValue: {} } }, "local");
-  assert.equal(s.plays.at(-1).id, "HAUS1", "removing the current entry should play its replacement");
-  assert.equal(s.plays.length, 3);
+  // The deleted word was the last unrated card: the session ends, its audio stops.
+  assert.equal(s.plays.length, 2, "a rated card doesn't come round again");
   assert.ok(s.stops > stops);
+  assert.equal(s.doc.getElementById("summary-overlay").classList.contains("is-hidden"), false);
 });
 
 test("bounded listening sessions resume with sound and no answer visible", async () => {

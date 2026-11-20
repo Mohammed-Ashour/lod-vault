@@ -1341,6 +1341,7 @@ test("buildAnkiExport skips entries without a word", () => {
 test("scheduler: a new word takes two steps in the session, then falls due on a whole day", async () => {
   const { store } = loadSharedStore();
   const now = new Date(2026, 5, 10, 20, 30);
+  await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   const first = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: now.toISOString(), ms: 4200 });
   assert.equal(first.previous, null);
   assert.equal(first.record.srs, 1);
@@ -1370,6 +1371,7 @@ test("scheduler: Again on a review card relearns it and counts a lapse; Easy and
       }
     }
   });
+  await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   const missed = await store.recordFlashcardReview("HAUS1", 1, "fwd", { now: now.toISOString() });
   assert.equal(missed.record.st, 3);
   assert.equal(missed.record.lapses, 1);
@@ -1389,6 +1391,7 @@ test("scheduler: practising a word that isn't due leaves its schedule alone unle
     srs: 1, s: 12, d: 5, st: 2, step: 0, lapses: 0
   };
   const { store } = loadSharedStore({ "lodVault.flashcardMeta": { HAUS1: card } });
+  await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   const practised = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: now.toISOString(), kind: "p" });
   assert.equal(practised.record.dueAt, card.dueAt);
   assert.equal(practised.record.s, 12);
@@ -1413,10 +1416,12 @@ test("scheduler: intervals stop at the chosen cap", async () => {
     srs: 1, s: 300, d: 3, st: 2
   };
   const capped = loadSharedStore({ "lodVault.flashcardMeta": { HAUS1: card } });
+  await capped.store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   const cappedInterval = (await capped.store.recordFlashcardReview("HAUS1", 4, "fwd", { now: now.toISOString() })).record.interval;
   // Fuzz may only bring a capped interval in, never past the cap.
   assert.ok(cappedInterval <= 365 && cappedInterval >= 365 - 19, String(cappedInterval));
   const longer = loadSharedStore({ "lodVault.flashcardMeta": { HAUS1: card }, "lodVault.flashcardSettings": { maxInterval: 3650 } });
+  await longer.store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   assert.ok((await longer.store.recordFlashcardReview("HAUS1", 4, "fwd", { now: now.toISOString() })).record.interval > 365);
 });
 
@@ -1434,6 +1439,7 @@ test("scheduler: a card from an older build migrates on its next review and prev
   const preview = store.previewFlashcardIntervals(before.HAUS1, { now, cardId: "HAUS1" });
   assert.ok(preview[3].days > 5);
 
+  await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   const { record } = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: now.toISOString() });
   assert.equal(record.srs, 1);
   assert.equal(record.st, 2);
@@ -1443,6 +1449,7 @@ test("scheduler: a card from an older build migrates on its next review and prev
 test("undo restores a card exactly, but never over a newer review", async () => {
   const { store } = loadSharedStore();
   const now = new Date(2026, 5, 10, 9);
+  await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   const first = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: now.toISOString() });
   const second = await store.recordFlashcardReview("HAUS1", 1, "fwd", { now: new Date(now.getTime() + 60000).toISOString() });
   assert.deepEqual(second.previous, JSON.parse(JSON.stringify(first.record)));
@@ -1503,6 +1510,7 @@ test("repeated reviews in one sitting don't inflate the interval", async () => {
   const intervals = [];
   let record;
   for (let index = 0; index < 6; index += 1) {
+    await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
     ({ record } = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: new Date(now + index * 60000).toISOString() }));
     intervals.push(record.interval);
   }
@@ -1632,6 +1640,7 @@ test("baseCardId maps skill cards to their word", () => {
 
 test("synced progress: the latest review wins, totals and history survive, and re-applying is a no-op", async () => {
   const { store } = loadSharedStore();
+  await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   await store.recordFlashcardReview("HAUS1", 2, "fwd");
   const local = (await store.getFlashcardMeta()).HAUS1;
   const later = new Date(Date.parse(local.lastReviewedAt) + 3600e3).toISOString();
@@ -1688,3 +1697,91 @@ test("merging keeps reviews made in the same second and re-applying writes nothi
   assert.equal(result.changed, false);
   assert.equal(storageData["lodVault.flashcardMeta"].HAUS1.reviews.length, 2);
 });
+
+test("Today queue: learning cards first, then reviews weakest first, with a new word after every four", () => {
+  const { store } = loadSharedStore();
+  const now = new Date(2026, 5, 10, 9);
+  const daysAgo = (n) => new Date(2026, 5, 10 - n, 9).toISOString();
+  const entries = [];
+  const meta = {};
+  const add = (id, card, extra = {}) => {
+    entries.push({ id, word: id, ...extra });
+    if (card) meta[id] = { totalReviews: 3, reviews: [], ...card };
+  };
+  // Stability 10, last seen 10 days ago: R = 0.9. Stability 2, 10 days: much weaker.
+  add("STRONG", { srs: 1, s: 10, d: 5, st: 2, sr: daysAgo(10), dueAt: daysAgo(0) });
+  add("WEAK", { srs: 1, s: 2, d: 5, st: 2, sr: daysAgo(10), dueAt: daysAgo(8) });
+  add("MID", { srs: 1, s: 5, d: 5, st: 2, sr: daysAgo(10), dueAt: daysAgo(5) });
+  add("LEGACY", { interval: 1, lastReviewedAt: daysAgo(30), dueAt: daysAgo(29) });
+  add("STEP", { srs: 1, s: 3, d: 5, st: 1, step: 1, sr: now.toISOString(), dueAt: new Date(now.getTime() + 600000).toISOString() });
+  add("PAUSED", { srs: 1, s: 2, d: 5, st: 2, sr: daysAgo(10), dueAt: daysAgo(8), suspended: true });
+  add("N1", null, { study: true, createdAt: daysAgo(3) });
+  add("N2", null, { study: true, createdAt: daysAgo(2) });
+
+  const today = store.buildTodayQueue(entries, meta, { now, newPerDay: 10 });
+  assert.deepEqual(Array.from(today.queue, (entry) => entry.id), ["STEP", "LEGACY", "WEAK", "MID", "STRONG", "N1", "N2"]);
+  assert.deepEqual(Array.from(today.learning, (entry) => entry.id), ["STEP"]);
+  assert.equal(today.dueCount, 5);
+  assert.equal(today.learningCount, 1);
+  assert.equal(today.suspendedCount, 1);
+
+  // Every fourth review is followed by a new word.
+  const many = [];
+  const manyMeta = {};
+  for (let index = 0; index < 8; index += 1) {
+    many.push({ id: `R${index}`, word: `r${index}` });
+    manyMeta[`R${index}`] = { totalReviews: 2, reviews: [], dueAt: daysAgo(1), interval: 1, lastReviewedAt: daysAgo(2 + index) };
+  }
+  many.push({ id: "NA", word: "na", study: true }, { id: "NB", word: "nb", study: true }, { id: "NC", word: "nc", study: true });
+  const ids = Array.from(store.buildTodayQueue(many, manyMeta, { now, newPerDay: 10 }).queue, (entry) => entry.id);
+  assert.deepEqual(ids.map((id) => id.startsWith("N") ? "N" : "R").join(""), "RRRRNRRRRNN");
+});
+
+test("pausing a word keeps its progress, takes it out of Today and syncs as the later change", async () => {
+  const now = new Date(2026, 5, 10, 9);
+  const card = { reviews: [], totalReviews: 3, lastReviewedAt: new Date(2026, 5, 1).toISOString(), dueAt: new Date(2026, 5, 9).toISOString(), interval: 4 };
+  const { store } = loadSharedStore({ "lodVault.flashcardMeta": { HAUS1: card } });
+  const paused = await store.setFlashcardSuspended("HAUS1", true);
+  assert.equal(paused.changed, true);
+  assert.equal(paused.record.suspended, true);
+  assert.ok(paused.record.pausedAt);
+  assert.equal(store.buildTodayQueue([{ id: "HAUS1", word: "Haus" }], await store.getFlashcardMeta(), { now }).dueCount, 0);
+  assert.equal((await store.setFlashcardSuspended("NOPE1", true)).changed, false);
+
+  // A remote record with an older review but a later pause decision wins the pause.
+  const later = new Date(Date.parse(paused.record.pausedAt) + 60000).toISOString();
+  await store.applyRemoteFlashcardMeta({ HAUS1: { ...card, pausedAt: later } }, {});
+  const merged = (await store.getFlashcardMeta()).HAUS1;
+  assert.equal(merged.suspended, undefined);
+  assert.equal(merged.pausedAt, later);
+  assert.equal(merged.totalReviews, 3);
+});
+
+for (const mode of ["practice", "precision", "tie"]) {
+  test(`progress convergence regression: ${mode}`, async () => {
+    const make = (time, s, sr, kind = "r") => ({srs: 1, s, d: 5, st: 2, step: 0, lapses: 0, sr,
+      reviews: [{date: time, rating: 2, grade: 3, direction: "fwd", kind}],
+      totalReviews: 2, goodCount: 2, lastReviewedAt: time, interval: s, dueAt: "2026-07-01T00:00:00.000Z"});
+    const early = "2026-06-10T11:00:00.100Z", late = "2026-06-10T11:00:00.900Z";
+    const a = {...make(early, 30, early), st: 1, step: 1};
+    const b = mode === "practice" ? make("2026-06-10T12:00:00.000Z", 10, "2026-06-09T11:00:00.000Z", "p")
+      : make(mode === "tie" ? early : late, 40, mode === "tie" ? early : late);
+    b.suspended = true;
+    b.pausedAt = "2026-06-10T13:00:00.123Z";
+    const results = [];
+    for (const [left, right] of [[a,b], [b,a]]) {
+      const {store} = loadSharedStore({"lodVault.flashcardMeta": {HAUS1: left}});
+      await store.applyRemoteFlashcardMeta({HAUS1: right}, {});
+      const result = (await store.getFlashcardMeta()).HAUS1;
+      assert.equal(result.s, mode === "practice" ? 30 : 40);
+      assert.equal(result.step, mode === "practice" ? 1 : 0);
+      assert.equal(result.suspended, true);
+      assert.equal(result.reviews.length, mode === "tie" ? 1 : 2);
+      assert.equal(result.pausedAt, b.pausedAt);
+      if (mode === "practice") assert.ok(result.reviews.some(r => r.kind === "p"));
+      assert.equal((await store.applyRemoteFlashcardMeta({HAUS1: right}, {})).changed, false);
+      results.push(JSON.stringify(result));
+    }
+    assert.equal(results[0], results[1]);
+  });
+}
