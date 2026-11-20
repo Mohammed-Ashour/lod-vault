@@ -3,6 +3,33 @@ const assert = require('node:assert/strict');
 const { loadSharedStore, loadSyncScript } = require('./helpers/loaders');
 const entry = { id: 'HAUS1', word: 'Haus', study: true };
 
+test('undo keeps a legacy suspension that carries no pausedAt', async () => {
+  const suspended = {
+    totalReviews: 1,
+    reviews: [{ date: '2026-06-10T09:00:00.000Z', rating: 3 }],
+    interval: 4,
+    dueAt: '2026-06-14T09:00:00.000Z',
+    suspended: true
+  };
+  const { store } = loadSharedStore({ 'lodVault.flashcardMeta': { HAUS1: suspended } });
+  await store.undoFlashcardReview('HAUS1', null, '2026-06-10T09:00:00.000Z');
+  const card = (await store.getFlashcardMeta()).HAUS1;
+  assert.equal(card.suspended, true);
+  assert.equal(card.totalReviews, 0);
+});
+
+test('the merged review total never drops below the merged log length', async () => {
+  const { store } = loadSharedStore({
+    'lodVault.flashcardMeta': { HAUS1: { totalReviews: 2, reviews: [{ date: '2026-06-10T09:00:00.000Z', rating: 3 }, { date: '2026-06-11T09:00:00.000Z', rating: 3 }] } }
+  });
+  await store.applyRemoteFlashcardMeta({
+    HAUS1: { totalReviews: 2, reviews: [{ date: '2026-06-12T09:00:00.000Z', rating: 3 }, { date: '2026-06-13T09:00:00.000Z', rating: 3 }] }
+  });
+  const card = (await store.getFlashcardMeta()).HAUS1;
+  assert.equal(card.reviews.length, 4);
+  assert.ok(card.totalReviews >= card.reviews.length);
+});
+
 test('serialized deletion rejects core and skill reviews without orphan metadata', async () => {
   const { store } = loadSharedStore();
   await store.addToList(entry, 'study');

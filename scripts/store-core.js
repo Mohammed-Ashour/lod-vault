@@ -1311,7 +1311,8 @@
     }
     merged.reviews = [...events.values()].sort((a, b) => time(a.date) - time(b.date)
       || signature(a).localeCompare(signature(b))).slice(-100);
-    merged.totalReviews = Math.max(local.totalReviews, remote.totalReviews);
+        // The merged log can hold events neither side's counter had seen.
+    merged.totalReviews = Math.max(local.totalReviews, remote.totalReviews, merged.reviews.length);
     return normalizeFlashcardMeta(merged);
   }
 
@@ -2755,7 +2756,9 @@
       const current = meta[cardId];
       const latest = current?.reviews?.[current.reviews.length - 1];
       if (!latest || latest.date !== reviewDate) return { ok: false };
-      if ((previous && typeof previous === "object") || current.pausedAt) {
+      // A suspension synced from an older build carries no pausedAt; keep its
+      // pause when undoing its only review.
+      if ((previous && typeof previous === "object") || current.pausedAt || current.suspended) {
         const restored = { ...(previous || {}) };
         delete restored.suspended;
         delete restored.pausedAt;
