@@ -2296,9 +2296,9 @@
     }
   }
 
-  async function saveFlashcardMeta(meta) {
+  async function saveFlashcardMeta(meta, extra = {}) {
     try {
-      await chrome.storage.local.set({ [FLASHCARD_META_KEY]: meta });
+      await chrome.storage.local.set({ ...extra, [FLASHCARD_META_KEY]: meta });
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         throw createRefreshPageError();
@@ -2457,6 +2457,7 @@
       const meta = await getFlashcardMeta();
       const existing = meta[entryId] || {};
 
+      const activityMeta = globalThis.LodVaultActivity ? JSON.parse(JSON.stringify(meta)) : null;
       const reviews = Array.isArray(existing.reviews) ? existing.reviews : [];
       reviews.push({
         date: nowIso(),
@@ -2481,7 +2482,15 @@
         interval
       };
 
-      await saveFlashcardMeta(meta);
+      if (globalThis.LodVaultActivity?.captureReview) {
+        await globalThis.LodVaultActivity.captureReview({
+          date: reviews[reviews.length - 1].date,
+          isNew: !existing.totalReviews,
+          meta: activityMeta
+        }, (extra) => saveFlashcardMeta(meta, extra));
+      } else {
+        await saveFlashcardMeta(meta);
+      }
       return meta[entryId];
     });
   }
