@@ -843,6 +843,22 @@ test("a new word comes back as learning steps: after about three cards, then abo
   assert.equal(stored.st, 2);
 });
 
+test("undo while a rating is busy preserves the available undo item", async () => {
+  const entries = ["A", "B"].map((id) => makeEntry({ id, word: id }));
+  const { dom, api, undos } = await loadWithRealStore({ entries });
+  await revealAndRate(dom, 1);
+  assert.equal(api.state.undoStack.length, 1);
+  api.state.ratingInProgress = true;
+  dom.window.document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "u", bubbles: true }));
+  await wait(dom, 5);
+  assert.equal(api.state.undoStack.length, 1);
+  assert.equal(undos.length, 0);
+  api.state.ratingInProgress = false;
+  dom.window.document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "u", bubbles: true }));
+  await wait(dom, 5);
+  assert.equal(undos.length, 1);
+});
+
 test("U and Ctrl+Z undo the last review: schedule, session place and learning step", async () => {
   const entries = ["A", "B", "C"].map((id) => makeEntry({ id, word: id }));
   const { dom, api, shared, undos } = await loadWithRealStore({ entries });

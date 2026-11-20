@@ -1241,8 +1241,9 @@ function showUndoToast(text) {
 // Undo takes back the last review: its schedule, its place in the session and
 // any learning step it added. The card shows again, unrevealed.
 async function undoLastReview() {
+  if (state.ratingInProgress || typeof LodVaultStore.undoFlashcardReview !== "function") return;
   const item = state.undoStack.pop();
-  if (!item || state.ratingInProgress || typeof LodVaultStore.undoFlashcardReview !== "function") return;
+  if (!item) return;
   state.ratingInProgress = true;
   try {
     const outcome = await LodVaultStore.undoFlashcardReview(item.entryId, item.previous, item.reviewDate);
