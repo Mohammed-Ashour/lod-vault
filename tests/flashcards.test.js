@@ -377,6 +377,16 @@ test("flashcards open on Today: due cards first, then new words up to the target
   assert.match(doc.getElementById("progress").textContent, /Session 1 \/ 2/);
 });
 
+test("learning and mastered counts leave out words that were deleted", async () => {
+  const reviewed = { totalReviews: 1, reviews: [{ date: "2026-01-02T00:00:00.000Z", rating: 2 }], interval: 1, dueAt: "2099-01-01T00:00:00.000Z" };
+  const { dom } = await loadWithReviews({
+    entries: [makeEntry({ id: "KEPT1", word: "Bleift" })],
+    meta: { KEPT1: reviewed, GONE1: reviewed }
+  });
+
+  assert.equal(dom.window.document.getElementById("stat-learning").textContent, "1");
+});
+
 test("the daily target limits how many new words Today introduces", async () => {
   const entries = Array.from({ length: 12 }, (_, i) => makeEntry({ id: `W${i}`, word: `W${i}` }));
   const { dom } = await loadWithReviews({

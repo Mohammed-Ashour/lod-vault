@@ -677,8 +677,10 @@
   async function getEntryMap() {
     ensureStoreCacheListener();
 
+    // Callers edit the map they get back before persisting it, so they get a
+    // copy: a write that fails must not leave the edit in the cache.
     if (cachedEntryMap) {
-      return cachedEntryMap;
+      return { ...cachedEntryMap };
     }
 
     try {
@@ -711,7 +713,7 @@
 
       cachedSettings = settings;
       cachedEntryMap = filteredWithDeletes;
-      return cachedEntryMap;
+      return { ...cachedEntryMap };
     } catch (error) {
       if (isExtensionContextInvalidated(error)) {
         invalidateStoreCache();
@@ -827,7 +829,7 @@
     }
   }
 
-  async function persistVaultState({ entryMap = null, settings = null, deletedMap = null }) {
+  async function persistVaultState({ entryMap = null, settings = null, deletedMap = null, flashcardMeta = null }) {
     const sourceEntryMap = entryMap ? normalizeEntryMap(entryMap) : await getEntryMap();
     const sourceDeletedMap = deletedMap ? normalizeDeletedMap(deletedMap) : await getDeletedMap();
     const nextEntryMap = normalizeEntryMap(sourceEntryMap);
@@ -837,10 +839,14 @@
     };
     const removeKeys = [];
 
-    if (settings) {
-      const normalizedSettings = normalizeSettings(settings);
+    const normalizedSettings = settings ? normalizeSettings(settings) : null;
+    if (normalizedSettings) {
       payload[SETTINGS_KEY] = normalizedSettings;
-      cachedSettings = normalizedSettings;
+    }
+
+    // Written in the same call as the words, so a restore can't land half done.
+    if (flashcardMeta) {
+      payload[FLASHCARD_META_KEY] = flashcardMeta;
     }
 
     if (Object.keys(nextDeletedMap).length) {
@@ -849,11 +855,20 @@
       removeKeys.push(DELETED_KEY);
     }
 
-    await chrome.storage.local.set(payload);
-    if (removeKeys.length) {
-      await chrome.storage.local.remove(removeKeys);
+    try {
+      await chrome.storage.local.set(payload);
+      if (removeKeys.length) {
+        await chrome.storage.local.remove(removeKeys);
+      }
+    } catch (error) {
+      // Storage may hold the old or the new state; reread it next time.
+      invalidateStoreCache({ entryMap: true, settings: Boolean(normalizedSettings) });
+      throw error;
     }
 
+    if (normalizedSettings) {
+      cachedSettings = normalizedSettings;
+    }
     cachedEntryMap = nextEntryMap;
     return {
       entryMap: nextEntryMap,
@@ -1353,6 +1368,26 @@
     return Object.keys(nextSettings).length ? nextSettings : null;
   }
 
+  // When the note was last edited according to the backup: the entry's own
+  // noteUpdatedAt, or else the time the whole backup was exported.
+  function importedNoteTimestamp(incoming, backupExportedAt = "") {
+    for (const value of [incoming?.noteUpdatedAt, backupExportedAt]) {
+      const time = Date.parse(cleanText(value));
+      if (Number.isFinite(time)) return new Date(time).toISOString();
+    }
+    return "";
+  }
+
+  // A backup note replaces the vault's note only when it is the newer one. An
+  // empty note with a date was cleared on purpose and counts like any edit. A
+  // vault note with no date predates note timestamps, so the backup wins it.
+  function isImportedNoteNewer(current, incoming, backupExportedAt = "") {
+    const currentTime = Date.parse(cleanText(current.noteUpdatedAt));
+    if (!Number.isFinite(currentTime)) return true;
+    const incomingTime = Date.parse(importedNoteTimestamp(incoming, backupExportedAt));
+    return Number.isFinite(incomingTime) && incomingTime > currentTime;
+  }
+
   async function importJsonDirect(text) {
     return runVaultIo(async () => {
       const parsed = JSON.parse(text);
@@ -1365,6 +1400,9 @@
         ...currentSettings,
         ...(importedSettings || {})
       });
+      const backupExportedAt = !Array.isArray(parsed) && typeof parsed?.exportedAt === "string"
+        ? parsed.exportedAt
+        : "";
       const entryMap = await getEntryMap();
       const deletedMap = await getDeletedMap();
       let imported = 0;
@@ -1394,13 +1432,17 @@
           ? Math.max(normalizeVisitCount(existing?.visitCount), normalizeVisitCount(incoming.visitCount), 1)
           : 0;
         merged.lastVisitedAt = incoming.lastVisitedAt || cleanText(existing?.lastVisitedAt);
-        merged.note = incoming.note || merged.note;
+        merged.note = previous.note;
+        if (incoming.note && incoming.note !== previous.note
+          && isImportedNoteNewer(previous, incoming, backupExportedAt)) {
+          merged.note = incoming.note;
+          // Keep the note's own date when the backup knows it, so an older
+          // backup can't outrank a newer edit on another device after sync.
+          merged.noteUpdatedAt = importedNoteTimestamp(incoming, backupExportedAt) || nowIso();
+        }
 
         // A restore is a new change, so it has to outrank older copies on
         // other devices when it next syncs.
-        if (merged.note !== previous.note) {
-          merged.noteUpdatedAt = nowIso();
-        }
         if (["favorite", "study", "history"].some((flag) => merged[flag] !== Boolean(previous[flag]))) {
           merged.listsUpdatedAt = nowIso();
         }
@@ -1422,15 +1464,15 @@
       );
 
       try {
+        const flashcardMeta = Object.keys(incomingFlashcardMeta).length
+          ? mergeFlashcardMetaMaps(await getFlashcardMeta(), incomingFlashcardMeta)
+          : null;
         await persistVaultState({
           entryMap,
           settings: importedSettings ? effectiveSettings : null,
-          deletedMap
+          deletedMap,
+          flashcardMeta
         });
-        if (Object.keys(incomingFlashcardMeta).length) {
-          const currentFlashcardMeta = await getFlashcardMeta();
-          await saveFlashcardMeta(mergeFlashcardMetaMaps(currentFlashcardMeta, incomingFlashcardMeta));
-        }
       } catch (error) {
         invalidateStoreCache({ entryMap: false, settings: true });
         if (isExtensionContextInvalidated(error)) {

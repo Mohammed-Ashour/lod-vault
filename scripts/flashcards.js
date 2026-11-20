@@ -284,6 +284,10 @@ function computeStats() {
   let learningCount = 0;
   let masteredCount = 0;
   const reviewDates = new Set();
+  // Review data outlives a deleted word (so Undo keeps its progress). Past
+  // reviews still count toward today and the streak, but only saved words
+  // count as learning or mastered.
+  const savedIds = new Set(state.entries.map((entry) => entry.id));
 
   for (const [id, data] of Object.entries(meta)) {
     const m = normalizeFlashcardMeta(data);
@@ -295,6 +299,7 @@ function computeStats() {
     const last = m.reviews[m.reviews.length - 1];
     todayCount += m.reviews.filter((review) => LodVaultStore.toLocalDateKey(review.date) === todayKey).length;
 
+    if (!savedIds.has(id)) continue;
     if (m.easyCount >= 3 && last && last.rating === 3) {
       masteredCount += 1;
     } else {

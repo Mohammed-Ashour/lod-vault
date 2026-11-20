@@ -10,7 +10,8 @@
     "activeTab",
     "scripting",
     "contextMenus",
-    "alarms"
+    "alarms",
+    "unlimitedStorage"
   ],
   "optional_permissions": [
     "history"
