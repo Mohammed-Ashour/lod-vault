@@ -318,18 +318,37 @@
     if (card.hardCount) compact.h = card.hardCount;
     if (card.goodCount) compact.g = card.goodCount;
     if (card.easyCount) compact.e = card.easyCount;
+    // FSRS state, from 2.5 on: stability ×100 and difficulty ×10 as integers,
+    // state, lapses. Builds up to 2.4.0 ignore these keys and keep scheduling
+    // from d (due) and v (interval), which are still written.
+    if (card.srs === 1) {
+      compact.s = Math.max(1, Math.round(card.s * 100));
+      compact.f = Math.round(card.d * 10);
+      compact.t = card.st;
+      if (card.lapses) compact.x = card.lapses;
+    }
+    if (card.suspended) compact.u = 1;
     // Only the latest review travels. That is enough for today's count and the
-    // streak on other devices without spending quota on the whole log.
-    if (lastReview) compact.r = [isoToUnix(lastReview.date), lastReview.rating, lastReview.direction === "rev" ? 1 : 0];
+    // streak on other devices without spending quota on the whole log. Its
+    // rating stays on the old 1..3 scale; the FSRS grade (1..4) is appended.
+    if (lastReview) {
+      compact.r = [isoToUnix(lastReview.date), lastReview.rating, lastReview.direction === "rev" ? 1 : 0];
+      if (lastReview.grade) compact.r.push(lastReview.grade);
+    }
     return compact;
   }
 
   function expandProgress(compact = {}) {
     const lastReviewedAt = unixToIso(compact.l);
     const review = Array.isArray(compact.r) && unixToIso(compact.r[0])
-      ? [{ date: unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd" }]
+      ? [{ date: unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd", grade: compact.r[3] }]
       : [];
+    const srs = Number(compact.s) > 0 && Number(compact.f) > 0
+      ? { srs: 1, s: compact.s / 100, d: compact.f / 10, st: compact.t ?? 2, lapses: compact.x || 0 }
+      : {};
     return store.normalizeFlashcardMeta({
+      ...srs,
+      suspended: compact.u === 1,
       reviews: review,
       totalReviews: compact.n,
       hardCount: compact.h,

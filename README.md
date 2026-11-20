@@ -152,12 +152,15 @@ The **LODVault** icon will appear in your browser toolbar.
 - Play pronunciation audio, add notes, toggle lists, or delete saved words from there
 
 ### Study with flashcards
-- Click **Start review** or **Flashcards** in the popup to open **Today**: every due word, then new Study words up to your new-word limit (5, 10 or 20 a day, or no limit). Due reviews never use up new-word slots; when the backlog is more than twice a usual day, Today halves the new words until it is under control
+- Click **Start review** or **Flashcards** in the popup to open **Today**: every due word, then new Study words up to your new-word limit (none, 5, 10, 15 or 20 a day, or no limit; default 10). An optional review limit (50, 100 or 200 a day) caps how many due words Today offers. Due reviews never use up new-word slots; when the backlog is more than twice a usual day, Today halves the new words until it is under control
 - Today's numbers count words, not button presses: a word you missed and retried is one word
 - A word with no saved translation is asked forward in reverse and multiple-choice modes, so the answer never shows on the front
 - Change the new-word limit or pick another deck (Due today, Study list, Favorites, All saved) under **Session**
-- Click the card or **Reveal** to show the full meaning
-- Practising a word before it's due doesn't push it further out. Rating it Hard brings it back tomorrow
+- Click the card or **Reveal** to show the full meaning, then grade yourself: **Again** (1), **Good** (2) or **Easy** (3). Each button shows when the word will come back, e.g. `Again <10m · Good 9d · Easy 23d`. Turn on **Session → Show a Hard button** for Again / Hard / Good / Easy on 1–4
+- Scheduling uses FSRS-5 (the open spaced-repetition model also used by Anki) with its default parameters. It tracks how stable each word is in your memory and brings it back when you are about to forget it. **Recall goal** (85%, 90% or 95%) trades fewer reviews against remembering more; **Longest gap** caps intervals at 1 or 10 years
+- A new word comes back twice in the same session before it gets its first interval of a few days. A word you forget comes back once more in the session
+- Practising a word that isn't due (Study list, Favorites, All saved) is logged but doesn't move its schedule. Missing it brings it back tomorrow at the latest
+- Words reviewed with an older version switch to the new scheduler the next time you review them; their due dates don't change until then
 - Choose **Session → Mode → Listening** to hear the pronunciation without seeing the answer. Click **Reveal** (or press Space) to see the Luxembourgish word and translations, then rate it as usual
 - Listening plays automatically when a card appears. Click the speaker or press **P** to replay. If browser autoplay is blocked or LOD audio is unavailable, try the speaker again, reveal the answer, or skip the card. Listening uses LOD audio and needs a network connection; reverse direction is disabled in this mode
 

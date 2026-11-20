@@ -11,6 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const scriptsDir = resolve(__dirname);
 
 const IIFE_SCRIPTS = [
+  "srs.js",
   "store-core.js",
   "shared.js",
   "lod-article.js",

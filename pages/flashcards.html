@@ -59,13 +59,43 @@
               </select>
             </div>
             <div class="field">
-              <label for="daily-target">New words</label>
-              <select id="daily-target" class="select">
+              <label for="new-per-day">New words</label>
+              <select id="new-per-day" class="select">
+                <option value="0">None (pause)</option>
                 <option value="5">5 a day</option>
                 <option value="10">10 a day</option>
+                <option value="15">15 a day</option>
                 <option value="20">20 a day</option>
-                <option value="off">No limit</option>
+                <option value="none">No limit</option>
               </select>
+            </div>
+            <div class="field">
+              <label for="max-reviews">Reviews</label>
+              <select id="max-reviews" class="select">
+                <option value="none">No limit</option>
+                <option value="50">Up to 50 a day</option>
+                <option value="100">Up to 100 a day</option>
+                <option value="200">Up to 200 a day</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="retention">Recall goal</label>
+              <select id="retention" class="select" title="How likely you should be to remember a word when it comes back. Higher means more frequent reviews.">
+                <option value="0.85">85% · fewer reviews</option>
+                <option value="0.9">90% · recommended</option>
+                <option value="0.95">95% · more reviews</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="max-interval">Longest gap</label>
+              <select id="max-interval" class="select">
+                <option value="365">1 year</option>
+                <option value="3650">10 years</option>
+              </select>
+            </div>
+            <div class="field field-check">
+              <input id="show-hard" type="checkbox">
+              <label for="show-hard">Show a Hard button</label>
             </div>
           </div>
         </div>
@@ -131,11 +161,7 @@
         <button id="next-card" class="btn-ghost nav-btn">Next →</button>
       </div>
 
-      <div id="rating-bar" class="rating-bar is-hidden">
-        <button class="btn-ghost rating-button rating-hard" data-rating="1" title="Hard (1)">Hard <small>1</small></button>
-        <button class="btn-ghost rating-button rating-good" data-rating="2" title="Good (2)">Good <small>2</small></button>
-        <button class="btn-ghost rating-button rating-easy" data-rating="3" title="Easy (3)">Easy <small>3</small></button>
-      </div>
+      <div id="rating-bar" class="rating-bar is-hidden" role="group" aria-label="How well did you remember it?"></div>
 
       <p id="shortcut-hint" class="shortcut-hint"></p>
     </section>
@@ -149,8 +175,8 @@
             <span class="summary-label">cards</span>
           </div>
           <div class="summary-stat">
-            <span class="summary-number summary-hard" id="summary-hard">0</span>
-            <span class="summary-label">hard</span>
+            <span class="summary-number summary-again" id="summary-again">0</span>
+            <span class="summary-label">again</span>
           </div>
           <div class="summary-stat">
             <span class="summary-number summary-good" id="summary-good">0</span>
@@ -166,6 +192,7 @@
     </section>
   </main>
 
+  <script src="../scripts/srs.js"></script>
   <script src="../scripts/store-core.js"></script>
   <script src="../scripts/entry-presenter.js"></script>
   <script src="../scripts/shared.js"></script>

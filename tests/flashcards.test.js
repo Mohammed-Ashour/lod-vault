@@ -92,13 +92,13 @@ test("session mode shows bounded deck and summary after ratings", async () => {
 
   assert.match(dom.window.document.getElementById("progress").textContent, /Session 1 \/ 10/);
 
-  const ratingGood = dom.window.document.querySelector('[data-rating="2"]');
+  const ratingGood = () => dom.window.document.querySelector('[data-grade="3"]');
 
   // Rate 9 cards
   for (let i = 0; i < 9; i += 1) {
     dom.window.document.getElementById("flip-card").click();
     await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
-    ratingGood.click();
+    ratingGood().click();
     await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
   }
 
@@ -107,7 +107,7 @@ test("session mode shows bounded deck and summary after ratings", async () => {
   // Rate the final card to trigger summary
   dom.window.document.getElementById("flip-card").click();
   await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
-  ratingGood.click();
+  ratingGood().click();
   await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
 
   // Summary should be visible
@@ -125,10 +125,9 @@ test("flashcard sessions resume at the first unrated card", async () => {
   size.dispatchEvent(new first.dom.window.Event("change"));
   await new Promise((resolve) => first.dom.window.setTimeout(resolve, 0));
 
-  const good = first.dom.window.document.querySelector('[data-rating="2"]');
   for (let index = 0; index < 2; index += 1) {
     first.dom.window.document.getElementById("flip-card").click();
-    good.click();
+    first.dom.window.document.querySelector('[data-grade="3"]').click();
     await new Promise((resolve) => first.dom.window.setTimeout(resolve, 0));
   }
 
@@ -161,13 +160,14 @@ test("daily progress counts cards, not presses, and the new-word limit can be li
   const doc = dom.window.document;
   assert.equal(doc.getElementById("stat-today").textContent, "1");
   assert.equal(doc.getElementById("daily-progress").textContent, "Done for today: 0/0 reviews · 1/1 new");
-  const target = doc.getElementById("daily-target");
-  target.value = "off";
+  const target = doc.getElementById("new-per-day");
+  target.value = "none";
   target.dispatchEvent(new dom.window.Event("change"));
   await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
 
   assert.equal(doc.getElementById("daily-progress").textContent, "Done for today: 0/0 reviews · 1 new · no new-word limit");
-  assert.deepEqual(storageData["lodVault.flashcardSettings"], { dailyTarget: null, mode: "self" });
+  assert.equal(storageData["lodVault.flashcardSettings"].newPerDay, null);
+  assert.equal(storageData["lodVault.flashcardSettings"].mode, "self");
 });
 
 test("keyboard shortcuts trigger rating and direction toggle", async () => {
@@ -297,12 +297,12 @@ test("multiple choice mode maps correct answers to Good and wrong answers to Har
 
   options().find((button) => button.dataset.correct === "1").click();
   await new Promise((resolve) => dom.window.setTimeout(resolve, 900));
-  assert.deepEqual(reviews, [{ entryId: "A1", rating: 2 }]);
+  assert.deepEqual(reviews, [{ entryId: "A1", rating: 3 }]);
 
   options().find((button) => button.dataset.correct === "0").click();
   await new Promise((resolve) => dom.window.setTimeout(resolve, 900));
   assert.deepEqual(reviews, [
-    { entryId: "A1", rating: 2 },
+    { entryId: "A1", rating: 3 },
     { entryId: "A2", rating: 1 }
   ]);
 });
@@ -359,7 +359,7 @@ async function loadWithReviews({ entries, meta = {}, url, localStorage } = {}) {
 
 async function revealAndRate(dom, rating) {
   dom.window.document.getElementById("flip-card").click();
-  dom.window.document.querySelector(`[data-rating="${rating}"]`).click();
+  dom.window.document.querySelector(`[data-grade="${rating}"]`).click();
   await wait(dom);
 }
 
@@ -400,7 +400,7 @@ test("the daily target limits how many new words Today introduces", async () => 
   const doc = dom.window.document;
   assert.match(doc.getElementById("progress").textContent, /Session 1 \/ 5/);
 
-  const target = doc.getElementById("daily-target");
+  const target = doc.getElementById("new-per-day");
   target.value = "20";
   target.dispatchEvent(new dom.window.Event("change"));
   await wait(dom);
@@ -414,7 +414,7 @@ test("a Hard card comes back once before the session ends", async () => {
 
   await revealAndRate(dom, 1);
   assert.match(doc.getElementById("progress").textContent, /Session 2 \/ 3/);
-  await revealAndRate(dom, 2);
+  await revealAndRate(dom, 3);
   assert.equal(doc.getElementById("card-word").textContent, "Eent");
   await revealAndRate(dom, 1);
 
@@ -422,7 +422,7 @@ test("a Hard card comes back once before the session ends", async () => {
   assert.equal(doc.getElementById("summary-overlay").classList.contains("is-hidden"), false);
   // The retry is not a third card: each card counts once, by its first try.
   assert.equal(doc.getElementById("summary-total").textContent, "2");
-  assert.equal(doc.getElementById("summary-hard").textContent, "1");
+  assert.equal(doc.getElementById("summary-again").textContent, "1");
   assert.equal(doc.getElementById("summary-good").textContent, "1");
 });
 
@@ -450,7 +450,7 @@ test("a retried multiple-choice card gets fresh options when it follows itself",
 test("Today is not offered as a resumable session on the next visit", async () => {
   const entries = [makeEntry({ id: "A" }), makeEntry({ id: "B", word: "Bam" })];
   const { dom, storageData } = await loadWithReviews({ entries });
-  await revealAndRate(dom, 2);
+  await revealAndRate(dom, 3);
   assert.equal(storageData["lodVault.flashcardSession"], undefined);
 });
 
@@ -497,7 +497,7 @@ test("a storage change neither resets the chosen deck nor closes the summary", a
   deck.value = "today";
   deck.dispatchEvent(new dom.window.Event("change"));
   await wait(dom);
-  await revealAndRate(dom, 2);
+  await revealAndRate(dom, 3);
   const summary = doc.getElementById("summary-overlay");
   assert.equal(summary.classList.contains("is-hidden"), false);
 
@@ -514,7 +514,7 @@ test("the flashcard page lists the keyboard shortcuts for the current mode", asy
   });
   const doc = dom.window.document;
   const hint = doc.getElementById("shortcut-hint");
-  assert.equal(hint.textContent, "Space reveal · ← → navigate · 1 / 2 / 3 rate · R flip direction");
+  assert.equal(hint.textContent, "Space reveal · ← → navigate · 1 Again · 2 Good · 3 Easy · R flip direction");
 
   const modeSelect = doc.getElementById("mode-select");
   modeSelect.value = "mc";
@@ -547,17 +547,17 @@ test("Prev and Next move through the unrated cards of a session", async () => {
   assert.deepEqual(reviews, []);
   assert.match(doc.getElementById("session-progress").textContent, /0 rated · 3 remaining/);
 
-  await revealAndRate(dom, 2);
+  await revealAndRate(dom, 3);
   assert.equal(word(), "A");
   next.click();
   assert.equal(word(), "B");
-  await revealAndRate(dom, 2);
+  await revealAndRate(dom, 3);
   assert.equal(word(), "A");
 
   // One card left: there is nowhere to move to.
   assert.equal(next.disabled, true);
   assert.equal(prev.disabled, true);
-  await revealAndRate(dom, 2);
+  await revealAndRate(dom, 3);
 
   assert.deepEqual(reviews.map((review) => review.entryId), ["C", "B", "A"]);
   assert.equal(doc.getElementById("summary-overlay").classList.contains("is-hidden"), false);
@@ -601,13 +601,13 @@ test("a new session starts on its first card and rates each card once", async ()
   size.dispatchEvent(new dom.window.Event("change"));
   await wait(dom);
 
-  for (let index = 0; index < 10; index += 1) await revealAndRate(dom, 2);
+  for (let index = 0; index < 10; index += 1) await revealAndRate(dom, 3);
   doc.getElementById("close-summary").click();
   await wait(dom);
 
   const secondStart = reviews.length;
   assert.equal(doc.getElementById("card-word").textContent, "W00");
-  for (let index = 0; index < 10; index += 1) await revealAndRate(dom, 2);
+  for (let index = 0; index < 10; index += 1) await revealAndRate(dom, 3);
 
   const second = reviews.slice(secondStart).map((review) => review.entryId);
   assert.equal(new Set(second).size, 10);
@@ -625,7 +625,7 @@ test("rating a Today card clears an older saved session, but opening Today doesn
   assert.equal(resume.classList.contains("is-hidden"), false);
   assert.ok(storageData["lodVault.flashcardSession"]);
 
-  await revealAndRate(dom, 2);
+  await revealAndRate(dom, 3);
 
   assert.equal(resume.classList.contains("is-hidden"), true);
   assert.equal(storageData["lodVault.flashcardSession"], undefined);
@@ -650,7 +650,7 @@ test("number keys rate after Reveal was clicked with the mouse", async () => {
   flip.focus();
   flip.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "2", bubbles: true }));
   await wait(dom);
-  assert.deepEqual(reviews, [{ entryId: "A", rating: 2 }]);
+  assert.deepEqual(reviews, [{ entryId: "A", rating: 3 }]);
 
   // Space and Enter on a focused button stay with the button.
   doc.getElementById("flip-card").dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: " ", bubbles: true }));
@@ -685,7 +685,7 @@ test("reverse and multiple choice never put the answer on the front of a word wi
   assert.equal(doc.getElementById("card-word").textContent, "Bare");
   assert.match(doc.getElementById("card-hint").textContent, /No saved translation/);
   doc.getElementById("flip-card").click();
-  doc.querySelector('[data-rating="2"]').click();
+  doc.querySelector('[data-grade="3"]').click();
   await wait(dom);
   assert.deepEqual(recorded, [{ entryId: "BARE", direction: "fwd" }]);
 
@@ -705,7 +705,7 @@ test("a word deleted mid-session leaves the session and is never rated", async (
   const entries = [makeEntry({ id: "A", word: "Eent" }), makeEntry({ id: "B", word: "Zwee" }), makeEntry({ id: "C", word: "Dräi" })];
   const { dom, reviews, setEntries, storageOnChanged } = await loadWithReviews({ entries });
   const doc = dom.window.document;
-  await revealAndRate(dom, 2);
+  await revealAndRate(dom, 3);
   assert.equal(doc.getElementById("card-word").textContent, "Zwee");
 
   doc.getElementById("flip-card").click();
@@ -716,7 +716,68 @@ test("a word deleted mid-session leaves the session and is never rated", async (
   assert.equal(doc.getElementById("card-word").textContent, "Dräi (edited)");
   assert.match(doc.getElementById("progress").textContent, /Session 2 \/ 2/);
   assert.equal(doc.getElementById("flashcard").classList.contains("is-revealed"), false);
-  await revealAndRate(dom, 2);
+  await revealAndRate(dom, 3);
   assert.deepEqual(reviews.map((review) => review.entryId), ["A", "C"]);
   assert.equal(doc.getElementById("summary-total").textContent, "2");
+});
+
+test("the rating bar shows Again / Good / Easy with their next intervals, and Hard on request", async () => {
+  const recorded = [];
+  const { dom } = await loadFlashcardsScript({
+    entries: [makeEntry(), makeEntry({ id: "B", word: "Bam" })],
+    storeOverrides: {
+      async recordFlashcardReview(...args) {
+        recorded.push(args);
+      }
+    }
+  });
+  const doc = dom.window.document;
+  doc.getElementById("flip-card").click();
+  await wait(dom);
+  const labels = () => [...doc.querySelectorAll("#rating-bar button")].map((button) => button.textContent.replace(/\s+/g, " ").trim());
+  assert.deepEqual(labels(), ["Again1 · <10m", "Good2 · <10m", "Easy3 · 16d"]);
+
+  doc.getElementById("flashcard").dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "2", bubbles: true }));
+  await wait(dom);
+  assert.equal(recorded[0][1], 3);
+  assert.equal(recorded[0][3].kind, "r");
+
+  const showHard = doc.getElementById("show-hard");
+  showHard.checked = true;
+  showHard.dispatchEvent(new dom.window.Event("change"));
+  await wait(dom);
+  doc.getElementById("flip-card").click();
+  await wait(dom);
+  assert.deepEqual(labels().map((label) => label.split(/\d/)[0]), ["Again", "Hard", "Good", "Easy"]);
+  doc.getElementById("flashcard").dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "2", bubbles: true }));
+  await wait(dom);
+  assert.equal(recorded[1][1], 2);
+});
+
+test("practice decks log practice reviews and show no intervals for words that aren't due", async () => {
+  const now = new Date();
+  const later = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 9).toISOString();
+  const recorded = [];
+  const { dom } = await loadFlashcardsScript({
+    entries: [makeEntry()],
+    url: "https://extension.test/pages/flashcards.html?deck=favorites",
+    storeOverrides: {
+      async getFlashcardMeta() {
+        return { HAUS1: { totalReviews: 4, reviews: [], dueAt: later, interval: 9, lastReviewedAt: now.toISOString(), srs: 1, s: 9, d: 5, st: 2 } };
+      },
+      async recordFlashcardReview(...args) {
+        recorded.push(args);
+      }
+    }
+  });
+  const doc = dom.window.document;
+  doc.getElementById("deck-filter").value = "study";
+  doc.getElementById("deck-filter").dispatchEvent(new dom.window.Event("change"));
+  await wait(dom);
+  doc.getElementById("flip-card").click();
+  await wait(dom);
+  assert.deepEqual([...doc.querySelectorAll("#rating-bar small")].map((small) => small.textContent), ["1", "2", "3"]);
+  doc.querySelector('[data-grade="1"]').click();
+  await wait(dom);
+  assert.equal(recorded[0][3].kind, "p");
 });

@@ -1,7 +1,7 @@
 (() => {
   let refreshToken = 0;
   let hasQueue = false;
-  let dailyTarget = 10;
+  let settings = null;
 
   function createStudyModule(ctx) {
     const { store, chromeApi, state, elements } = ctx;
@@ -38,21 +38,26 @@
       const entries = state.savedEntries || [];
 
       let meta = {};
-      // A failed read keeps the last known target rather than reading as Off.
+      // A failed read keeps the last known settings rather than reading as no limit.
       try {
-        [meta, dailyTarget] = await Promise.all([
+        [meta, settings] = await Promise.all([
           store.getFlashcardMeta(),
-          store.getFlashcardDailyTarget()
+          store.getFlashcardSettings()
         ]);
       } catch {
         meta = {};
       }
+      settings ||= store.normalizeFlashcardSettings({});
 
       // A newer refresh superseded this one while we were awaiting storage:
       // drop the stale result instead of repainting with old counts.
       if (token !== refreshToken) return;
 
-      const today = store.buildTodayQueue(entries, meta || {}, { dailyTarget });
+      // The same numbers as the Flashcards page: one buildTodayQueue call.
+      const today = store.buildTodayQueue(entries, meta || {}, {
+        newPerDay: settings.newPerDay,
+        maxReviewsPerDay: settings.maxReviewsPerDay
+      });
       hasQueue = today.queue.length > 0;
       renderStudyCard(today);
     }
