@@ -69,7 +69,8 @@ Dependencies point from page controllers toward these helpers. Layout changes mu
 3. Mutations update local entries. Storage refreshes update membership and presentation without replacing live lookup editors.
 4. The Vault renders generated export HTML inside an iframe, then adds live edit controls. Preview refreshes preserve its edit and scroll state.
 5. Flashcards reads entries and review metadata and persists review progress through the existing store. `buildTodayQueue` in `scripts/store-core.js` is the single definition of what is due today, shared by the popup, Flashcards and the toolbar badge.
-6. Review progress syncs in its own `lodVault.p.*` keys, outside the manifest and format version. Each key is a hash bucket, so one review rewrites one item. Words have priority over the quota: progress takes the space left after an 8 KB margin, up to 24 KB, and the most recently reviewed words are kept. Only the latest review per word travels, so older review history stays on the device that recorded it. The review log stays complete in JSON backups. Builds before 2.4.0 count these keys against the quota but can't remove them, so a vault with more than about 76 KB of synced words can show sync as paused on an older build until it updates.
+6. Review progress syncs in its own `lodVault.p.*` keys, outside the manifest and format version. Each key is a hash bucket, so one review rewrites one item. Words have priority over the quota: progress takes the space left after an 8 KB margin, up to 24 KB, and the most recently reviewed words are kept. Only the latest review per word travels, so older review history stays on the device that recorded it. The review log stays complete in JSON backups.
+7. Daily study totals live in local `lodVault.activity` (about a year, `{day: [reviews, new, flags]}`) and sync under `lodVault.a` (last 60 days plus the streak state just before them, about 1 KB). `scripts/activity.js` owns them. The background worker folds the review log into them after every progress change, so the review code doesn't know about them. Merges keep the larger total per day, so devices converge. The streak, freezes and rest days are computed from these totals, so every device shows the same streak. `lodVault.a` counts against the sync budget before progress and appears in the capacity stats. JSON backups carry it in an optional `sections.activity` block; modules register backup sections through `registerBackupSection` in store-core. Builds before 2.4.0 count these keys against the quota but can't remove them, so a vault with more than about 76 KB of synced words can show sync as paused on an older build until it updates.
 
 ## Module ownership boundaries
 
@@ -81,6 +82,7 @@ Dependencies point from page controllers toward these helpers. Layout changes mu
 - `scripts/popup-app.js`: module wiring, storage/tab events, autosave, feedback and delete/Undo.
 - `scripts/preview.js` and `styles/preview.css`: live Vault editing and remaining-height iframe layout.
 - `scripts/flashcards.js` and `styles/flashcards.css`: review behavior and responsive card/session controls.
+- `scripts/activity.js`: daily activity totals, streak rules and their sync value.
 - `scripts/background-impl.js`: toolbar due badge, refreshed on entry and review changes and by a `chrome.alarms` alarm at local midnight.
 
 ## Architecture change protocol

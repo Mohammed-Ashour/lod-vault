@@ -530,6 +530,14 @@ chrome.commands?.onCommand?.addListener(async (command) => {
   }
 });
 
+// Day totals for the streak and stats are folded in from the review log after
+// every change, so the review code itself doesn't need to know about them.
+function recordDailyActivity() {
+  globalThis.LodVaultActivity?.recordFromLocal?.().catch?.((error) => {
+    console.warn("[LODVault] Could not record daily activity:", error?.message || error);
+  });
+}
+
 function repairDamagedHistoryEntries() {
   LodVaultStore.queueDamagedHistoryEntries?.().catch(() => {});
 }
@@ -543,6 +551,9 @@ chrome.storage.onChanged?.addListener((changes, areaName) => {
   )) {
     void refreshToolbarBadge();
   }
+  if (areaName === "local" && changes?.[LodVaultStore.FLASHCARD_META_KEY]) {
+    recordDailyActivity();
+  }
   if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
     scheduleHistoryHydrationResume(25);
   }
@@ -553,6 +564,7 @@ registerContextMenus();
 void syncSelectionTriggerRegistration();
 scheduleDueBadgeRefresh();
 void refreshToolbarBadge();
+recordDailyActivity();
 chrome.permissions?.onAdded?.addListener(() => {
   void syncSelectionTriggerRegistration();
 });

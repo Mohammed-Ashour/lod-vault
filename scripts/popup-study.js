@@ -53,6 +53,18 @@
       if (token !== refreshToken) return;
 
       const today = store.buildTodayQueue(entries, meta || {}, { dailyTarget });
+      // The streak comes from the synced day totals when they're available, so
+      // it matches other devices.
+      const activity = globalThis.LodVaultActivity;
+      if (activity) {
+        try {
+          const info = await activity.getStreakInfo({ meta: meta || {} });
+          if (token !== refreshToken) return;
+          today.streak = info.streak;
+        } catch {
+          // Keep the streak from this device's log.
+        }
+      }
       hasQueue = today.queue.length > 0;
       renderStudyCard(today);
     }

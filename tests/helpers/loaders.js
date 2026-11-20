@@ -376,7 +376,8 @@ async function loadPopupScript({
   popupHtml,
   storeOverrides = {},
   lookupOverrides = null,
-  syncOverrides = null
+  syncOverrides = null,
+  globals = {}
 } = {}) {
   const shared = loadSharedStore();
   const html = popupHtml || fs.readFileSync(path.join(repoRoot, "pages/popup.html"), "utf8");
@@ -588,6 +589,7 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
     Blob,
     setTimeout: dom.window.setTimeout.bind(dom.window),
     clearTimeout: dom.window.clearTimeout.bind(dom.window),
+    ...globals,
     globalThis: null
   };
 
@@ -610,7 +612,7 @@ ${fs.readFileSync(path.join(repoRoot, "scripts/popup.js"), "utf8")}
   };
 }
 
-async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localStorage = {}, url = "https://extension.test/pages/flashcards.html" } = {}) {
+async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localStorage = {}, url = "https://extension.test/pages/flashcards.html", globals = {} } = {}) {
   const shared = loadSharedStore();
   const html = fs.readFileSync(path.join(repoRoot, "pages/flashcards.html"), "utf8");
   const dom = new JSDOM(html, {
@@ -693,6 +695,7 @@ async function loadFlashcardsScript({ entries = [], storeOverrides = {}, localSt
     URLSearchParams: dom.window.URLSearchParams,
     setTimeout: dom.window.setTimeout.bind(dom.window),
     clearTimeout: dom.window.clearTimeout.bind(dom.window),
+    ...globals,
     globalThis: null
   };
 
@@ -891,6 +894,7 @@ function loadBackgroundScript(initialStorage = {}) {
 }
 
 module.exports = {
+  runScripts,
   loadSharedStore,
   loadSyncScript,
   loadContentScript,

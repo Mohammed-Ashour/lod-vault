@@ -409,12 +409,13 @@
     }
 
     async function exportJson() {
-      const [entries, settings, flashcardMeta] = await Promise.all([
+      const [entries, settings, flashcardMeta, sections] = await Promise.all([
         store.getEntries(),
         store.getSettings(),
-        typeof store.getFlashcardMeta === "function" ? store.getFlashcardMeta() : Promise.resolve({})
+        typeof store.getFlashcardMeta === "function" ? store.getFlashcardMeta() : Promise.resolve({}),
+        typeof store.collectBackupSections === "function" ? store.collectBackupSections() : Promise.resolve({})
       ]);
-      const json = store.buildJsonExport(entries, { settings, flashcardMeta });
+      const json = store.buildJsonExport(entries, { settings, flashcardMeta, sections });
       const date = new Date().toISOString().slice(0, 10);
       store.downloadTextFile(`lodvault-export-${date}.json`, json, "application/json");
 

@@ -127,6 +127,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     chrome.tabs.create({ url: chrome.runtime.getURL("pages/preview.html") });
   });
   chrome.storage?.onChanged?.addListener?.(handleStorageChange);
+  // The synced streak (see activity.js) replaces the one from this device's log.
+  globalThis.LodVaultActivity?.watchStreak?.((info) => {
+    state.activityStreak = info.streak;
+    renderStats();
+  });
 
   await Promise.all([loadEntries(), loadFlashcardMeta(), loadFlashcardState()]);
   chooseInitialDeck();
@@ -325,7 +330,7 @@ function computeStats() {
 }
 
 function renderStats() {
-  if (elements.statStreak) elements.statStreak.textContent = state.stats.streak;
+  if (elements.statStreak) elements.statStreak.textContent = state.activityStreak ?? state.stats.streak;
   if (elements.statToday) elements.statToday.textContent = state.stats.todayCount;
   if (elements.dailyProgress) {
     const complete = state.dailyTarget && state.stats.todayCount >= state.dailyTarget;

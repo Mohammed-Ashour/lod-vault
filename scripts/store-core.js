@@ -1310,6 +1310,48 @@
     return merged;
   }
 
+  // Optional backup sections (daily activity, tags, …) owned by other modules.
+  // Each registers how to read its data for export and merge it back on restore.
+  const backupSections = new Map();
+
+  function registerBackupSection(name, handlers = {}) {
+    const key = cleanText(name);
+    if (!key || typeof handlers.exportData !== "function" || typeof handlers.importData !== "function") return;
+    backupSections.set(key, handlers);
+  }
+
+  async function collectBackupSections(options = {}) {
+    const exclude = new Set(Array.isArray(options.exclude) ? options.exclude : []);
+    const sections = {};
+    for (const [name, handlers] of backupSections) {
+      if (exclude.has(name)) continue;
+      try {
+        const value = await handlers.exportData();
+        if (value != null) sections[name] = value;
+      } catch (error) {
+        console.warn(`[LODVault] Could not export ${name}:`, error?.message || error);
+      }
+    }
+    return sections;
+  }
+
+  // A section that fails to restore must not undo the words already restored.
+  async function applyBackupSections(sections) {
+    if (!sections || typeof sections !== "object" || Array.isArray(sections)) return [];
+    const applied = [];
+    for (const [name, value] of Object.entries(sections)) {
+      const handlers = backupSections.get(name);
+      if (!handlers) continue;
+      try {
+        await handlers.importData(value);
+        applied.push(name);
+      } catch (error) {
+        console.warn(`[LODVault] Could not restore ${name}:`, error?.message || error);
+      }
+    }
+    return applied;
+  }
+
   function buildJsonExport(entries, options = {}) {
     const normalizedSettings = normalizeSettings(options.settings || DEFAULT_SETTINGS);
     const settings = {
@@ -1324,7 +1366,10 @@
         exportedAt: nowIso(),
         settings,
         entries: entries.map(normalizeEntry),
-        flashcardMeta
+        flashcardMeta,
+        ...(options.sections && typeof options.sections === "object" && Object.keys(options.sections).length
+          ? { sections: options.sections }
+          : {})
       },
       null,
       2
@@ -1481,7 +1526,16 @@
         throw error;
       }
 
-      return { imported, total: countStoredEntries(entryMap), newCount, mergeCount, restoreCount };
+      const sections = await applyBackupSections(!Array.isArray(parsed) ? parsed?.sections : null);
+
+      return {
+        imported,
+        total: countStoredEntries(entryMap),
+        newCount,
+        mergeCount,
+        restoreCount,
+        ...(sections.length ? { sections } : {})
+      };
     });
   }
 
@@ -2586,6 +2640,9 @@
     restoreEntry,
     markPortableBackupExported,
     buildJsonExport,
+    registerBackupSection,
+    collectBackupSections,
+    applyBackupSections,
     importJson,
     previewJsonImport,
     importBrowserHistory,

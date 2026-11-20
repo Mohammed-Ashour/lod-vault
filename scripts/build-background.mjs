@@ -13,6 +13,7 @@ const scriptsDir = resolve(__dirname);
 const IIFE_SCRIPTS = [
   "store-core.js",
   "shared.js",
+  "activity.js",
   "lod-article.js",
   "lens-lookup.js",
   "compress.js",
