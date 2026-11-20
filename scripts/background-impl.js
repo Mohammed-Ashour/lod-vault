@@ -60,7 +60,11 @@ const CONTENT_SCRIPT_MUTATION_METHODS = new Set([
   "saveNote"
 ]);
 
+const LEXICON_RECONCILE_DELAY_MS = 20 * 1000;
+const LEXICON_FETCH_TIMEOUT_MS = 15000;
+
 let storeMutationQueue = Promise.resolve();
+let lexiconReconcileTimer = null;
 let historyHydrationResumeTimer = null;
 
 const syncCoordinator = LodVaultSyncCoordinator.createSyncCoordinator({
@@ -70,6 +74,60 @@ const syncCoordinator = LodVaultSyncCoordinator.createSyncCoordinator({
   logger: console,
   pushDebounceMs: globalThis.__LOD_SYNC_PUSH_DEBOUNCE_MS__
 });
+
+async function fetchLexiconEntryJson(id) {
+  const response = await fetch(LodVaultLensLookup.buildEntryUrl(id), {
+    method: "GET",
+    credentials: "omit",
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(LEXICON_FETCH_TIMEOUT_MS)
+  });
+  if (!response.ok) {
+    const error = new Error(`LOD request failed (${response.status}).`);
+    error.status = response.status;
+    throw error;
+  }
+  const data = await response.json();
+  if (!data?.entry || typeof data.entry !== "object") {
+    const error = new Error("LOD returned no entry.");
+    error.status = 404;
+    throw error;
+  }
+  return data.entry;
+}
+
+const lexiconHydrator = LodVaultLexicon.createHydrator({
+  fetchEntryJson: fetchLexiconEntryJson,
+  getEntryMap: () => LodVaultStore.getEntryMap(),
+  logger: console
+});
+
+// Older saved words get their lexicon lazily, a little after the worker
+// starts, so the first lookups of a session aren't competing with it.
+function scheduleLexiconReconcile(delayMs = LEXICON_RECONCILE_DELAY_MS) {
+  if (lexiconReconcileTimer) clearTimeout(lexiconReconcileTimer);
+  lexiconReconcileTimer = setTimeout(() => {
+    lexiconReconcileTimer = null;
+    lexiconHydrator.reconcile().catch((error) => {
+      console.warn("[LODVault] Lexicon reconcile failed:", error?.message || error);
+    });
+  }, Math.max(0, Number(delayMs) || 0));
+  // A pending reconcile shouldn't keep a Node test process alive.
+  lexiconReconcileTimer?.unref?.();
+}
+
+// The lookup that precedes a save already fetched the canonical entry through
+// this proxy; keeping it briefly lets the lexicon reuse it.
+function rememberLexiconResponse(requestUrl, json) {
+  try {
+    const { pathname } = new URL(requestUrl);
+    if (!pathname.startsWith(LENS_PROXY_ENTRY_PREFIX) || !json?.entry) return;
+    const id = decodeURIComponent(pathname.slice(LENS_PROXY_ENTRY_PREFIX.length));
+    if (json.entry.lod_id === id) lexiconHydrator.rememberResponse(id, json.entry);
+  } catch {
+    // Never let the lexicon cache break a lookup.
+  }
+}
 
 function enqueueStoreMutation(task) {
   const result = storeMutationQueue.then(task, task);
@@ -544,12 +602,21 @@ chrome.storage.onChanged?.addListener((changes, areaName) => {
   )) {
     void refreshToolbarBadge();
   }
+  if (areaName === "local" && changes?.[LodVaultStore.STORAGE_KEY]) {
+    lexiconHydrator.handleEntriesChanged(
+      changes[LodVaultStore.STORAGE_KEY].oldValue,
+      changes[LodVaultStore.STORAGE_KEY].newValue
+    ).catch((error) => {
+      console.warn("[LODVault] Lexicon update failed:", error?.message || error);
+    });
+  }
   if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
     scheduleHistoryHydrationResume(25);
   }
 });
 
 scheduleHistoryHydrationResume(50);
+scheduleLexiconReconcile();
 registerContextMenus();
 void syncSelectionTriggerRegistration();
 scheduleDueBadgeRefresh();
@@ -614,6 +681,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           json = null;
         }
 
+        if (response.ok) rememberLexiconResponse(requestUrl, json);
         sendResponse({
           ok: response.ok,
           status: response.status,
@@ -628,6 +696,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }));
 
     return true;
+  }
+
+  if (message?.type === LodVaultLexicon.HYDRATE_MESSAGE_TYPE) {
+    if (!sender || sender.id !== chrome.runtime.id || !String(sender.url || "").startsWith(chrome.runtime.getURL(""))) {
+      sendResponse({ ok: false, error: "Lexicon hydration is only available to extension pages." });
+      return;
+    }
+    const ids = [...new Set((Array.isArray(message.ids) ? message.ids : [])
+      .map((id) => String(id || "").split("#")[0].trim())
+      .filter((id) => /^[A-Za-z0-9_.-]+$/.test(id)))]
+      .slice(0, 200);
+    lexiconHydrator.enqueue(ids, { front: true });
+    sendResponse({ ok: true, queued: ids.length });
+    return;
   }
 
   if (message?.type !== STORE_MUTATION_MESSAGE_TYPE) return;

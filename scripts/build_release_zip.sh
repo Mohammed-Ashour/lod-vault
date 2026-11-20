@@ -45,6 +45,7 @@ cp \
   scripts/entry-presenter.js \
   scripts/flashcards.js \
   scripts/lens-lookup.js \
+  scripts/lexicon-store.js \
   scripts/lens-overlay-shell.js \
   scripts/lens-overlay-controller.js \
   scripts/lens-render.js \

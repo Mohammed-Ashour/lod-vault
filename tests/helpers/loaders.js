@@ -196,7 +196,8 @@ function loadSharedStore(initialStorage = {}, options = {}) {
     "scripts/entry-presenter.js",
     "scripts/shared.js",
     "scripts/lod-article.js",
-    "scripts/lens-lookup.js"
+    "scripts/lens-lookup.js",
+    "scripts/lexicon-store.js"
   ]);
 
   return {
@@ -247,6 +248,7 @@ function loadSyncScript(initialStorage = {}, options = {}) {
     "scripts/shared.js",
     "scripts/lod-article.js",
     "scripts/lens-lookup.js",
+    "scripts/lexicon-store.js",
     "scripts/compress.js",
     "scripts/sync.js"
   ]);
@@ -549,6 +551,7 @@ async function loadPopupScript({
     "scripts/popup-current.js",
     "scripts/popup-list.js",
     "scripts/lens-lookup.js",
+    "scripts/lexicon-store.js",
     "scripts/popup-lookup.js",
     "scripts/popup-backup.js",
     "scripts/popup-study.js"

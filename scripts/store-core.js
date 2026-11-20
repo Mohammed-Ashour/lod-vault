@@ -1331,6 +1331,11 @@
       syncLanguages: normalizedSettings.syncLanguages
     };
     const flashcardMeta = normalizeFlashcardMetaMap(options.flashcardMeta);
+    // Optional, local-only dictionary details (scripts/lexicon-store.js). Old
+    // builds ignore the field when restoring.
+    const lexicon = options.lexicon && typeof options.lexicon === "object" && Object.keys(options.lexicon).length
+      ? options.lexicon
+      : null;
     return JSON.stringify(
       {
         app: "lodvault",
@@ -1338,7 +1343,8 @@
         exportedAt: nowIso(),
         settings,
         entries: entries.map(normalizeEntry),
-        flashcardMeta
+        flashcardMeta,
+        ...(lexicon ? { lexicon } : {})
       },
       null,
       2
@@ -1477,6 +1483,16 @@
         !Array.isArray(parsed) && parsed && typeof parsed === "object" ? parsed.flashcardMeta : null
       );
 
+      // Restored before the entries are written, so the lexicon hydrator that
+      // reacts to the new entries finds the records and doesn't refetch them.
+      let lexiconCount = 0;
+      const incomingLexicon = !Array.isArray(parsed) ? parsed?.lexicon : null;
+      const lexiconApi = globalThis.LodVaultLexicon;
+      if (incomingLexicon && typeof lexiconApi?.importLexicons === "function") {
+        const savedIds = Object.keys(entryMap).filter((id) => entryMap[id]?.favorite || entryMap[id]?.study);
+        lexiconCount = await lexiconApi.importLexicons(incomingLexicon, savedIds).catch(() => 0);
+      }
+
       try {
         const flashcardMeta = Object.keys(incomingFlashcardMeta).length
           ? mergeFlashcardMetaMaps(await getFlashcardMeta(), incomingFlashcardMeta)
@@ -1495,7 +1511,14 @@
         throw error;
       }
 
-      return { imported, total: countStoredEntries(entryMap), newCount, mergeCount, restoreCount };
+      return {
+        imported,
+        total: countStoredEntries(entryMap),
+        newCount,
+        mergeCount,
+        restoreCount,
+        ...(incomingLexicon ? { lexiconCount } : {})
+      };
     });
   }
 

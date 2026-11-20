@@ -17,6 +17,7 @@ When you save a word, LODVault stores the following **locally in your browser** 
 - Your personal note for the word (if you add one)
 - Visit count and last visited date (if Auto mode is on)
 - Your Auto mode on/off setting
+- Dictionary details for each word in Favorites or Study (gender, plurals, participles, the numbered senses with their translations, and up to three LOD example sentences per sense with their audio links). These are a copy of public LOD data, kept in one `lodVault.lx.<ID>` key per word so flashcards can ask about them. They are never synced, are removed when you delete the word, and are refreshed from LOD after 90 days.
 - If you manually trigger **Import history**, matching `lod.lu/artikel/*` URLs from your browser history are read once and only missing words are added to your vault
 
 LODVault does not upload your vault or personal notes to LOD or to an extension-operated server. If you enable browser sync, your browser stores a compact replica through its own sync service. Manual exports and backups create files on your device.
@@ -42,6 +43,7 @@ LODVault contacts `https://lod.lu` to retrieve dictionary content and pronunciat
 - Expanding or saving a result sends its LOD article ID to retrieve the full dictionary entry.
 - **LOD Lens** sends only the word or text you explicitly select for lookup. It does not send the surrounding page contents.
 - Playing pronunciation requests the corresponding audio file. Browser-history import may fetch missing dictionary entries by their article IDs.
+- To fill in dictionary details for words you saved before this feature, or details older than 90 days, LODVault fetches those entries in the background by article ID, at most two at a time and more slowly if LOD asks it to. A word saved from a lookup reuses the entry that lookup already fetched.
 
 LOD receives these requests and the connection information normally available to a website, such as your IP address. LODVault does not send your personal notes, vault contents, or full page contents with dictionary requests. **My vault** search filters saved words locally without contacting LOD.
 
@@ -56,7 +58,7 @@ All data is stored in `chrome.storage.local` on your device. If you use the exte
 - Removing individual words from the popup
 - Uninstalling the extension (this deletes all stored local data, and in Chrome it may also remove the extension's sync data)
 
-If you want a portable backup before uninstalling, use **Backup JSON** from the popup first.
+If you want a portable backup before uninstalling, use **Backup JSON** from the popup first. Dictionary details are left out of backups unless you tick **Include dictionary details in the backup**; they can always be fetched again from LOD.
 
 ---
 

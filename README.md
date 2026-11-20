@@ -176,7 +176,7 @@ The **LODVault** icon will appear in your browser toolbar.
 - **Preview** — opens a live, searchable page of your saved words in a new tab
 - **HTML** — downloads a standalone HTML file you can keep or share
 - **Anki** — downloads a tab-separated text file ready for Anki import
-- **Backup JSON** — downloads a full portable backup of your saved words, flashcard review progress, and extension settings; use this before uninstalling or switching versions
+- **Backup JSON** — downloads a full portable backup of your saved words, flashcard review progress, and extension settings; use this before uninstalling or switching versions. Tick **Include dictionary details** to add the locally cached LOD details (genders, plurals, senses, examples) as well; they are otherwise fetched again from LOD after a restore
 - **Restore JSON** — restores or merges a previous backup, including supported settings and flashcard review progress
 - **Import history** — optionally requests browser History permission and adds missing `lod.lu/artikel/*` words into your vault (does not delete or overwrite existing words)
 

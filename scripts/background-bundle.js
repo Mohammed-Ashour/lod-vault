@@ -8,6 +8,7 @@
 //   shared.js
 //   lod-article.js
 //   lens-lookup.js
+//   lexicon-store.js
 //   compress.js
 //   sync.js
 //   sync-coordinator.js
@@ -1769,6 +1770,11 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       syncLanguages: normalizedSettings.syncLanguages
     };
     const flashcardMeta = normalizeFlashcardMetaMap(options.flashcardMeta);
+    // Optional, local-only dictionary details (scripts/lexicon-store.js). Old
+    // builds ignore the field when restoring.
+    const lexicon = options.lexicon && typeof options.lexicon === "object" && Object.keys(options.lexicon).length
+      ? options.lexicon
+      : null;
     return JSON.stringify(
       {
         app: "lodvault",
@@ -1776,7 +1782,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         exportedAt: nowIso(),
         settings,
         entries: entries.map(normalizeEntry),
-        flashcardMeta
+        flashcardMeta,
+        ...(lexicon ? { lexicon } : {})
       },
       null,
       2
@@ -1915,6 +1922,16 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         !Array.isArray(parsed) && parsed && typeof parsed === "object" ? parsed.flashcardMeta : null
       );
 
+      // Restored before the entries are written, so the lexicon hydrator that
+      // reacts to the new entries finds the records and doesn't refetch them.
+      let lexiconCount = 0;
+      const incomingLexicon = !Array.isArray(parsed) ? parsed?.lexicon : null;
+      const lexiconApi = globalThis.LodVaultLexicon;
+      if (incomingLexicon && typeof lexiconApi?.importLexicons === "function") {
+        const savedIds = Object.keys(entryMap).filter((id) => entryMap[id]?.favorite || entryMap[id]?.study);
+        lexiconCount = await lexiconApi.importLexicons(incomingLexicon, savedIds).catch(() => 0);
+      }
+
       try {
         const flashcardMeta = Object.keys(incomingFlashcardMeta).length
           ? mergeFlashcardMetaMaps(await getFlashcardMeta(), incomingFlashcardMeta)
@@ -1933,7 +1950,14 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         throw error;
       }
 
-      return { imported, total: countStoredEntries(entryMap), newCount, mergeCount, restoreCount };
+      return {
+        imported,
+        total: countStoredEntries(entryMap),
+        newCount,
+        mergeCount,
+        restoreCount,
+        ...(incomingLexicon ? { lexiconCount } : {})
+      };
     });
   }
 
@@ -4029,6 +4053,284 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return "";
   }
 
+  // ── Lexicon parser ──────────────────────────────────────────────────────
+  // parseLexicon keeps the structure the flattened entry above throws away:
+  // gender, plurals, participles and each sense with its own translations and
+  // examples. The result is a local-only record (scripts/lexicon-store.js), so it
+  // can be richer than the synced entry. The API is undocumented: unknown part
+  // types are ignored and every field is optional.
+  const LEXICON_VERSION = 1;
+  const LEXICON_LANGUAGES = Object.freeze(["en", "fr", "de", "pt", "nl"]);
+  const LEXICON_LIMITS = Object.freeze({
+    senses: 12,
+    examplesPerSense: 3,
+    translationsPerLanguage: 4,
+    synonymsPerSense: 6,
+    categories: 12
+  });
+  const GENDER_BY_LABEL = Object.freeze({ M: "m", F: "f", N: "n" });
+
+  function asArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function uniqueTexts(values) {
+    const result = [];
+    for (const value of values) {
+      const text = cleanDictionaryText(value);
+      if (text && !result.includes(text)) result.push(text);
+    }
+    return result;
+  }
+
+  function splitAlternatives(value) {
+    return uniqueTexts(String(value ?? "").split(/\s+\/\s+/));
+  }
+
+  function lexiconGender(label) {
+    const match = /^SUBST\+([MFN])$/i.exec(cleanText(label));
+    return match ? GENDER_BY_LABEL[match[1].toUpperCase()] : null;
+  }
+
+  // [[translation, clarifier?], ...]. A clarifier qualifies the translations
+  // before it ("marcher, aller (à pied)"), so it is kept on the last one, which
+  // renders the same way LOD does.
+  function lexiconTranslations(parts) {
+    const pairs = [];
+    for (const part of asArray(parts)) {
+      const text = cleanDictionaryText(Array.isArray(part?.parts) ? partsToText(part.parts) : part?.content);
+      if (!text) continue;
+      if (part?.type === "translation") {
+        pairs.push([text]);
+      } else if (part?.type === "semanticClarifier") {
+        if (!pairs.length) pairs.push([""]);
+        const last = pairs[pairs.length - 1];
+        last[1] = last[1] ? `${last[1]}; ${text}` : text;
+      }
+    }
+    return pairs.filter((pair) => pair[0] || pair[1]).slice(0, LEXICON_LIMITS.translationsPerLanguage);
+  }
+
+  // Joins word tokens the way LOD renders them and records where each
+  // inflected headword sits, so a cloze can blank it without guessing.
+  function lexiconTokens(parts, spans = null) {
+    let text = "";
+    for (const part of asArray(parts)) {
+      if (!part || typeof part !== "object") continue;
+      if (Array.isArray(part.parts)) {
+        const nested = lexiconTokens(part.parts, spans ? [] : null);
+        if (!nested.text) continue;
+        const offset = text ? text.length + 1 : 0;
+        text = text ? `${text} ${nested.text}` : nested.text;
+        if (spans) for (const [start, end] of nested.spans) spans.push([start + offset, end + offset]);
+        continue;
+      }
+      if (part.type !== "word" && part.type !== "inflectedHeadword") continue;
+      const content = cleanText(part.content);
+      if (!content) continue;
+      const join = !text || part.joinWithPreviousWord === true || /['’]$/.test(text);
+      const start = join ? text.length : text.length + 1;
+      text = join ? `${text}${content}` : `${text} ${content}`;
+      if (spans && part.type === "inflectedHeadword") spans.push([start, start + content.length]);
+    }
+    return { text, spans: spans || [] };
+  }
+
+  function lexiconExample(example) {
+    let text = "";
+    let spans = [];
+    let gloss = "";
+    const labels = [];
+    for (const part of asArray(example?.parts)) {
+      if (part?.type === "text") {
+        for (const child of asArray(part.parts)) {
+          if (child?.type === "attribute") labels.push(child.content);
+        }
+        const tokens = lexiconTokens(part.parts, []);
+        if (!tokens.text) continue;
+        const offset = text ? text.length + 1 : 0;
+        text = text ? `${text} ${tokens.text}` : tokens.text;
+        spans = spans.concat(tokens.spans.map(([start, end]) => [start + offset, end + offset]));
+      } else if (part?.type === "gloss") {
+        const glossText = lexiconTokens(part.parts).text || cleanText(part.content);
+        if (glossText) gloss = gloss ? `${gloss}; ${glossText}` : glossText;
+      }
+    }
+    if (!text) return null;
+    const record = { t: text, h: spans };
+    const audio = cleanText(example?.audioFiles?.ogg || example?.audioFiles?.aac);
+    if (audio) record.a = audio;
+    if (gloss) record.g = gloss;
+    const exampleLabels = uniqueTexts(labels);
+    if (exampleLabels.length) record.l = exampleLabels;
+    return record;
+  }
+
+  function lexiconForms(inflection) {
+    const forms = [];
+    const nRule = {};
+    for (const form of asArray(inflection?.forms)) {
+      const content = cleanDictionaryText(form?.content);
+      if (!content) continue;
+      if (!forms.includes(content)) forms.push(content);
+      const nRuleForm = cleanDictionaryText(form?.nRuleForm);
+      if (nRuleForm && nRuleForm !== content) nRule[content] = nRuleForm;
+    }
+    return { forms, nRule };
+  }
+
+  function synonymsBySense(apiEntry) {
+    const bySense = new Map();
+    for (const group of asArray(apiEntry?.allSynonyms?.synonymGroups)) {
+      const number = Number(group?.number);
+      if (!Number.isInteger(number)) continue;
+      const list = bySense.get(number) || [];
+      for (const synonym of asArray(group?.toSynonyms)) list.push(synonym?.syn);
+      bySense.set(number, list);
+    }
+    return bySense;
+  }
+
+  function lexiconSense(meaning, unit, index, groupSynonyms) {
+    const number = Number.isInteger(meaning?.number) && meaning.number > 0 ? meaning.number : index + 1;
+    const sense = {
+      id: cleanText(meaning?.meaningID) || `S${number}`,
+      n: number
+    };
+    const gram = uniqueTexts(asArray(unit?.grammaticalInformation));
+    if (gram.length) sense.gram = gram;
+    const governs = cleanDictionaryText(meaning?.grammaticalInformation);
+    if (governs) sense.gov = governs;
+    const phrase = cleanDictionaryText(meaning?.secondaryHeadword);
+    if (phrase) sense.phrase = phrase;
+    const labels = uniqueTexts(asArray(meaning?.attributes));
+    if (labels.length) sense.labels = labels;
+    const synonyms = uniqueTexts([
+      ...asArray(meaning?.synonyms).map((value) => (typeof value === "string" ? value : value?.syn)),
+      ...(groupSynonyms.get(number) || [])
+    ]).slice(0, LEXICON_LIMITS.synonymsPerSense);
+    if (synonyms.length) sense.syn = synonyms;
+
+    const tr = {};
+    for (const language of LEXICON_LANGUAGES) {
+      const pairs = lexiconTranslations(meaning?.targetLanguages?.[language]?.parts);
+      if (pairs.length) tr[language] = pairs;
+    }
+    sense.tr = tr;
+
+    const { forms } = lexiconForms(meaning?.inflection);
+    if (forms.length) sense.plurals = forms;
+    const declension = cleanDictionaryText(meaning?.declensionInfo);
+    if (declension) sense.decl = declension;
+
+    sense.ex = asArray(meaning?.examples)
+      .map(lexiconExample)
+      .filter(Boolean)
+      .slice(0, LEXICON_LIMITS.examplesPerSense);
+    return sense;
+  }
+
+  function lexiconConjugation(rows, persons) {
+    if (!rows || typeof rows !== "object") return null;
+    const forms = persons.map((person) => cleanDictionaryText(rows[person]));
+    return forms.some(Boolean) ? forms : null;
+  }
+
+  function parseLexicon(apiEntry = {}, options = {}) {
+    const id = cleanText(apiEntry?.lod_id);
+    const lemma = cleanDictionaryText(apiEntry?.lemma);
+    if (!id || !lemma) return null;
+
+    const micros = asArray(apiEntry.microStructures);
+    const posLabel = cleanText(apiEntry.partOfSpeechLabel || micros[0]?.partOfSpeechLabel || apiEntry.partOfSpeech);
+    const posBase = posLabel.split("+")[0].toUpperCase();
+    const fetchedAt = Number.isFinite(options.now) ? options.now : Date.now();
+    const record = {
+      v: LEXICON_VERSION,
+      id,
+      fetchedAt,
+      lemma,
+      pos: posLabel,
+      gender: lexiconGender(posLabel)
+    };
+
+    const ipa = cleanText(apiEntry.ipa);
+    if (ipa) record.ipa = ipa;
+    const audio = cleanText(apiEntry.audioFiles?.ogg || apiEntry.audioFiles?.aac);
+    if (audio) record.audio = audio;
+    const categories = uniqueTexts(asArray(apiEntry.categories).map((category) => category?.code))
+      .slice(0, LEXICON_LIMITS.categories);
+    if (categories.length) record.cats = categories;
+    const nRule = cleanDictionaryText(apiEntry.nRuleForm);
+    if (nRule) record.nRule = nRule;
+
+    const groupSynonyms = synonymsBySense(apiEntry);
+    const senses = [];
+    const nounPlurals = [];
+    const pluralNRule = {};
+    for (const micro of micros) {
+      const microForms = lexiconForms(micro?.inflection);
+      nounPlurals.push(...microForms.forms);
+      Object.assign(pluralNRule, microForms.nRule);
+      for (const unit of asArray(micro?.grammaticalUnits)) {
+        for (const meaning of asArray(unit?.meanings)) {
+          if (!meaning || typeof meaning !== "object") continue;
+          const sense = lexiconSense(meaning, unit, senses.length, groupSynonyms);
+          senses.push(sense);
+          if (sense.plurals) nounPlurals.push(...sense.plurals);
+          Object.assign(pluralNRule, lexiconForms(meaning.inflection).nRule);
+        }
+      }
+    }
+
+    // Keep the first senses plus any the learner chose to focus on.
+    const keep = new Set(asArray(options.keepSenses).map(Number));
+    const limit = Number.isInteger(options.maxSenses) && options.maxSenses > 0 ? options.maxSenses : LEXICON_LIMITS.senses;
+    record.senses = senses.filter((sense, index) => index < limit || keep.has(sense.n));
+    if (senses.length > record.senses.length) record.moreSenses = senses.length - record.senses.length;
+
+    if (posBase === "SUBST") {
+      const plurals = uniqueTexts(nounPlurals);
+      record.noun = {
+        plurals,
+        noPlural: !plurals.length && senses.some((sense) => /kee\s+plural/i.test(sense.decl || ""))
+      };
+      if (Object.keys(pluralNRule).length) record.noun.pluralNRule = pluralNRule;
+    }
+
+    const conjugation = apiEntry.tables?.verbConjugation;
+    const verbMicro = micros.find((micro) => micro?.auxiliaryVerb || micro?.pastParticiple);
+    if (posBase === "VRB" || conjugation || verbMicro) {
+      const participles = uniqueTexts([
+        ...asArray(verbMicro?.pastParticiple),
+        ...splitAlternatives(conjugation?.pastParticiple)
+      ]);
+      const verb = {
+        aux: cleanDictionaryText(conjugation?.auxiliaryVerb || verbMicro?.auxiliaryVerb) || null,
+        pp: participles,
+        separable: cleanText(conjugation?.["@attributes"]?.separableVerb).toLowerCase() === "yes"
+      };
+      const persons = ["p1", "p2", "p3", "p4", "p5", "p6"];
+      const present = lexiconConjugation(conjugation?.indicative?.present, persons);
+      if (present) verb.present = present;
+      const pastSimple = lexiconConjugation(conjugation?.indicative?.pastSimple, persons);
+      if (pastSimple) verb.pastSimple = pastSimple;
+      const imperative = lexiconConjugation(conjugation?.imperative?.present, ["p2", "p5"]);
+      if (imperative) verb.imperative = imperative;
+      record.verb = verb;
+    }
+
+    const basicForms = apiEntry.tables?.adjDeclension?.basicForms;
+    if (posBase === "ADJ" || basicForms) {
+      record.adj = {
+        comp: cleanDictionaryText(basicForms?.comparative) || null,
+        sup: cleanDictionaryText(basicForms?.superlative) || null
+      };
+    }
+
+    return record;
+  }
+
   function normalizeEntryFromApi(apiEntry = {}) {
     const id = cleanText(apiEntry.lod_id);
     const word = cleanDictionaryText(apiEntry.lemma);
@@ -4309,6 +4611,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     extractInflection,
     extractExample,
     normalizeEntryFromApi,
+    parseLexicon,
+    LEXICON_VERSION,
+    LEXICON_LIMITS,
     search,
     fetchEntry,
     suggest,
@@ -4321,6 +4626,536 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     runtimeProxyFetch,
     getFetchImplementation,
     mapWithConcurrency
+  };
+})();
+
+
+// ── lexicon-store.js ──────────────────────────────────────────────
+// Local lexicon: the structured part of each saved word's LOD entry (gender,
+// plurals, participles, senses with their own examples), parsed by
+// LodVaultLensLookup.parseLexicon. Each word is one `lodVault.lx.<ID>` key in
+// chrome.storage.local. It is a cache of public dictionary data: never synced,
+// optional in JSON backups, and rebuilt from LOD when missing or stale.
+(() => {
+  const KEY_PREFIX = "lodVault.lx.";
+  const INDEX_KEY = "lodVault.lxIndex";
+  const MISS_KEY = "lodVault.lxMiss";
+  const HYDRATE_MESSAGE_TYPE = "lodvault:lexicon-hydrate";
+  const VERSION = 1;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const REFRESH_MS = 90 * DAY_MS;
+  const MISS_RETRY_MS = 30 * DAY_MS;
+  // A soft budget for all lexicon records together. Records are 1–7 KB, so this
+  // covers a few thousand saved words; past it, favourites-only words give way to
+  // words in Study (see pruneForBudget).
+  const BUDGET_BYTES = 12 * 1024 * 1024;
+  const RESPONSE_CACHE_TTL_MS = 10 * 60 * 1000;
+  const RESPONSE_CACHE_LIMIT = 25;
+  const BACKOFF_BASE_MS = 30 * 1000;
+  const BACKOFF_MAX_MS = 30 * 60 * 1000;
+  const MAX_CONCURRENCY = 2;
+
+  function storageArea() {
+    return globalThis.chrome?.storage?.local || null;
+  }
+
+  function cleanId(value) {
+    return String(value ?? "").trim();
+  }
+
+  function lexiconKey(id) {
+    return `${KEY_PREFIX}${cleanId(id)}`;
+  }
+
+  function isLexiconKey(key) {
+    return typeof key === "string" && key.startsWith(KEY_PREFIX) && key.length > KEY_PREFIX.length;
+  }
+
+  function idFromKey(key) {
+    return isLexiconKey(key) ? key.slice(KEY_PREFIX.length) : "";
+  }
+
+  function recordBytes(id, record) {
+    return new TextEncoder().encode(lexiconKey(id)).length
+      + new TextEncoder().encode(JSON.stringify(record)).length;
+  }
+
+  function normalizeLexiconRecord(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    if (Number(value.v) !== VERSION) return null;
+    const id = cleanId(value.id);
+    if (!id || !/^[A-Za-z0-9_.-]+$/.test(id)) return null;
+    if (typeof value.lemma !== "string" || !value.lemma.trim()) return null;
+    if (!Array.isArray(value.senses)) return null;
+    const fetchedAt = Number(value.fetchedAt);
+    if (!Number.isFinite(fetchedAt) || fetchedAt <= 0) return null;
+    return { ...value, id, fetchedAt };
+  }
+
+  function isStale(record, now = Date.now()) {
+    const normalized = normalizeLexiconRecord(record);
+    return !normalized || now - normalized.fetchedAt >= REFRESH_MS;
+  }
+
+  function normalizeIndex(value) {
+    const index = {};
+    if (!value || typeof value !== "object" || Array.isArray(value)) return index;
+    for (const [id, item] of Object.entries(value)) {
+      if (!Array.isArray(item)) continue;
+      const fetchedAt = Number(item[0]);
+      const bytes = Number(item[1]);
+      if (!cleanId(id) || !Number.isFinite(fetchedAt) || !Number.isFinite(bytes)) continue;
+      index[id] = [fetchedAt, Math.max(0, Math.round(bytes))];
+    }
+    return index;
+  }
+
+  // All writes go through one chain so the index never loses an update when
+  // two hydrations finish together.
+  let ioChain = Promise.resolve();
+  function runLexiconIo(task) {
+    const result = ioChain.then(task, task);
+    ioChain = result.catch(() => {});
+    return result;
+  }
+
+  async function readIndex(area = storageArea()) {
+    if (!area) return {};
+    const data = await area.get([INDEX_KEY]);
+    if (data[INDEX_KEY]) return normalizeIndex(data[INDEX_KEY]);
+    return rebuildIndex(area);
+  }
+
+  async function listStoredKeys(area) {
+    if (typeof area.getKeys === "function") {
+      try {
+        return await area.getKeys();
+      } catch {
+        // Fall through to a full read.
+      }
+    }
+    return Object.keys(await area.get(null));
+  }
+
+  // The index is derived data. If it is missing (first run, or an older build
+  // removed it) it is rebuilt from the records themselves.
+  async function rebuildIndex(area = storageArea()) {
+    if (!area) return {};
+    const keys = (await listStoredKeys(area)).filter(isLexiconKey);
+    const index = {};
+    if (keys.length) {
+      const data = await area.get(keys);
+      for (const key of keys) {
+        const record = normalizeLexiconRecord(data[key]);
+        const id = idFromKey(key);
+        index[id] = [record ? record.fetchedAt : 0, recordBytes(id, data[key])];
+      }
+    }
+    await area.set({ [INDEX_KEY]: index });
+    return index;
+  }
+
+  async function getLexicon(id) {
+    const area = storageArea();
+    if (!area || !cleanId(id)) return null;
+    const key = lexiconKey(id);
+    const data = await area.get([key]);
+    return normalizeLexiconRecord(data[key]);
+  }
+
+  async function getLexicons(ids = []) {
+    const area = storageArea();
+    const unique = [...new Set((Array.isArray(ids) ? ids : []).map(cleanId).filter(Boolean))];
+    if (!area || !unique.length) return {};
+    const data = await area.get(unique.map(lexiconKey));
+    const result = {};
+    for (const id of unique) {
+      const record = normalizeLexiconRecord(data[lexiconKey(id)]);
+      if (record) result[id] = record;
+    }
+    return result;
+  }
+
+  async function getAllLexicons() {
+    const index = await readIndex();
+    return getLexicons(Object.keys(index));
+  }
+
+  async function getUsage() {
+    const index = await readIndex();
+    const values = Object.values(index);
+    return {
+      count: values.length,
+      bytes: values.reduce((total, [, bytes]) => total + bytes, 0),
+      budgetBytes: BUDGET_BYTES
+    };
+  }
+
+  function saveLexicon(record) {
+    return runLexiconIo(async () => {
+      const area = storageArea();
+      const normalized = normalizeLexiconRecord(record);
+      if (!area || !normalized) return false;
+      const index = await readIndex(area);
+      index[normalized.id] = [normalized.fetchedAt, recordBytes(normalized.id, normalized)];
+      await area.set({ [lexiconKey(normalized.id)]: normalized, [INDEX_KEY]: index });
+      return true;
+    });
+  }
+
+  function removeLexicons(ids = []) {
+    return runLexiconIo(async () => {
+      const area = storageArea();
+      const unique = [...new Set((Array.isArray(ids) ? ids : [ids]).map(cleanId).filter(Boolean))];
+      if (!area || !unique.length) return 0;
+      const index = await readIndex(area);
+      const present = unique.filter((id) => index[id]);
+      for (const id of unique) delete index[id];
+      // Remove the record keys even when the index missed them.
+      await area.remove(unique.map(lexiconKey));
+      await area.set({ [INDEX_KEY]: index });
+      return present.length;
+    });
+  }
+
+  // Backups carry records verbatim. A restored record only replaces a local one
+  // that is older, and only for words that are in the vault.
+  function importLexicons(map, allowedIds = null) {
+    return runLexiconIo(async () => {
+      const area = storageArea();
+      if (!area || !map || typeof map !== "object" || Array.isArray(map)) return 0;
+      const allowed = allowedIds ? new Set([...allowedIds].map(cleanId)) : null;
+      const index = await readIndex(area);
+      const updates = {};
+      let count = 0;
+      for (const [id, value] of Object.entries(map)) {
+        const record = normalizeLexiconRecord(value);
+        if (!record || record.id !== cleanId(id)) continue;
+        if (allowed && !allowed.has(record.id)) continue;
+        if (index[record.id] && index[record.id][0] >= record.fetchedAt) continue;
+        updates[lexiconKey(record.id)] = record;
+        index[record.id] = [record.fetchedAt, recordBytes(record.id, record)];
+        count += 1;
+      }
+      if (count) {
+        await area.set({ ...updates, [INDEX_KEY]: index });
+      }
+      return count;
+    });
+  }
+
+  async function readMisses(area) {
+    const data = await area.get([MISS_KEY]);
+    const value = data[MISS_KEY];
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  }
+
+  function recordMiss(id, at) {
+    return runLexiconIo(async () => {
+      const area = storageArea();
+      if (!area) return;
+      const misses = await readMisses(area);
+      misses[id] = at;
+      await area.set({ [MISS_KEY]: misses });
+    });
+  }
+
+  function clearMisses(ids) {
+    return runLexiconIo(async () => {
+      const area = storageArea();
+      if (!area) return;
+      const misses = await readMisses(area);
+      let changed = false;
+      for (const id of ids) {
+        if (misses[id] !== undefined) {
+          delete misses[id];
+          changed = true;
+        }
+      }
+      if (changed) {
+        if (Object.keys(misses).length) await area.set({ [MISS_KEY]: misses });
+        else await area.remove(MISS_KEY);
+      }
+    });
+  }
+
+  function isSavedEntry(entry) {
+    return Boolean(entry && (entry.study || entry.favorite));
+  }
+
+  // Pages ask the background to hydrate words they are about to show, such
+  // as the cards of a Today session.
+  async function requestHydration(ids = []) {
+    const runtime = globalThis.chrome?.runtime;
+    const list = [...new Set((Array.isArray(ids) ? ids : [ids]).map(cleanId).filter(Boolean))];
+    if (!list.length || typeof runtime?.sendMessage !== "function") return false;
+    try {
+      const response = await runtime.sendMessage({ type: HYDRATE_MESSAGE_TYPE, ids: list });
+      return Boolean(response?.ok);
+    } catch {
+      return false;
+    }
+  }
+
+  // Background hydration: fetches entries a word at a time, at most two at
+  // once, and backs off on rate limits, server errors and network failures.
+  function createHydrator(options = {}) {
+    const now = typeof options.now === "function" ? options.now : () => Date.now();
+    const schedule = typeof options.setTimeout === "function" ? options.setTimeout : setTimeout;
+    const concurrency = Math.max(1, Math.min(MAX_CONCURRENCY, Number(options.concurrency) || MAX_CONCURRENCY));
+    const budgetBytes = Number(options.budgetBytes) > 0 ? Number(options.budgetBytes) : BUDGET_BYTES;
+    const parse = options.parse || ((entry, parseOptions) => globalThis.LodVaultLensLookup?.parseLexicon?.(entry, parseOptions));
+    const fetchEntryJson = options.fetchEntryJson;
+    const getEntryMap = options.getEntryMap;
+    const logger = options.logger || null;
+
+    const queue = [];
+    const queued = new Set();
+    const running = new Set();
+    const responses = new Map();
+    let failures = 0;
+    let pausedUntil = 0;
+    let wakeTimer = null;
+    let idleWaiters = [];
+
+    function rememberResponse(id, apiEntry) {
+      const key = cleanId(id || apiEntry?.lod_id);
+      if (!key || !apiEntry || typeof apiEntry !== "object") return;
+      responses.delete(key);
+      responses.set(key, { entry: apiEntry, at: now() });
+      while (responses.size > RESPONSE_CACHE_LIMIT) {
+        responses.delete(responses.keys().next().value);
+      }
+    }
+
+    function takeResponse(id) {
+      const cached = responses.get(id);
+      if (!cached) return null;
+      responses.delete(id);
+      return now() - cached.at <= RESPONSE_CACHE_TTL_MS ? cached.entry : null;
+    }
+
+    function enqueue(ids, { front = false } = {}) {
+      const list = (Array.isArray(ids) ? ids : [ids]).map(cleanId).filter(Boolean);
+      for (const id of front ? [...list].reverse() : list) {
+        if (running.has(id)) continue;
+        if (queued.has(id)) {
+          if (!front) continue;
+          queue.splice(queue.indexOf(id), 1);
+        }
+        queued.add(id);
+        if (front) queue.unshift(id);
+        else queue.push(id);
+      }
+      pump();
+    }
+
+    function notifyIdle() {
+      if (queue.length || running.size) return;
+      const waiters = idleWaiters;
+      idleWaiters = [];
+      for (const resolve of waiters) resolve();
+    }
+
+    function whenIdle() {
+      if (!queue.length && !running.size) return Promise.resolve();
+      return new Promise((resolve) => idleWaiters.push(resolve));
+    }
+
+    function pump() {
+      const waitMs = pausedUntil - now();
+      if (waitMs > 0) {
+        if (!wakeTimer) {
+          wakeTimer = schedule(() => {
+            wakeTimer = null;
+            pump();
+          }, waitMs);
+          // Waiting out a backoff shouldn't keep a Node test process alive.
+          wakeTimer?.unref?.();
+        }
+        return;
+      }
+      while (running.size < concurrency && queue.length) {
+        const id = queue.shift();
+        queued.delete(id);
+        running.add(id);
+        hydrateOne(id)
+          .catch((error) => {
+            logger?.warn?.("[LODVault] Lexicon hydration failed:", error?.message || error);
+            return "failed";
+          })
+          .then((outcome) => {
+            running.delete(id);
+            if (outcome === "deferred") enqueue([id]);
+            else pump();
+            notifyIdle();
+          });
+      }
+      notifyIdle();
+    }
+
+    async function hydrateOne(id) {
+      const entryMap = typeof getEntryMap === "function" ? await getEntryMap() : null;
+      const entry = entryMap ? entryMap[id] : null;
+      if (entryMap && !isSavedEntry(entry)) return "skipped";
+
+      const existing = await getLexicon(id);
+      let apiEntry = takeResponse(id);
+      if (!apiEntry && existing && !isStale(existing, now())) return "fresh";
+      if (!apiEntry) {
+        if (typeof fetchEntryJson !== "function") return "skipped";
+        try {
+          apiEntry = await fetchEntryJson(id);
+          failures = 0;
+        } catch (error) {
+          const status = Number(error?.status) || 0;
+          if (status === 429 || status >= 500 || status === 0) {
+            failures += 1;
+            pausedUntil = now() + Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * (2 ** (failures - 1)));
+            return "deferred";
+          }
+          await recordMiss(id, now());
+          return "missing";
+        }
+      }
+
+      const keepSenses = Array.isArray(options.keepSenses?.(id)) ? options.keepSenses(id) : [];
+      const record = parse(apiEntry, { now: now(), keepSenses });
+      if (!record || record.id !== id) {
+        await recordMiss(id, now());
+        return "missing";
+      }
+
+      const bytes = recordBytes(id, record);
+      const fits = await pruneForBudget(bytes - (existing ? recordBytes(id, existing) : 0), {
+        entryMap,
+        protect: id
+      });
+      if (!fits && !entry?.study) return "over-budget";
+
+      try {
+        await saveLexicon(record);
+      } catch (error) {
+        if (/quota/i.test(String(error?.message || error))) return "over-budget";
+        throw error;
+      }
+      await clearMisses([id]);
+      return "saved";
+    }
+
+    // Frees space for `extraBytes` more. Lexicons of words that left the vault
+    // go first, then favourites-only words, oldest fetch first. Words in Study
+    // are never pruned for budget.
+    async function pruneForBudget(extraBytes, { entryMap = null, protect = "" } = {}) {
+      const index = await readIndex();
+      let total = Object.values(index).reduce((sum, [, bytes]) => sum + bytes, 0);
+      if (total + extraBytes <= budgetBytes) return true;
+      const rank = (id) => {
+        const entry = entryMap?.[id];
+        if (!entry) return 0;
+        if (!entry.study) return 1;
+        return 2;
+      };
+      const candidates = Object.entries(index)
+        .filter(([id]) => id !== protect && rank(id) < 2)
+        .sort(([leftId, left], [rightId, right]) => rank(leftId) - rank(rightId) || left[0] - right[0]);
+      const removals = [];
+      for (const [id, [, bytes]] of candidates) {
+        if (total + extraBytes <= budgetBytes) break;
+        removals.push(id);
+        total -= bytes;
+      }
+      if (removals.length) await removeLexicons(removals);
+      return total + extraBytes <= budgetBytes;
+    }
+
+    // Brings the lexicon in line with the vault: words that left are removed,
+    // saved words without a record are queued first and stale records after.
+    async function reconcile(entryMap) {
+      const map = entryMap || (typeof getEntryMap === "function" ? await getEntryMap() : null);
+      if (!map || typeof map !== "object") return { queued: 0, removed: 0 };
+      const area = storageArea();
+      if (!area) return { queued: 0, removed: 0 };
+      const [index, misses] = await Promise.all([readIndex(area), readMisses(area)]);
+      const at = now();
+      const orphans = Object.keys(index).filter((id) => !map[id]);
+      const missing = [];
+      const stale = [];
+      for (const [id, entry] of Object.entries(map)) {
+        if (!isSavedEntry(entry)) continue;
+        if (misses[id] && at - Number(misses[id]) < MISS_RETRY_MS) continue;
+        if (!index[id]) missing.push(id);
+        else if (at - index[id][0] >= REFRESH_MS) stale.push(id);
+      }
+      const removed = orphans.length ? await removeLexicons(orphans) : 0;
+      enqueue([...missing, ...stale]);
+      return { queued: missing.length + stale.length, removed };
+    }
+
+    // Called with the old and new entry maps from a storage change. Newly
+    // saved words jump the queue (their LOD response is usually cached from the
+    // lookup that saved them); deleted words lose their record at once.
+    async function handleEntriesChanged(oldMap = {}, newMap = {}) {
+      const before = oldMap && typeof oldMap === "object" ? oldMap : {};
+      const after = newMap && typeof newMap === "object" ? newMap : {};
+      const removed = Object.keys(before).filter((id) => !after[id]);
+      const added = Object.keys(after).filter((id) => isSavedEntry(after[id]) && !isSavedEntry(before[id]));
+      if (removed.length) await removeLexicons(removed);
+      if (added.length) {
+        const existing = await getLexicons(added);
+        const fresh = added.filter((id) => !existing[id] || isStale(existing[id], now()));
+        if (fresh.length) enqueue(fresh, { front: true });
+      }
+      return { added, removed };
+    }
+
+    return {
+      rememberResponse,
+      enqueue,
+      reconcile,
+      handleEntriesChanged,
+      pruneForBudget,
+      whenIdle,
+      hydrateOne,
+      get state() {
+        return {
+          queued: [...queue],
+          running: [...running],
+          failures,
+          pausedUntil,
+          cachedResponses: [...responses.keys()]
+        };
+      }
+    };
+  }
+
+  globalThis.LodVaultLexicon = {
+    KEY_PREFIX,
+    INDEX_KEY,
+    MISS_KEY,
+    HYDRATE_MESSAGE_TYPE,
+    VERSION,
+    REFRESH_MS,
+    MISS_RETRY_MS,
+    BUDGET_BYTES,
+    RESPONSE_CACHE_TTL_MS,
+    BACKOFF_BASE_MS,
+    BACKOFF_MAX_MS,
+    lexiconKey,
+    isLexiconKey,
+    idFromKey,
+    normalizeLexiconRecord,
+    isStale,
+    getLexicon,
+    getLexicons,
+    getAllLexicons,
+    getUsage,
+    saveLexicon,
+    removeLexicons,
+    importLexicons,
+    rebuildIndex,
+    requestHydration,
+    createHydrator
   };
 })();
 
@@ -6587,7 +7422,11 @@ const CONTENT_SCRIPT_MUTATION_METHODS = new Set([
   "saveNote"
 ]);
 
+const LEXICON_RECONCILE_DELAY_MS = 20 * 1000;
+const LEXICON_FETCH_TIMEOUT_MS = 15000;
+
 let storeMutationQueue = Promise.resolve();
+let lexiconReconcileTimer = null;
 let historyHydrationResumeTimer = null;
 
 const syncCoordinator = LodVaultSyncCoordinator.createSyncCoordinator({
@@ -6597,6 +7436,60 @@ const syncCoordinator = LodVaultSyncCoordinator.createSyncCoordinator({
   logger: console,
   pushDebounceMs: globalThis.__LOD_SYNC_PUSH_DEBOUNCE_MS__
 });
+
+async function fetchLexiconEntryJson(id) {
+  const response = await fetch(LodVaultLensLookup.buildEntryUrl(id), {
+    method: "GET",
+    credentials: "omit",
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(LEXICON_FETCH_TIMEOUT_MS)
+  });
+  if (!response.ok) {
+    const error = new Error(`LOD request failed (${response.status}).`);
+    error.status = response.status;
+    throw error;
+  }
+  const data = await response.json();
+  if (!data?.entry || typeof data.entry !== "object") {
+    const error = new Error("LOD returned no entry.");
+    error.status = 404;
+    throw error;
+  }
+  return data.entry;
+}
+
+const lexiconHydrator = LodVaultLexicon.createHydrator({
+  fetchEntryJson: fetchLexiconEntryJson,
+  getEntryMap: () => LodVaultStore.getEntryMap(),
+  logger: console
+});
+
+// Older saved words get their lexicon lazily, a little after the worker
+// starts, so the first lookups of a session aren't competing with it.
+function scheduleLexiconReconcile(delayMs = LEXICON_RECONCILE_DELAY_MS) {
+  if (lexiconReconcileTimer) clearTimeout(lexiconReconcileTimer);
+  lexiconReconcileTimer = setTimeout(() => {
+    lexiconReconcileTimer = null;
+    lexiconHydrator.reconcile().catch((error) => {
+      console.warn("[LODVault] Lexicon reconcile failed:", error?.message || error);
+    });
+  }, Math.max(0, Number(delayMs) || 0));
+  // A pending reconcile shouldn't keep a Node test process alive.
+  lexiconReconcileTimer?.unref?.();
+}
+
+// The lookup that precedes a save already fetched the canonical entry through
+// this proxy; keeping it briefly lets the lexicon reuse it.
+function rememberLexiconResponse(requestUrl, json) {
+  try {
+    const { pathname } = new URL(requestUrl);
+    if (!pathname.startsWith(LENS_PROXY_ENTRY_PREFIX) || !json?.entry) return;
+    const id = decodeURIComponent(pathname.slice(LENS_PROXY_ENTRY_PREFIX.length));
+    if (json.entry.lod_id === id) lexiconHydrator.rememberResponse(id, json.entry);
+  } catch {
+    // Never let the lexicon cache break a lookup.
+  }
+}
 
 function enqueueStoreMutation(task) {
   const result = storeMutationQueue.then(task, task);
@@ -7071,12 +7964,21 @@ chrome.storage.onChanged?.addListener((changes, areaName) => {
   )) {
     void refreshToolbarBadge();
   }
+  if (areaName === "local" && changes?.[LodVaultStore.STORAGE_KEY]) {
+    lexiconHydrator.handleEntriesChanged(
+      changes[LodVaultStore.STORAGE_KEY].oldValue,
+      changes[LodVaultStore.STORAGE_KEY].newValue
+    ).catch((error) => {
+      console.warn("[LODVault] Lexicon update failed:", error?.message || error);
+    });
+  }
   if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes || {}, LodVaultStore.HISTORY_IMPORT_STATE_KEY || "lodVault.historyImport")) {
     scheduleHistoryHydrationResume(25);
   }
 });
 
 scheduleHistoryHydrationResume(50);
+scheduleLexiconReconcile();
 registerContextMenus();
 void syncSelectionTriggerRegistration();
 scheduleDueBadgeRefresh();
@@ -7141,6 +8043,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           json = null;
         }
 
+        if (response.ok) rememberLexiconResponse(requestUrl, json);
         sendResponse({
           ok: response.ok,
           status: response.status,
@@ -7155,6 +8058,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }));
 
     return true;
+  }
+
+  if (message?.type === LodVaultLexicon.HYDRATE_MESSAGE_TYPE) {
+    if (!sender || sender.id !== chrome.runtime.id || !String(sender.url || "").startsWith(chrome.runtime.getURL(""))) {
+      sendResponse({ ok: false, error: "Lexicon hydration is only available to extension pages." });
+      return;
+    }
+    const ids = [...new Set((Array.isArray(message.ids) ? message.ids : [])
+      .map((id) => String(id || "").split("#")[0].trim())
+      .filter((id) => /^[A-Za-z0-9_.-]+$/.test(id)))]
+      .slice(0, 200);
+    lexiconHydrator.enqueue(ids, { front: true });
+    sendResponse({ ok: true, queued: ids.length });
+    return;
   }
 
   if (message?.type !== STORE_MUTATION_MESSAGE_TYPE) return;
