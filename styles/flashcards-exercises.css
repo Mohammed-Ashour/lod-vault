@@ -1,0 +1,144 @@
+/* Skill-card exercises, the lexicon meaning card and the leech panel
+   (scripts/flashcards-exercises.js). Uses the Blue Night tokens. */
+.exercise { display: grid; gap: 12px; text-align: left; }
+.ex-kind {
+  margin: 0;
+  font: 700 10.5px/1 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.ex-prompt { margin: 0; font: 400 22px/1.5 var(--serif); color: var(--text); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.ex-sentence { font-size: 20px; }
+.ex-word { font-weight: 700; }
+.ex-blank { color: var(--accent-lt); letter-spacing: 0.1em; }
+.ex-hint { margin: 0; color: var(--text-2); font-size: 13.5px; }
+
+.ex-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.ex-choices-list { flex-direction: column; align-items: stretch; }
+.ex-choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  min-width: 96px;
+  padding: 8px 16px;
+  font: 600 17px/1.3 var(--sans);
+  color: var(--text);
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.ex-choices-list .ex-choice { justify-content: flex-start; text-align: left; font-size: 15px; font-weight: 500; }
+.ex-choice:hover:not(:disabled) { border-color: var(--accent); }
+.ex-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ex-choice:disabled { cursor: default; }
+.ex-choice.is-picked { border-color: var(--accent); background: var(--tint-strong); }
+.ex-choice.is-right { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, transparent); }
+.ex-choice.is-picked-wrong { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.ex-choice.is-picked-wrong .ex-choice-text { text-decoration: line-through; }
+.ex-key {
+  font: 600 10.5px/1 var(--sans);
+  padding: 3px 5px;
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+.ex-aux { display: inline-flex; gap: 6px; border-radius: var(--r-md); }
+.ex-aux .ex-choice { min-width: 64px; min-height: 40px; font-size: 18px; }
+.ex-aux.needs-answer { outline: 2px dashed var(--warn); outline-offset: 3px; }
+
+.ex-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ex-input-row { display: flex; flex: 1; gap: 8px; }
+.ex-input-row .ex-input { flex: 1; }
+.ex-input {
+  min-width: 6ch;
+  height: 40px;
+  padding: 0 10px;
+  font: 500 18px/1 var(--sans);
+  color: var(--text);
+  background: var(--page);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+}
+.ex-prompt .ex-input { flex: 0 1 14ch; }
+.ex-prompt .ex-input.ex-gap { flex: none; padding: 0 10px; font-family: var(--serif); }
+.ex-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ex-input.is-right { border-color: var(--ok); }
+.ex-input.is-wrong { border-color: var(--danger); }
+.ex-submit, .ex-continue, .ex-wrong { min-height: 40px; padding: 0 18px; }
+
+.ex-feedback { display: grid; gap: 8px; justify-items: start; padding-top: 4px; border-top: 1px solid var(--line); }
+.ex-answer { margin: 0; font: 400 18px/1.5 var(--serif); }
+.ex-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ex-headword { color: var(--accent-lt); background: var(--tint-strong); border-radius: 4px; padding: 0 2px; }
+.ex-audio {
+  width: 30px;
+  height: 30px;
+  font-size: 11px;
+  color: var(--accent-lt);
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+  cursor: pointer;
+  vertical-align: middle;
+}
+.ex-audio:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* lexicon meaning card */
+.meaning-front, .meaning-back { display: grid; gap: 10px; text-align: left; }
+.meaning-word { margin: 0; font: 600 30px/1.2 var(--serif); display: flex; align-items: center; gap: 10px; }
+.gender-chip {
+  font: 700 12px/1 var(--sans);
+  padding: 4px 8px;
+  border-radius: var(--r-full);
+  border: 1px solid currentColor;
+  text-transform: lowercase;
+}
+.gender-m { color: #6fb3e8; }
+.gender-f { color: #e88fb0; }
+.gender-n { color: var(--ok); }
+.meaning-grammar { margin: 0; color: var(--text-2); font-size: 13.5px; }
+.meaning-senses { margin: 0; padding-left: 26px; display: grid; gap: 4px; font-size: 16px; line-height: 1.45; }
+.meaning-sense::marker { color: var(--accent); font-weight: 700; }
+.meaning-phrase { font-style: italic; color: var(--text-2); }
+.meaning-gov { font-size: 12px; color: var(--muted); }
+.meaning-more { margin: 0; font-size: 12.5px; color: var(--muted); }
+.meaning-example { margin: 0; padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--tint); border-radius: 0 var(--r-sm) var(--r-sm) 0; font: italic 400 16px/1.5 var(--serif); }
+
+/* leech panel */
+.leech-panel {
+  display: grid;
+  gap: 12px;
+  max-width: 520px;
+  padding: 18px 20px;
+  background: var(--surface);
+  border: 1px solid var(--warn);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 32px var(--shadow-soft);
+}
+.leech-title { margin: 0; font: 600 18px/1.3 var(--sans); }
+.leech-flag { color: var(--warn); }
+.leech-copy { margin: 0; color: var(--text-2); font-size: 13.5px; }
+.leech-label { display: grid; gap: 6px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.leech-note {
+  font: 400 14px/1.4 var(--sans);
+  color: var(--text);
+  background: var(--page);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  resize: vertical;
+}
+.leech-senses { margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); display: grid; gap: 4px; max-height: 220px; overflow: auto; }
+.leech-senses legend { font-size: 12px; font-weight: 700; color: var(--muted); padding: 0 4px; }
+.leech-sense { font-size: 13.5px; display: flex; gap: 8px; align-items: baseline; }
+.leech-suspend { color: var(--warn); }
+
+@media (max-width: 640px) {
+  .ex-prompt { font-size: 19px; }
+  .ex-choice { flex: 1; }
+}
