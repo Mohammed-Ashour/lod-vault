@@ -9,21 +9,24 @@
     // many writes a minute. Short of the 30s after which a worker may be stopped.
     const progressDebounceMs = pushDebounceMs * 5;
     const suppressWindowMs = Math.max(pushDebounceMs * 2, 50);
-    // Daily activity is optional: it syncs with review progress when loaded.
-    const activityKey = options.activityKey || globalThis.LodVaultActivity?.ACTIVITY_KEY || null;
+    // Small synced records (daily activity, tags and decks) push with review
+    // progress when their modules are loaded; see sync.js.
+    const syncRecords = (options.syncRecords || globalThis.LodVaultSyncRecords || [])
+      .filter((record) => record?.localKey && record?.syncKey);
+    const recordLocalKeys = new Set(syncRecords.map((record) => record.localKey));
+    const recordSyncKeys = new Set(syncRecords.map((record) => record.syncKey));
     const localSyncKeys = new Set([
       store.STORAGE_KEY,
       store.SETTINGS_KEY,
       store.DELETED_KEY,
       store.FLASHCARD_META_KEY,
-      ...(activityKey ? [activityKey] : [])
+      ...recordLocalKeys
     ]);
     const syncManifestKey = syncNamespace.SYNC_MANIFEST_KEY;
     const syncSettingsKey = syncNamespace.SYNC_SETTINGS_KEY;
     const syncDeletedKey = syncNamespace.SYNC_DELETED_KEY;
     const syncEntryPrefix = syncNamespace.SYNC_ENTRY_PREFIX;
     const syncProgressPrefix = syncNamespace.SYNC_PROGRESS_PREFIX;
-    const syncActivityKey = syncNamespace.SYNC_ACTIVITY_KEY;
 
     let syncTaskQueue = Promise.resolve();
     let syncInitPromise = null;
@@ -70,7 +73,7 @@
         || key === syncDeletedKey
         || key.startsWith(syncEntryPrefix)
         || (syncProgressPrefix && key.startsWith(syncProgressPrefix))
-        || (syncActivityKey && key === syncActivityKey)
+        || recordSyncKeys.has(key)
       ));
     }
 
@@ -122,7 +125,8 @@
       const deletedChange = changes?.[store.DELETED_KEY];
       const settingsKind = getSettingsChangeKind(settingsChange);
 
-      const progressChange = changes?.[store.FLASHCARD_META_KEY] || (activityKey && changes?.[activityKey]);
+      const progressChange = changes?.[store.FLASHCARD_META_KEY]
+        || Object.keys(changes || {}).some((key) => recordLocalKeys.has(key));
       if (progressChange && !entryChange && !deletedChange && (!settingsKind || settingsKind === "none")) {
         return { type: "progress" };
       }

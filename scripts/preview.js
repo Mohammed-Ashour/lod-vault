@@ -118,6 +118,7 @@ document.getElementById("sort-order").addEventListener("change", (e) => {
 
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("delete-undo-button").addEventListener("click", undoDelete);
+  globalThis.LodVaultVaultTags?.attachDeckManager?.(document);
   renderPreview();
 });
 
@@ -471,6 +472,11 @@ function attachPreviewSearch() {
   attachMeaningToggles(doc);
   applyLangFilter();
   applyPreviewFilters();
+  // Tags and the tag filter (scripts/vault-tags.js).
+  void globalThis.LodVaultVaultTags?.attach?.(doc, {
+    entriesById: currentEntriesById,
+    onFilter: () => applyPreviewFilters()
+  });
 }
 
 /* ── toggle pills & delete ──────────────────────── */

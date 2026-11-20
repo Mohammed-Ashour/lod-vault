@@ -162,6 +162,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   await Promise.all([loadEntries(), loadFlashcardMeta(), loadFlashcardState()]);
+  await attachCustomDecks();
   chooseInitialDeck();
   computeStats();
   renderStats();
@@ -196,7 +197,7 @@ function chooseInitialDeck() {
   }
 
   const urlDeck = new URLSearchParams(location.search).get("deck");
-  if (urlDeck && DECK_FILTERS.has(urlDeck)) {
+  if (urlDeck && isKnownDeck(urlDeck)) {
     state.filter = urlDeck;
   }
 
@@ -341,7 +342,7 @@ async function resumeSession() {
   }
 
   stopCardAudio();
-  state.filter = DECK_FILTERS.has(saved.filter) ? saved.filter : state.filter;
+  state.filter = isKnownDeck(saved.filter) ? saved.filter : state.filter;
   state.orderMode = ORDER_MODES.has(saved.orderMode) ? saved.orderMode : state.orderMode;
   state.direction = saved.direction === "rev" ? "rev" : "fwd";
   state.mode = STUDY_MODES.has(saved.mode) ? saved.mode : "self";
@@ -509,6 +510,7 @@ async function handleStorageChange(changes, areaName) {
   if (!changes?.[entryKey] && !changes?.[legacyKey] && !changes?.[metaKey]) return;
   await loadEntries();
   await loadFlashcardMeta();
+  await attachCustomDecks();
   computeStats();
   renderStats();
   // A finished session stays on its summary until the learner closes it.
@@ -662,6 +664,8 @@ function makeDeck(entries) {
     base = entries.filter((entry) => entry.study);
   } else if (state.filter === "favorites") {
     base = entries.filter((entry) => entry.favorite);
+  } else if (isCustomDeck(state.filter)) {
+    base = globalThis.LodVaultDecks.filterEntries(state.filter, entries, state.flashcardMeta);
   } else {
     base = [...entries];
   }
@@ -782,7 +786,7 @@ function renderDeck() {
   if (elements.directionToggle) elements.directionToggle.disabled = listening;
 
   if (elements.deckStatus) {
-    const deckLabel = DECK_LABELS[state.filter] || "Deck";
+    const deckLabel = DECK_LABELS[state.filter] || globalThis.LodVaultDecks?.labelFor?.(state.filter) || "Deck";
     elements.deckStatus.textContent = count
       ? `${deckLabel} · ${count} card${count === 1 ? "" : "s"} in this deck`
       : `${deckLabel} · No cards in this deck yet.`;
@@ -1437,3 +1441,36 @@ function endSession() {
     }
   });
 })();
+
+// ── Custom decks ─────────────────────────────────────────────
+// Saved decks and level decks come from scripts/decks.js, which adds "My
+// decks" and "Levels" groups to the deck select. Their values look like
+// "deck:<id>" and "level:A1".
+function isCustomDeck(value) {
+  return Boolean(globalThis.LodVaultDecks?.isDeckValue?.(value));
+}
+
+function isKnownDeck(value) {
+  return DECK_FILTERS.has(value) || isCustomDeck(value);
+}
+
+async function attachCustomDecks() {
+  const decks = globalThis.LodVaultDecks;
+  if (!decks?.attach || !elements.deckFilter) return;
+  try {
+    await decks.attach(elements.deckFilter, state.entries, state.flashcardMeta, { onChange: onCustomDecksChanged });
+  } catch {
+    return;
+  }
+  // Repopulating the select drops a custom selection; put it back.
+  if (isKnownDeck(state.filter)) elements.deckFilter.value = state.filter;
+}
+
+async function onCustomDecksChanged() {
+  await attachCustomDecks();
+  if (!isKnownDeck(state.filter)) {
+    state.filter = "today";
+    if (elements.deckFilter) elements.deckFilter.value = state.filter;
+  }
+  if (!state.sessionActive && (isCustomDeck(state.filter) || state.filter === "today")) rebuildDeck({ preserveAudio: true });
+}

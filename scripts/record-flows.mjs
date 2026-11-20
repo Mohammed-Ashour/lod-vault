@@ -91,6 +91,32 @@ export function studySeed({ reviewsToday = 9 } = {}) {
 }
 
 export const flows = {
+  "tags-decks": {
+    page: "pages/preview.html",
+    width: 1000, height: 720,
+    seed: () => studySeed(),
+    gif: "tags-decks.gif",
+    async run(page) {
+      await page.sleep(1000);
+      await page.shot("tags-before.png");
+      await page.eval(`(() => { const d = document.querySelector('iframe').contentDocument; d.querySelector('.lv-tag-add').click(); const i = d.querySelector('.lv-tag-input'); i.value = 'family'; i.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true})); })()`);
+      await page.sleep(1000);
+      await page.shot("tags-dark.png");
+      await page.click("#open-decks", 1000);
+      await page.shot("decks-dialog.png");
+    }
+  },
+  "tags-light-narrow": {
+    page: "pages/preview.html", width: 400, height: 850,
+    seed: () => studySeed(),
+    async run(page) {
+      await page.sleep(1000);
+      await page.click(".theme-btn", 1000);
+      await page.shot("tags-light-narrow.png");
+      await page.click("#open-decks", 1000);
+      await page.shot("decks-light-narrow.png");
+    }
+  },
   // PR 1: the streak counts today once the 10th review is in.
   "activity-flashcards": {
     page: "pages/flashcards.html?deck=today",

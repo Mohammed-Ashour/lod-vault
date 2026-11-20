@@ -745,41 +745,50 @@
     return JSON.stringify(value);
   }
 
-  function activityModule() {
-    return globalThis.LodVaultActivity || null;
+  // Small records that sync in one key each, outside the manifest: daily
+  // activity (activity.js) and tags with saved decks (decks.js). Each module
+  // registers { name, localKey, syncKey, buildSyncValue(local),
+  // applyRemote(remote) -> { changed, record }, hasNews(local, remote) } in
+  // globalThis.LodVaultSyncRecords. They count against the sync budget before
+  // progress, like words.
+  function syncRecords() {
+    const records = globalThis.LodVaultSyncRecords;
+    return Array.isArray(records) ? records.filter((record) => record?.localKey && record?.syncKey) : [];
   }
 
-  function buildActivityPayload(localActivity) {
-    const value = activityModule()?.buildSyncValue(localActivity);
-    return value ? { [SYNC_ACTIVITY_KEY]: value } : {};
+  function buildRecordPayload(localValues = {}) {
+    const payload = {};
+    for (const record of syncRecords()) {
+      const value = record.buildSyncValue(localValues[record.localKey]);
+      if (value) payload[record.syncKey] = value;
+    }
+    return payload;
   }
 
-  // Only real news is pushed: a day total another device lacks, newer rest
-  // days, or a streak anchor sync doesn't have yet. A different anchor day on
-  // its own (two devices either side of midnight) isn't worth a write.
-  function hasActivityToPush(localActivity, remoteActivity) {
-    const activity = activityModule();
-    if (!activity) return false;
-    const local = activity.buildSyncValue(localActivity);
-    if (!local) return false;
-    if (!remoteActivity) return true;
-    const remote = activity.normalizeActivity(remoteActivity);
-    const merged = activity.mergeActivity(remote, local);
-    return stableStringify(merged.c || null) !== stableStringify(remote.c || null)
-      || stableStringify(merged.h || null) !== stableStringify(remote.h || null)
-      || stableStringify(merged.d) !== stableStringify(remote.d)
-      || stableStringify(merged.w || null) !== stableStringify(remote.w || null)
-      || Boolean(local.b && !remote.b);
+  function hasRecordNews(localValues = {}, syncData = {}) {
+    return syncRecords().some((record) => record.hasNews(localValues[record.localKey], syncData?.[record.syncKey]));
+  }
+
+  async function applyRemoteRecords(syncData = {}, localValues = {}) {
+    let changed = false;
+    const values = { ...localValues };
+    for (const record of syncRecords()) {
+      if (!syncData?.[record.syncKey]) continue;
+      const result = await record.applyRemote(syncData[record.syncKey]);
+      changed = changed || Boolean(result?.changed);
+      if (result?.record) values[record.localKey] = result.record;
+    }
+    return { changed, values };
   }
 
   async function getLocalState() {
-    const activityKey = activityModule()?.ACTIVITY_KEY;
+    const recordKeys = syncRecords().map((record) => record.localKey);
     const data = await chrome.storage.local.get([
       STORAGE_KEY,
       LOCAL_SETTINGS_KEY,
       LOCAL_DELETED_KEY,
       store.FLASHCARD_META_KEY,
-      ...(activityKey ? [activityKey] : [])
+      ...recordKeys
     ]);
     const rawEntries = data[STORAGE_KEY] && typeof data[STORAGE_KEY] === "object" ? data[STORAGE_KEY] : {};
     const rawSettings = data[LOCAL_SETTINGS_KEY] && typeof data[LOCAL_SETTINGS_KEY] === "object" ? data[LOCAL_SETTINGS_KEY] : {};
@@ -793,7 +802,7 @@
       settings,
       deletedMap,
       flashcardMeta: store.normalizeFlashcardMetaMap(data[store.FLASHCARD_META_KEY]),
-      activity: activityKey ? data[activityKey] : null
+      records: Object.fromEntries(recordKeys.map((key) => [key, data[key]]))
     };
   }
 
@@ -978,7 +987,7 @@
       key === SYNC_MANIFEST_KEY
       || key === SYNC_SETTINGS_KEY
       || key === SYNC_DELETED_KEY
-      || key === SYNC_ACTIVITY_KEY
+      || syncRecords().some((record) => record.syncKey === key)
       || key.startsWith(SYNC_ENTRY_PREFIX)
       || key.startsWith(SYNC_PROGRESS_PREFIX)
     ));
@@ -1193,7 +1202,7 @@
     }
 
     Object.assign(nextSyncData, buildMetadataPayload(localState.settings, shards.length));
-    Object.assign(nextSyncData, buildActivityPayload(localState.activity));
+    Object.assign(nextSyncData, buildRecordPayload(localState.records));
 
     const untouchedData = omitKeys(syncState.data, [
       ...syncState.progressKeys,
@@ -1236,13 +1245,13 @@
       return pushAll();
     }
 
-    const activityKey = activityModule()?.ACTIVITY_KEY;
-    const local = await chrome.storage.local.get([STORAGE_KEY, store.FLASHCARD_META_KEY, ...(activityKey ? [activityKey] : [])]);
+    const recordKeys = syncRecords().map((record) => record.localKey);
+    const local = await chrome.storage.local.get([STORAGE_KEY, store.FLASHCARD_META_KEY, ...recordKeys]);
     const progressKeys = getProgressKeys(data);
-    const activityPayload = buildActivityPayload(activityKey ? local[activityKey] : null);
-    const budget = getProgressBudget({ ...omitKeys(data, progressKeys), ...activityPayload });
+    const recordPayload = buildRecordPayload(local);
+    const budget = getProgressBudget({ ...omitKeys(data, progressKeys), ...recordPayload });
     const payload = {
-      ...activityPayload,
+      ...recordPayload,
       ...(await buildProgressPayload(
         store.normalizeFlashcardMetaMap(local[store.FLASHCARD_META_KEY]),
         local[STORAGE_KEY] || {},
@@ -1329,14 +1338,12 @@
       syncState.progress,
       store.mergeDeletedMaps(localState.deletedMap, syncState.deletedMap)
     );
-    const activityResult = activityModule() && syncState.data?.[SYNC_ACTIVITY_KEY]
-      ? await activityModule().applyRemote(syncState.data[SYNC_ACTIVITY_KEY])
-      : { changed: false, activity: localState.activity };
+    const recordResult = await applyRemoteRecords(syncState.data, localState.records);
     const needsProgressPush = hasProgressToPush(
       progressResult.meta,
       syncState,
       applyResult.entries || localState.rawEntries
-    ) || hasActivityToPush(activityResult.activity || localState.activity, syncState.data?.[SYNC_ACTIVITY_KEY]);
+    ) || hasRecordNews(recordResult.values, syncState.data);
 
     const shouldRepush = !syncState.partialRead && (applyResult.changed || syncState.needsMigration);
     if (options.repush !== false && (shouldRepush || (needsProgressPush && !syncState.partialRead))) {
@@ -1357,7 +1364,7 @@
       ok: true,
       ...(pushResult ? { pushed: true } : {}),
       ...(pushResult?.ok === false ? pushResult : {}),
-      changed: Boolean(applyResult.changed || progressResult.changed || activityResult.changed),
+      changed: Boolean(applyResult.changed || progressResult.changed || recordResult.changed),
       entryCount: Number(applyResult.entryCount) || 0,
       partialRead: syncState.partialRead,
       missingShardKeys: syncState.missingShardKeys,
@@ -1535,9 +1542,14 @@
       const bytesUsedProgress = estimateSyncWriteSize(
         Object.fromEntries((syncState.progressKeys || []).map((key) => [key, syncState.data[key]]))
       );
-      const bytesUsedActivity = syncState.data?.[SYNC_ACTIVITY_KEY]
-        ? getSyncItemSize(SYNC_ACTIVITY_KEY, syncState.data[SYNC_ACTIVITY_KEY])
-        : 0;
+      const bytesUsedRecords = {};
+      for (const record of syncRecords()) {
+        bytesUsedRecords[record.name] = syncState.data?.[record.syncKey]
+          ? getSyncItemSize(record.syncKey, syncState.data[record.syncKey])
+          : 0;
+      }
+      const bytesUsedActivity = bytesUsedRecords.activity || 0;
+      const bytesUsedSmallRecords = Object.values(bytesUsedRecords).reduce((sum, bytes) => sum + bytes, 0);
       const itemCountTotal = Object.keys(syncState.data || {}).length;
       const itemCountVault = lodVaultKeys.length;
       const itemCountOther = Math.max(0, itemCountTotal - itemCountVault);
@@ -1551,7 +1563,7 @@
 
       let estimatedRemaining = capacityByCount[Math.min(langCount, 3)] || 700;
       // Progress gives way to words, so its space still counts as free for them.
-      const bytesUsedWords = bytesUsedVault - bytesUsedProgress - bytesUsedActivity;
+      const bytesUsedWords = bytesUsedVault - bytesUsedProgress - bytesUsedSmallRecords;
       if (entryCount > 0 && bytesUsedWords > 0) {
         const avgBytesPerEntry = bytesUsedWords / entryCount;
         estimatedRemaining = Math.floor((bytesRemaining + bytesUsedProgress) / Math.max(1, avgBytesPerEntry));
@@ -1569,6 +1581,7 @@
         bytesUsedOther,
         bytesUsedProgress,
         bytesUsedActivity,
+        bytesUsedRecords,
         bytesTotal: SYNC_TOTAL_HARD_LIMIT,
         bytesRemaining,
         percentUsed,
