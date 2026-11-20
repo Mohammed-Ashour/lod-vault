@@ -765,7 +765,9 @@
     if (!remoteActivity) return true;
     const remote = activity.normalizeActivity(remoteActivity);
     const merged = activity.mergeActivity(remote, local);
-    return stableStringify(merged.d) !== stableStringify(remote.d)
+    return stableStringify(merged.c || null) !== stableStringify(remote.c || null)
+      || stableStringify(merged.h || null) !== stableStringify(remote.h || null)
+      || stableStringify(merged.d) !== stableStringify(remote.d)
       || stableStringify(merged.w || null) !== stableStringify(remote.w || null)
       || Boolean(local.b && !remote.b);
   }

@@ -6,6 +6,7 @@ const { JSDOM } = require("jsdom");
 const repoRoot = path.resolve(__dirname, "..", "..");
 
 function runScripts(context, scriptPaths) {
+  context.crypto ||= require("node:crypto").webcrypto;
   for (const scriptPath of scriptPaths) {
     const absolutePath = path.isAbsolute(scriptPath) ? scriptPath : path.join(repoRoot, scriptPath);
     const source = fs.readFileSync(absolutePath, "utf8");
@@ -851,6 +852,7 @@ function loadBackgroundScript(initialStorage = {}) {
     TextEncoder,
     TextDecoder,
     AbortSignal,
+    crypto: require("node:crypto").webcrypto,
     __LOD_SYNC_PUSH_DEBOUNCE_MS__: 10,
     __LOD_SYNC_REPUSH_DELAY_MS__: 0,
     setTimeout,
