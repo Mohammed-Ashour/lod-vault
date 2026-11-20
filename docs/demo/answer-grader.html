@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Answer grader demo</title>
+  <script src="../../scripts/theme-init.js"></script>
+  <link rel="stylesheet" href="../../styles/blue-night.css">
+  <link rel="stylesheet" href="../../styles/answer-grader.css">
+  <link rel="stylesheet" href="demo.css">
+</head>
+<body class="demo">
+  <!-- Development demo of scripts/answer-grader.js; not shipped. -->
+  <main class="demo-main">
+    <h1 class="demo-title">Typed-answer grader</h1>
+    <section class="demo-card" id="live">
+      <p class="demo-prompt">Plural of <strong>d'Schwëster</strong> → zwou <span class="demo-blank">___</span></p>
+      <div class="demo-input-row">
+        <input id="answer" class="demo-input" autocomplete="off" spellcheck="false" aria-label="Your answer">
+        <span id="keys"></span>
+        <button id="check" class="btn-primary demo-check" type="button">Check</button>
+      </div>
+      <div id="result" class="demo-result" aria-live="polite"></div>
+    </section>
+    <section class="demo-card">
+      <table class="demo-table" id="table">
+        <thead><tr><th>Typed</th><th>Expected</th><th>Options</th><th>Verdict</th><th>Grade</th><th>Diff</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+  <script src="../../scripts/answer-grader.js"></script>
+  <script src="answer-grader-demo.js"></script>
+</body>
+</html>
