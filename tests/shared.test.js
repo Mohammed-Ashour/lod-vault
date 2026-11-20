@@ -1405,7 +1405,7 @@ test("streak survives until a whole day has been missed", () => {
   assert.equal(store.computeFlashcardStreak([]), 0);
 });
 
-test("Today queue: due first by age, new Study words fill the rest of the target", () => {
+test("Today queue: due first by age, then new Study words up to the new-word limit", () => {
   const { store } = loadSharedStore();
   const now = new Date(2026, 5, 10, 9);
   const entry = (id, extra = {}) => ({ id, word: id, study: true, ...extra });
@@ -1425,24 +1425,86 @@ test("Today queue: due first by age, new Study words fill the rest of the target
   };
 
   const ids = (queue) => Array.from(queue, (item) => item.id);
-  const target4 = store.buildTodayQueue(entries, meta, { dailyTarget: 4, now });
-  assert.deepEqual(ids(target4.queue), ["DUE_OLD", "DUE_RECENT", "NEW1", "NEW2"]);
-  assert.equal(target4.dueCount, 2);
-  assert.equal(target4.newCount, 2);
+  const limit2 = store.buildTodayQueue(entries, meta, { dailyTarget: 2, now });
+  assert.deepEqual(ids(limit2.queue), ["DUE_OLD", "DUE_RECENT", "NEW1", "NEW2"]);
+  assert.equal(limit2.dueCount, 2);
+  assert.equal(limit2.newCount, 2);
 
-  // Due cards are never cut by the target.
-  const target1 = store.buildTodayQueue(entries, meta, { dailyTarget: 1, now });
-  assert.deepEqual(ids(target1.queue), ["DUE_OLD", "DUE_RECENT"]);
+  // Due cards don't use up new words (a backlog used to block them forever).
+  const limit1 = store.buildTodayQueue(entries, meta, { dailyTarget: 1, now });
+  assert.deepEqual(ids(limit1.queue), ["DUE_OLD", "DUE_RECENT", "NEW1"]);
+  assert.equal(store.buildTodayQueue(entries, meta, { newPerDay: 1, now }).newCount, 1);
 
-  // Off means every Study word, and reviews already done today use up the target.
+  // No limit means every Study word.
   assert.equal(store.buildTodayQueue(entries, meta, { dailyTarget: 0, now }).newCount, 3);
-  const reviewed = {
-    ...meta,
-    LATER: { ...meta.LATER, reviews: [{ date: now.toISOString(), rating: 2 }] }
+});
+
+test("Today queue counts cards: reviews of known words and retries don't use new-word slots", () => {
+  const { store } = loadSharedStore();
+  const now = new Date(2026, 5, 10, 9);
+  const at = (hour) => new Date(2026, 5, 10, hour).toISOString();
+  const entries = ["NEW1", "NEW2", "NEW3", "OLD"].map((id) => ({ id, word: id, study: true }));
+  const meta = {
+    // Introduced today, missed, retried, then passed: one new card.
+    NEW1: { totalReviews: 3, reviews: [{ date: at(7), rating: 1 }, { date: at(7), rating: 1 }, { date: at(8), rating: 2 }], dueAt: new Date(2026, 5, 11).toISOString() },
+    // An old card reviewed (and practised) today.
+    OLD: {
+      totalReviews: 9,
+      reviews: [{ date: at(7), rating: 2 }, { date: at(8), rating: 3 }],
+      dueAt: new Date(2026, 5, 20).toISOString()
+    }
   };
-  const afterOne = store.buildTodayQueue(entries, reviewed, { dailyTarget: 4, now });
-  assert.equal(afterOne.reviewedToday, 1);
-  assert.equal(afterOne.newCount, 1);
+  const today = store.buildTodayQueue(entries, meta, { dailyTarget: 2, now });
+  assert.equal(today.reviewedToday, 2);
+  assert.equal(today.newToday, 1);
+  assert.equal(today.reviewsToday, 1);
+  assert.deepEqual(Array.from(today.newEntries, (entry) => entry.id), ["NEW2"]);
+});
+
+test("Today queue halves new words, but never stops them, when the backlog is unusually large", () => {
+  const { store } = loadSharedStore();
+  const now = new Date(2026, 5, 10, 9);
+  const entries = [];
+  const meta = {};
+  for (let index = 0; index < 30; index += 1) {
+    entries.push({ id: `DUE${index}`, word: `d${index}` });
+    meta[`DUE${index}`] = { totalReviews: 2, reviews: [], dueAt: new Date(2026, 5, 1).toISOString() };
+  }
+  for (let index = 0; index < 10; index += 1) entries.push({ id: `NEW${index}`, word: `n${index}`, study: true });
+
+  const today = store.buildTodayQueue(entries, meta, { newPerDay: 10, now });
+  assert.equal(today.dueCount, 30);
+  assert.equal(today.newReduced, true);
+  assert.equal(today.newCount, 5);
+
+  const calm = store.buildTodayQueue(entries.slice(10), meta, { newPerDay: 10, now });
+  assert.equal(calm.newReduced, false);
+  assert.equal(calm.newCount, 10);
+});
+
+test("a reviewed card whose schedule was lost is due again instead of disappearing", () => {
+  const { store } = loadSharedStore();
+  const now = new Date(2026, 5, 10, 9);
+  const lost = { totalReviews: 2, reviews: [], interval: 3 };
+  assert.equal(store.isFlashcardDue(lost, now), true);
+  assert.equal(store.isFlashcardDue(undefined, now), false);
+  const today = store.buildTodayQueue([{ id: "LOST", word: "lost" }], { LOST: lost }, { now });
+  assert.equal(today.dueCount, 1);
+
+  // Normalising repairs it: an interval after the last review, else today.
+  const repaired = store.normalizeFlashcardMeta({ ...lost, lastReviewedAt: new Date(2026, 5, 1, 12).toISOString() });
+  assert.equal(repaired.dueAt, new Date(2026, 5, 4).toISOString());
+  const fromLog = store.normalizeFlashcardMeta({ totalReviews: 1, reviews: [{ date: new Date(2026, 5, 2, 8).toISOString(), rating: 2 }] });
+  assert.equal(fromLog.dueAt, new Date(2026, 5, 3).toISOString());
+  assert.equal(fromLog.lastReviewedAt, new Date(2026, 5, 2, 8).toISOString());
+  assert.equal(store.normalizeFlashcardMeta({ totalReviews: 0 }).dueAt, "");
+});
+
+test("baseCardId maps skill cards to their word", () => {
+  const { store } = loadSharedStore();
+  assert.equal(store.baseCardId("HAUS1"), "HAUS1");
+  assert.equal(store.baseCardId("HAUS1#pl"), "HAUS1");
+  assert.equal(store.baseCardId(""), "");
 });
 
 test("synced progress: the latest review wins, totals and history survive, and re-applying is a no-op", async () => {

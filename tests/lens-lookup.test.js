@@ -109,7 +109,7 @@ test("lookup resolves a single search result into a vault entry", async () => {
                     {
                       inflection: { forms: [{ content: "Haiser" }] },
                       targetLanguages: {
-                        en: { parts: [{ content: "house" }, { content: "building" }] },
+                        en: { parts: [{ type: "translation", content: "house" }, { type: "semanticClarifier", content: "building" }] },
                         fr: { parts: [{ content: "maison" }] }
                       },
                       examples: [
@@ -132,10 +132,10 @@ test("lookup resolves a single search result into a vault entry", async () => {
   assert.equal(result.entry.id, "HAUS1");
   assert.equal(result.entry.word, "Haus");
   assert.equal(result.entry.pos, "SUBST+N");
-  assert.equal(result.entry.inflection, "Haiser");
+  assert.equal(result.entry.inflection, "Plural: Haiser");
   assert.equal(result.entry.example, "Dëst ass en Haus");
   assert.deepEqual({ ...result.entry.translations }, {
-    en: "house building",
+    en: "house (building)",
     fr: "maison"
   });
   assert.equal(calls.length, 2);
@@ -451,4 +451,59 @@ test("lookup prefers the runtime proxy fetch when available", async () => {
   assert.equal(result.entry.id, "HAUS1");
   assert.equal(seen.length, 2);
   assert.ok(seen.every((message) => message.type === "lodvault:lens-fetch"));
+});
+
+function loadLodFixture(id) {
+  return JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "lod", `${id}.json`), "utf8")).entry;
+}
+
+function normalizeFixture(id, mutate) {
+  const { store } = loadSharedStore();
+  const lensLookup = loadLensLookup(undefined, { LodVaultStoreCore: store });
+  const apiEntry = loadLodFixture(id);
+  mutate?.(apiEntry);
+  return { entry: lensLookup.normalizeEntryFromApi(apiEntry), lensLookup };
+}
+
+test("real LOD entries keep clarifiers in brackets and cap senses at three per language", () => {
+  const { entry } = normalizeFixture("HAUS1");
+  assert.equal(entry.translations.en, "house (building) · house (household, family) · house (dynasty)");
+  assert.equal(entry.translations.de, "Haus (Wohngebäude) · Haus (Hausgemeinschaft, Familie) · Haus (Dynastie)");
+
+  const goen = normalizeFixture("GOEN1").entry;
+  for (const value of Object.values(goen.translations)) {
+    assert.ok(value.split(" · ").length <= 3, value);
+  }
+  // Several translations of one sense stay together.
+  assert.equal(goen.translations.en.split(" · ")[0], "to go, to walk");
+  assert.ok(JSON.stringify(goen.translations).length < 700);
+});
+
+test("real LOD nouns keep their plural from the word or the sense, labelled", () => {
+  assert.equal(normalizeFixture("FRA1").entry.inflection, "Plural: Fraen");
+  assert.equal(normalizeFixture("HAUS1").entry.inflection, "Plural: Haiser / Haus");
+  assert.equal(normalizeFixture("MANN1").entry.inflection, "Plural: Männer");
+  assert.equal(normalizeFixture("GROUSS2").entry.inflection, "");
+});
+
+test("real LOD verbs keep their past participle and auxiliary", () => {
+  assert.equal(normalizeFixture("GOEN1").entry.inflection, "Past participle: gaangen / gaang (sinn)");
+  assert.equal(normalizeFixture("MAACHEN1").entry.inflection, "Past participle: gemaach / gemaacht (hunn)");
+});
+
+test("real LOD examples leave out register attributes and glosses", () => {
+  const keepExamples = (predicate) => (apiEntry) => {
+    for (const micro of apiEntry.microStructures) {
+      for (const unit of micro.grammaticalUnits) {
+        for (const meaning of unit.meanings) {
+          meaning.examples = (meaning.examples || []).filter((example) => predicate(JSON.stringify(example)));
+        }
+      }
+    }
+  };
+  const glossOnly = normalizeFixture("HAUS1", keepExamples((json) => json.includes('"type":"gloss"') && !json.includes('"type":"attribute"'))).entry;
+  assert.equal(glossOnly.example, "mir hunn d'Usträicher am Haus");
+
+  const withAttribute = normalizeFixture("HAUS1", keepExamples((json) => json.includes('"type":"attribute"'))).entry;
+  assert.equal(withAttribute.example, "dee Boxer ass e Mann ewéi en Haus!");
 });

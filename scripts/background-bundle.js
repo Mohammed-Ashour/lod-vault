@@ -2228,15 +2228,32 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
         direction: r.direction === "rev" ? "rev" : "fwd"
       }));
 
+    const totalReviews = Math.max(0, Number(meta.totalReviews) || cleanReviews.length);
+    const interval = Math.max(0, Number(meta.interval) || 0);
+    let lastReviewedAt = cleanText(meta.lastReviewedAt);
+    let dueAt = cleanText(meta.dueAt);
+    // Repair a reviewed card whose schedule was lost (an older build or a
+    // damaged backup): it falls due a scheduled interval after its last review,
+    // or today when even that is unknown, instead of never coming back.
+    if (totalReviews && !Number.isFinite(Date.parse(dueAt))) {
+      if (!Number.isFinite(Date.parse(lastReviewedAt)) && cleanReviews.length) {
+        lastReviewedAt = cleanReviews[cleanReviews.length - 1].date;
+      }
+      const last = Date.parse(lastReviewedAt);
+      dueAt = Number.isFinite(last)
+        ? getLocalDayStart(new Date(last), Math.max(interval, 1)).toISOString()
+        : getLocalDayStart(new Date()).toISOString();
+    }
+
     return {
       reviews: cleanReviews,
-      totalReviews: Math.max(0, Number(meta.totalReviews) || cleanReviews.length),
+      totalReviews,
       hardCount: Math.max(0, Number(meta.hardCount) || 0),
       goodCount: Math.max(0, Number(meta.goodCount) || 0),
       easyCount: Math.max(0, Number(meta.easyCount) || 0),
-      lastReviewedAt: cleanText(meta.lastReviewedAt),
-      dueAt: cleanText(meta.dueAt),
-      interval: Math.max(0, Number(meta.interval) || 0)
+      lastReviewedAt,
+      dueAt,
+      interval
     };
   }
 
@@ -2290,9 +2307,11 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
   // A card is due for the whole local day it falls on, including schedules
   // written with a time of day by older versions or in another time zone.
+  // A reviewed card whose schedule was lost counts as due rather than vanishing.
   function isFlashcardDue(card, now = new Date()) {
     const dueTime = Date.parse(card?.dueAt || "");
-    return Number.isFinite(dueTime) && dueTime < getLocalDayStart(now, 1).getTime();
+    if (!Number.isFinite(dueTime)) return Boolean(Number(card?.totalReviews));
+    return dueTime < getLocalDayStart(now, 1).getTime();
   }
 
   function computeFlashcardDueAt(existing, rating, now = new Date()) {
@@ -2356,26 +2375,66 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return streak;
   }
 
+  // Card ids: a word's core card uses the entry id; skill cards add a suffix,
+  // "HAUS1#pl". Anything keyed by word (entries, deletions, sync) goes by the base.
+  function baseCardId(id) {
+    const text = String(id ?? "");
+    const hash = text.indexOf("#");
+    return hash === -1 ? text : text.slice(0, hash);
+  }
+
+  function isCoreCardId(id) {
+    return baseCardId(id) === String(id ?? "");
+  }
+
+  // Did this card's first ever review happen on the given local day? The local
+  // log keeps the last 100 reviews and synced records keep only the latest one,
+  // so the first review is known only while the log is complete.
+  function isFirstReviewedOn(card, dayKey) {
+    const reviews = Array.isArray(card?.reviews) ? card.reviews : [];
+    const total = Number(card?.totalReviews) || 0;
+    if (!total || !reviews.length || total > reviews.length) return false;
+    return toLocalDateKey(reviews[reviews.length - total]?.date) === dayKey;
+  }
+
+  // Cards studied per day on recent days, for "is today's backlog unusual?".
+  function usualDailyCards(dayCards, todayKey) {
+    const counts = Object.entries(dayCards)
+      .filter(([day]) => day < todayKey)
+      .sort(([left], [right]) => right.localeCompare(left))
+      .slice(0, 7)
+      .map(([, ids]) => ids.size)
+      .sort((left, right) => left - right);
+    return counts.length ? counts[Math.floor(counts.length / 2)] : 0;
+  }
+
   // The one definition of "what should I study today", shared by the popup,
   // the flashcards page and the toolbar badge. Every due card comes first,
-  // most overdue first. New Study-list words then fill what's left of the daily
-  // target; a target of 0 means the learner turned it off.
+  // most overdue first. New Study-list words follow, up to the new-word limit
+  // (options.newPerDay, or the older options.dailyTarget; 0 means no limit).
+  // All "today" numbers count cards, not button presses: a card retried in a
+  // session, or practised again, is one card.
   function buildTodayQueue(entries = [], meta = {}, options = {}) {
     const now = options.now || new Date();
-    const dailyTarget = Math.max(0, Number(options.dailyTarget) || 0);
+    const limitOption = options.newPerDay ?? options.dailyTarget;
+    const newLimit = Math.max(0, Number(limitOption) || 0);
     const todayKey = toLocalDateKey(now);
     const due = [];
     const fresh = [];
     const reviewDays = new Set();
-    let reviewedToday = 0;
+    const dayCards = {};
+    const reviewedTodayIds = new Set();
+    let newToday = 0;
 
-    for (const card of Object.values(meta || {})) {
+    for (const [id, card] of Object.entries(meta || {})) {
       for (const review of Array.isArray(card?.reviews) ? card.reviews : []) {
         const dateKey = toLocalDateKey(review?.date);
         if (!dateKey) continue;
         reviewDays.add(dateKey);
-        if (dateKey === todayKey) reviewedToday += 1;
+        (dayCards[dateKey] ||= new Set()).add(id);
+        if (dateKey === todayKey) reviewedTodayIds.add(id);
       }
+      if (isCoreCardId(id) && isFirstReviewedOn(card, todayKey)) newToday += 1;
     }
 
     for (const entry of entries) {
@@ -2387,8 +2446,12 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       }
     }
 
+    const dueTime = (entry) => {
+      const time = Date.parse(meta[entry.id]?.dueAt || "");
+      return Number.isFinite(time) ? time : 0;
+    };
     due.sort((left, right) => (
-      (Date.parse(meta[left.id].dueAt) - Date.parse(meta[right.id].dueAt))
+      (dueTime(left) - dueTime(right))
       || String(left.id).localeCompare(String(right.id))
     ));
     fresh.sort((left, right) => (
@@ -2396,10 +2459,20 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       || String(left.id).localeCompare(String(right.id))
     ));
 
-    const newSlots = dailyTarget
-      ? Math.max(0, dailyTarget - reviewedToday - due.length)
-      : fresh.length;
+    // A backlog never stops new words, but an unusually large one (more than
+    // twice a normal day's cards) halves them until it is under control.
+    let todayLimit = newLimit;
+    let newReduced = false;
+    if (newLimit) {
+      const usual = Math.max(newLimit, usualDailyCards(dayCards, todayKey));
+      if (due.length > usual * 2) {
+        todayLimit = Math.ceil(newLimit / 2);
+        newReduced = true;
+      }
+    }
+    const newSlots = todayLimit ? Math.max(0, todayLimit - newToday) : fresh.length;
     const newEntries = fresh.slice(0, newSlots);
+    const reviewedToday = reviewedTodayIds.size;
 
     return {
       dueEntries: due,
@@ -2408,6 +2481,10 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       dueCount: due.length,
       newCount: newEntries.length,
       reviewedToday,
+      newToday,
+      reviewsToday: Math.max(0, reviewedToday - newToday),
+      newLimit: todayLimit,
+      newReduced,
       streak: computeFlashcardStreak(Array.from(reviewDays).sort().reverse())
     };
   }
@@ -2457,7 +2534,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       let changed = false;
 
       for (const [id, record] of Object.entries(remote)) {
-        if (deletedMap?.[id]) continue;
+        if (deletedMap?.[baseCardId(id)]) continue;
         merged[id] = mergeSyncedFlashcardRecord(local[id], record);
         if (JSON.stringify(merged[id]) !== JSON.stringify(local[id])) changed = true;
       }
@@ -2493,43 +2570,6 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
   async function clearSyncIssue() {
     await chrome.storage.local.remove(SYNC_ISSUE_KEY);
-  }
-
-  async function getFlashcardStatsDirect() {
-    const meta = await getFlashcardMeta();
-    const todayKey = toLocalDateKey();
-    let todayCount = 0;
-    let learningCount = 0;
-    let masteredCount = 0;
-    const reviewDates = new Set();
-
-    for (const [id, data] of Object.entries(meta)) {
-      const m = normalizeFlashcardMeta(data);
-      if (!m.totalReviews) continue;
-
-      const dateSet = new Set(m.reviews.map((r) => toLocalDateKey(r.date)));
-      for (const d of dateSet) reviewDates.add(d);
-
-      const last = m.reviews[m.reviews.length - 1];
-      if (last && toLocalDateKey(last.date) === todayKey) {
-        todayCount += 1;
-      }
-
-      if (m.easyCount >= 3 && last && last.rating === 3) {
-        masteredCount += 1;
-      } else {
-        learningCount += 1;
-      }
-    }
-
-    const sortedDates = Array.from(reviewDates).sort().reverse();
-    const streak = computeFlashcardStreak(sortedDates);
-
-    return { streak, todayCount, newCount: 0, learningCount, masteredCount, reviewDates: sortedDates };
-  }
-
-  async function getFlashcardStats() {
-    return runStoreMutation("getFlashcardStats", [], getFlashcardStatsDirect);
   }
 
   globalThis.LodVaultStoreCore = {
@@ -2616,11 +2656,11 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     saveFlashcardMeta,
     recordFlashcardReview,
     applyRemoteFlashcardMeta,
-    getFlashcardStats,
     computeFlashcardDueAt,
     computeFlashcardStreak,
     isFlashcardDue,
     buildTodayQueue,
+    baseCardId,
     toLocalDateKey
   };
 })();
@@ -3147,71 +3187,126 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     };
   }
 
-  function partsToText(parts) {
+  // Example and gloss parts carry LOD's own markup: "attribute" is a register
+  // label such as EGS and "gloss" explains the example in other words. Neither
+  // belongs in the example sentence itself.
+  const EXAMPLE_SKIPPED_PARTS = new Set(["gloss", "attribute"]);
+
+  function partsToText(parts, options = {}) {
     if (!Array.isArray(parts)) return "";
+    const skipped = options.skip || null;
 
     return parts.reduce((result, part) => {
-      const nested = Array.isArray(part?.parts) ? partsToText(part.parts) : cleanText(part?.content);
+      if (skipped?.has(part?.type)) return result;
+      const nested = Array.isArray(part?.parts) ? partsToText(part.parts, options) : cleanText(part?.content);
       if (!nested) return result;
       if (!result) return nested;
-      if (/^[,.;:!?)]/.test(nested) || result.endsWith("'") || result.endsWith("’")) {
+      if (part?.joinWithPreviousWord || /^[,.;:!?)]/.test(nested) || result.endsWith("'") || result.endsWith("’")) {
         return `${result}${nested}`;
       }
       return `${result} ${nested}`;
     }, "");
   }
 
+  // One sense in one language: "house (building)", "ans Telefon gehen, rangehen",
+  // "jagen (Wild), fangen (Fisch)". A clarifier qualifies the translation before it.
+  function senseToText(parts) {
+    if (!Array.isArray(parts)) return "";
+    const translations = [];
+    for (const part of parts) {
+      // Untyped parts read as translations; other unknown types are skipped.
+      const type = part?.type || "translation";
+      const text = cleanDictionaryText(Array.isArray(part?.parts) ? partsToText(part.parts) : part?.content);
+      if (!text) continue;
+      if (type === "semanticClarifier") {
+        if (translations.length) translations[translations.length - 1] += ` (${text})`;
+        else translations.push(`(${text})`);
+      } else if (type === "translation") {
+        translations.push(text);
+      }
+    }
+    return translations.join(", ");
+  }
+
+  // Translations are synced with the word, so only the first few senses travel.
+  // The full sense list stays one click away on LOD.
+  const MAX_TRANSLATION_SENSES = 3;
+
   function appendTranslationValue(translations, language, value) {
     const text = cleanText(value);
     if (!language || !text) return;
 
     const existing = translations[language] ? translations[language].split(" · ") : [];
-    if (!existing.includes(text)) {
+    if (!existing.includes(text) && existing.length < MAX_TRANSLATION_SENSES) {
       existing.push(text);
       translations[language] = existing.join(" · ");
+    }
+  }
+
+  function* eachMeaning(apiEntry = {}) {
+    for (const micro of apiEntry.microStructures || []) {
+      for (const unit of micro?.grammaticalUnits || []) {
+        for (const meaning of unit?.meanings || []) {
+          if (meaning && typeof meaning === "object") yield { micro, meaning };
+        }
+      }
     }
   }
 
   function extractTranslations(apiEntry = {}) {
     const translations = {};
 
-    for (const micro of apiEntry.microStructures || []) {
-      for (const unit of micro.grammaticalUnits || []) {
-        for (const meaning of unit.meanings || []) {
-          for (const [language, definition] of Object.entries(meaning.targetLanguages || {})) {
-            appendTranslationValue(translations, language, partsToText(definition?.parts));
-          }
-        }
+    for (const { meaning } of eachMeaning(apiEntry)) {
+      for (const [language, definition] of Object.entries(meaning.targetLanguages || {})) {
+        appendTranslationValue(translations, language, senseToText(definition?.parts));
       }
     }
 
     return translations;
   }
 
+  function inflectionForms(inflection) {
+    return Array.isArray(inflection?.forms)
+      ? [...new Set(inflection.forms.map((form) => cleanDictionaryText(form?.content)).filter(Boolean))]
+      : [];
+  }
+
+  function participleForms(micro) {
+    const value = micro?.pastParticiple;
+    const list = Array.isArray(value) ? value : [value];
+    return [...new Set(list.map((form) => cleanDictionaryText(form)).filter(Boolean))];
+  }
+
+  // A labelled summary of the word's key forms: the plural of a noun, the past
+  // participle of a verb with its auxiliary. LOD puts a noun's plural either on
+  // the word (FRA1: Fraen) or on each sense (HAUS1: Haiser), and a verb's
+  // participle on the word.
   function extractInflection(apiEntry = {}) {
+    const isNoun = /^SUBST(\+|$)/i.test(cleanText(apiEntry.partOfSpeechLabel || apiEntry.partOfSpeech));
+
     for (const micro of apiEntry.microStructures || []) {
-      for (const unit of micro.grammaticalUnits || []) {
-        for (const meaning of unit.meanings || []) {
-          const forms = Array.isArray(meaning?.inflection?.forms)
-            ? meaning.inflection.forms.map((form) => cleanText(form?.content)).filter(Boolean)
-            : [];
-          if (forms.length) return forms.join(" · ");
-        }
+      const participles = participleForms(micro);
+      if (participles.length) {
+        const auxiliary = cleanDictionaryText(micro.auxiliaryVerb);
+        return `Past participle: ${participles.join(" / ")}${auxiliary ? ` (${auxiliary})` : ""}`;
       }
+      const wordForms = inflectionForms(micro?.inflection);
+      if (wordForms.length) return isNoun ? `Plural: ${wordForms.join(" / ")}` : wordForms.join(" · ");
+    }
+
+    for (const { meaning } of eachMeaning(apiEntry)) {
+      const forms = inflectionForms(meaning.inflection);
+      if (forms.length) return isNoun ? `Plural: ${forms.join(" / ")}` : forms.join(" · ");
     }
 
     return "";
   }
 
   function extractExample(apiEntry = {}) {
-    for (const micro of apiEntry.microStructures || []) {
-      for (const unit of micro.grammaticalUnits || []) {
-        for (const meaning of unit.meanings || []) {
-          for (const example of meaning.examples || []) {
-            const text = partsToText(example?.parts);
-            if (text) return text;
-          }
-        }
+    for (const { meaning } of eachMeaning(apiEntry)) {
+      for (const example of meaning.examples || []) {
+        const text = partsToText(example?.parts, { skip: EXAMPLE_SKIPPED_PARTS });
+        if (text) return text;
       }
     }
 
@@ -4108,7 +4203,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     if (budget <= 0) return {};
 
     let records = Object.entries(flashcardMeta || {})
-      .filter(([id, card]) => entryMap?.[id] && card.totalReviews)
+      .filter(([id, card]) => entryMap?.[store.baseCardId(id)] && card.totalReviews)
       .sort(([leftId, left], [rightId, right]) => (
         isoToUnix(right.lastReviewedAt) - isoToUnix(left.lastReviewedAt)
         || leftId.localeCompare(rightId)
@@ -4934,7 +5029,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       : 0;
 
     return Object.entries(localMeta || {}).some(([id, card]) => {
-      if (!entryMap?.[id] || !card.totalReviews) return false;
+      if (!entryMap?.[store.baseCardId(id)] || !card.totalReviews) return false;
       const remote = remoteProgress[id];
       if (!remote) return isoToUnix(card.lastReviewedAt) > oldestKept;
       return remote.totalReviews !== card.totalReviews
@@ -5729,8 +5824,7 @@ const STORE_MUTATION_METHODS = new Set([
   "importJson",
   "importBrowserHistory",
   "recordFlashcardReview",
-  "applyRemoteFlashcardMeta",
-  "getFlashcardStats"
+  "applyRemoteFlashcardMeta"
 ]);
 
 // Content scripts and the injected Lens run alongside page code, so a compromised

@@ -45,8 +45,7 @@ const STORE_MUTATION_METHODS = new Set([
   "importJson",
   "importBrowserHistory",
   "recordFlashcardReview",
-  "applyRemoteFlashcardMeta",
-  "getFlashcardStats"
+  "applyRemoteFlashcardMeta"
 ]);
 
 // Content scripts and the injected Lens run alongside page code, so a compromised

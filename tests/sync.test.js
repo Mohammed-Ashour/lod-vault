@@ -1466,3 +1466,23 @@ test("pulls don't rebuild progress for words dropped for size", async () => {
   // One read for the pull's own state; a rebuild would read again.
   assert.equal(pushes, 1);
 });
+
+test("skill-card progress travels with its word and is dropped with it", async () => {
+  const laptop = loadSyncScript({
+    "lodVault.entries": { HAUS1: makeLocalEntry() },
+    "lodVault.flashcardMeta": { HAUS1: makeCard(), "HAUS1#pl": makeCard({ interval: 5 }), "GONE1#pl": makeCard() }
+  });
+  await laptop.sync.SyncAdapter.pushAll();
+  const device = loadSyncScript({ sync: laptop.syncStorageData });
+  await device.sync.SyncAdapter.pullAll({ repush: false });
+  const meta = await device.store.getFlashcardMeta();
+  assert.deepEqual(Object.keys(meta).sort(), ["HAUS1", "HAUS1#pl"]);
+  assert.equal(meta["HAUS1#pl"].interval, 5);
+
+  const tombstoned = loadSyncScript({
+    local: { "lodVault.deleted": { HAUS1: "2026-06-11T00:00:00.000Z" } },
+    sync: laptop.syncStorageData
+  });
+  await tombstoned.sync.SyncAdapter.pullAll({ repush: false });
+  assert.deepEqual(Object.keys(await tombstoned.store.getFlashcardMeta()), []);
+});

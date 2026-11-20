@@ -129,71 +129,126 @@
     };
   }
 
-  function partsToText(parts) {
+  // Example and gloss parts carry LOD's own markup: "attribute" is a register
+  // label such as EGS and "gloss" explains the example in other words. Neither
+  // belongs in the example sentence itself.
+  const EXAMPLE_SKIPPED_PARTS = new Set(["gloss", "attribute"]);
+
+  function partsToText(parts, options = {}) {
     if (!Array.isArray(parts)) return "";
+    const skipped = options.skip || null;
 
     return parts.reduce((result, part) => {
-      const nested = Array.isArray(part?.parts) ? partsToText(part.parts) : cleanText(part?.content);
+      if (skipped?.has(part?.type)) return result;
+      const nested = Array.isArray(part?.parts) ? partsToText(part.parts, options) : cleanText(part?.content);
       if (!nested) return result;
       if (!result) return nested;
-      if (/^[,.;:!?)]/.test(nested) || result.endsWith("'") || result.endsWith("’")) {
+      if (part?.joinWithPreviousWord || /^[,.;:!?)]/.test(nested) || result.endsWith("'") || result.endsWith("’")) {
         return `${result}${nested}`;
       }
       return `${result} ${nested}`;
     }, "");
   }
 
+  // One sense in one language: "house (building)", "ans Telefon gehen, rangehen",
+  // "jagen (Wild), fangen (Fisch)". A clarifier qualifies the translation before it.
+  function senseToText(parts) {
+    if (!Array.isArray(parts)) return "";
+    const translations = [];
+    for (const part of parts) {
+      // Untyped parts read as translations; other unknown types are skipped.
+      const type = part?.type || "translation";
+      const text = cleanDictionaryText(Array.isArray(part?.parts) ? partsToText(part.parts) : part?.content);
+      if (!text) continue;
+      if (type === "semanticClarifier") {
+        if (translations.length) translations[translations.length - 1] += ` (${text})`;
+        else translations.push(`(${text})`);
+      } else if (type === "translation") {
+        translations.push(text);
+      }
+    }
+    return translations.join(", ");
+  }
+
+  // Translations are synced with the word, so only the first few senses travel.
+  // The full sense list stays one click away on LOD.
+  const MAX_TRANSLATION_SENSES = 3;
+
   function appendTranslationValue(translations, language, value) {
     const text = cleanText(value);
     if (!language || !text) return;
 
     const existing = translations[language] ? translations[language].split(" · ") : [];
-    if (!existing.includes(text)) {
+    if (!existing.includes(text) && existing.length < MAX_TRANSLATION_SENSES) {
       existing.push(text);
       translations[language] = existing.join(" · ");
+    }
+  }
+
+  function* eachMeaning(apiEntry = {}) {
+    for (const micro of apiEntry.microStructures || []) {
+      for (const unit of micro?.grammaticalUnits || []) {
+        for (const meaning of unit?.meanings || []) {
+          if (meaning && typeof meaning === "object") yield { micro, meaning };
+        }
+      }
     }
   }
 
   function extractTranslations(apiEntry = {}) {
     const translations = {};
 
-    for (const micro of apiEntry.microStructures || []) {
-      for (const unit of micro.grammaticalUnits || []) {
-        for (const meaning of unit.meanings || []) {
-          for (const [language, definition] of Object.entries(meaning.targetLanguages || {})) {
-            appendTranslationValue(translations, language, partsToText(definition?.parts));
-          }
-        }
+    for (const { meaning } of eachMeaning(apiEntry)) {
+      for (const [language, definition] of Object.entries(meaning.targetLanguages || {})) {
+        appendTranslationValue(translations, language, senseToText(definition?.parts));
       }
     }
 
     return translations;
   }
 
+  function inflectionForms(inflection) {
+    return Array.isArray(inflection?.forms)
+      ? [...new Set(inflection.forms.map((form) => cleanDictionaryText(form?.content)).filter(Boolean))]
+      : [];
+  }
+
+  function participleForms(micro) {
+    const value = micro?.pastParticiple;
+    const list = Array.isArray(value) ? value : [value];
+    return [...new Set(list.map((form) => cleanDictionaryText(form)).filter(Boolean))];
+  }
+
+  // A labelled summary of the word's key forms: the plural of a noun, the past
+  // participle of a verb with its auxiliary. LOD puts a noun's plural either on
+  // the word (FRA1: Fraen) or on each sense (HAUS1: Haiser), and a verb's
+  // participle on the word.
   function extractInflection(apiEntry = {}) {
+    const isNoun = /^SUBST(\+|$)/i.test(cleanText(apiEntry.partOfSpeechLabel || apiEntry.partOfSpeech));
+
     for (const micro of apiEntry.microStructures || []) {
-      for (const unit of micro.grammaticalUnits || []) {
-        for (const meaning of unit.meanings || []) {
-          const forms = Array.isArray(meaning?.inflection?.forms)
-            ? meaning.inflection.forms.map((form) => cleanText(form?.content)).filter(Boolean)
-            : [];
-          if (forms.length) return forms.join(" · ");
-        }
+      const participles = participleForms(micro);
+      if (participles.length) {
+        const auxiliary = cleanDictionaryText(micro.auxiliaryVerb);
+        return `Past participle: ${participles.join(" / ")}${auxiliary ? ` (${auxiliary})` : ""}`;
       }
+      const wordForms = inflectionForms(micro?.inflection);
+      if (wordForms.length) return isNoun ? `Plural: ${wordForms.join(" / ")}` : wordForms.join(" · ");
+    }
+
+    for (const { meaning } of eachMeaning(apiEntry)) {
+      const forms = inflectionForms(meaning.inflection);
+      if (forms.length) return isNoun ? `Plural: ${forms.join(" / ")}` : forms.join(" · ");
     }
 
     return "";
   }
 
   function extractExample(apiEntry = {}) {
-    for (const micro of apiEntry.microStructures || []) {
-      for (const unit of micro.grammaticalUnits || []) {
-        for (const meaning of unit.meanings || []) {
-          for (const example of meaning.examples || []) {
-            const text = partsToText(example?.parts);
-            if (text) return text;
-          }
-        }
+    for (const { meaning } of eachMeaning(apiEntry)) {
+      for (const example of meaning.examples || []) {
+        const text = partsToText(example?.parts, { skip: EXAMPLE_SKIPPED_PARTS });
+        if (text) return text;
       }
     }
 
