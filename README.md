@@ -48,7 +48,7 @@ The vault renders your saved words as an editorial document — serif entries, h
 
 <img src="docs/screenshots/flashcards-blue-night.png" width="780" alt="LODVault flashcards — Blue Night redesign" /> <img src="docs/screenshots/flashcards-blue-night-light.png" width="780" alt="LODVault flashcards — Blue Night light mode" />
 
-All session setup (deck, order, size, mode, daily target) is grouped behind one **Session ▾** menu; the active deck and card count sit quietly beside the title. A serif stat line replaces the old emoji tiles, and the flip card keeps Reveal / Hard / Good / Easy one tap away.
+All session setup (deck, order, size, mode, new words per day) is grouped behind one **Session ▾** menu; the active deck and card count sit quietly beside the title. A serif stat line replaces the old emoji tiles, and the flip card keeps Reveal / Hard / Good / Easy one tap away.
 
 ---
 
@@ -70,8 +70,8 @@ All session setup (deck, order, size, mode, daily target) is grouped behind one 
 | 📝 **Notes** | Write your own note for each saved word (auto-saved) |
 | 🔎 **LOD Lens** | Select Luxembourgish text on supported pages to translate it in a floating overlay, then save it straight to your vault |
 | 🔍 **Search** | Switch between My vault and Search LOD in the popup. Look up Luxembourgish, English, French, German, Portuguese, or Dutch words and save the Luxembourgish entry to Favorites or Study |
-| 🃏 **Flashcards** | Review a daily queue of due words plus new Study words up to your daily target. Missed words come back once in the same session |
-| 🔔 **Due badge** | See how many words are due on the toolbar icon, updated at local midnight |
+| 🃏 **Flashcards** | Review a daily queue of due words plus new Study words up to your new-word limit. Missed words come back once in the same session |
+| 🔔 **Due badge** | See how many words are due on the toolbar icon (reviews only, not new words), updated at local midnight |
 | 👁 **Preview** | Browse your full word list in a clean page — no download needed |
 | 📤 **Export HTML / Anki** | Download standalone HTML or Anki-ready text export |
 | 📦 **Backup / Restore JSON** | Back up and restore your vocabulary, flashcard review progress, and supported settings with a portable file |
@@ -152,8 +152,10 @@ The **LODVault** icon will appear in your browser toolbar.
 - Play pronunciation audio, add notes, toggle lists, or delete saved words from there
 
 ### Study with flashcards
-- Click **Start review** or **Flashcards** in the popup to open **Today**: every due word, then new Study words up to your daily target
-- Change the daily target or pick another deck (Due today, Study list, Favorites, All saved) under **Session**
+- Click **Start review** or **Flashcards** in the popup to open **Today**: every due word, then new Study words up to your new-word limit (5, 10 or 20 a day, or no limit). Due reviews never use up new-word slots; when the backlog is more than twice a usual day, Today halves the new words until it is under control
+- Today's numbers count words, not button presses: a word you missed and retried is one word
+- A word with no saved translation is asked forward in reverse and multiple-choice modes, so the answer never shows on the front
+- Change the new-word limit or pick another deck (Due today, Study list, Favorites, All saved) under **Session**
 - Click the card or **Reveal** to show the full meaning
 - Practising a word before it's due doesn't push it further out. Rating it Hard brings it back tomorrow
 - Choose **Session → Mode → Listening** to hear the pronunciation without seeing the answer. Click **Reveal** (or press Space) to see the Luxembourgish word and translations, then rate it as usual

@@ -373,7 +373,7 @@
     if (budget <= 0) return {};
 
     let records = Object.entries(flashcardMeta || {})
-      .filter(([id, card]) => entryMap?.[id] && card.totalReviews)
+      .filter(([id, card]) => entryMap?.[store.baseCardId(id)] && card.totalReviews)
       .sort(([leftId, left], [rightId, right]) => (
         isoToUnix(right.lastReviewedAt) - isoToUnix(left.lastReviewedAt)
         || leftId.localeCompare(rightId)
@@ -1199,7 +1199,7 @@
       : 0;
 
     return Object.entries(localMeta || {}).some(([id, card]) => {
-      if (!entryMap?.[id] || !card.totalReviews) return false;
+      if (!entryMap?.[store.baseCardId(id)] || !card.totalReviews) return false;
       const remote = remoteProgress[id];
       if (!remote) return isoToUnix(card.lastReviewedAt) > oldestKept;
       return remote.totalReviews !== card.totalReviews

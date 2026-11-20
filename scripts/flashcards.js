@@ -16,6 +16,7 @@ const state = {
   resumableSession: null,
   dailyTarget: 10,
   flashcardMeta: {},
+  today: null,
   stats: { streak: 0, todayCount: 0, dueCount: 0, newCount: 0, learningCount: 0, masteredCount: 0 }
 };
 
@@ -273,33 +274,26 @@ async function dismissResumableSession() {
 }
 
 const normalizeFlashcardMeta = LodVaultStore.normalizeFlashcardMeta;
-const computeStreak = LodVaultStore.computeFlashcardStreak;
 
+// Today, due and the streak come from buildTodayQueue, the same numbers the
+// popup and the toolbar badge show. "today" counts cards, not button presses.
 function computeStats() {
   const meta = state.flashcardMeta;
-  const todayKey = LodVaultStore.toLocalDateKey();
-  let todayCount = 0;
-  let dueCount = 0;
+  const today = todayQueue();
   let newCount = 0;
   let learningCount = 0;
   let masteredCount = 0;
-  const reviewDates = new Set();
+
   // Review data outlives a deleted word (so Undo keeps its progress). Past
   // reviews still count toward today and the streak, but only saved words
   // count as learning or mastered.
-  const savedIds = new Set(state.entries.map((entry) => entry.id));
-
-  for (const [id, data] of Object.entries(meta)) {
-    const m = normalizeFlashcardMeta(data);
-    if (!m.totalReviews) continue;
-
-    const dateSet = new Set(m.reviews.map((r) => LodVaultStore.toLocalDateKey(r.date)));
-    for (const d of dateSet) reviewDates.add(d);
-
+  for (const entry of state.entries) {
+    const m = meta[entry.id] ? normalizeFlashcardMeta(meta[entry.id]) : null;
+    if (!m?.totalReviews) {
+      if (entry.study) newCount += 1;
+      continue;
+    }
     const last = m.reviews[m.reviews.length - 1];
-    todayCount += m.reviews.filter((review) => LodVaultStore.toLocalDateKey(review.date) === todayKey).length;
-
-    if (!savedIds.has(id)) continue;
     if (m.easyCount >= 3 && last && last.rating === 3) {
       masteredCount += 1;
     } else {
@@ -307,34 +301,36 @@ function computeStats() {
     }
   }
 
-  const now = new Date();
-  for (const entry of state.entries) {
-    const m = meta[entry.id];
-    if (entry.study && (!m || !m.totalReviews)) {
-      newCount += 1;
-    }
-    if (isDue(entry, now)) {
-      dueCount += 1;
-    }
-  }
+  state.today = today;
+  state.stats = {
+    streak: today.streak,
+    todayCount: today.reviewedToday,
+    dueCount: today.dueCount,
+    newCount,
+    learningCount,
+    masteredCount
+  };
+}
 
-  const sortedDates = Array.from(reviewDates).sort().reverse();
-  const streak = computeStreak(sortedDates);
-
-  state.stats = { streak, todayCount, dueCount, newCount, learningCount, masteredCount };
+function describeDailyProgress(today) {
+  if (!today) return { text: "", complete: false };
+  const reviewsPart = `${today.reviewsToday}/${today.reviewsToday + today.dueCount} reviews`;
+  const newPart = state.dailyTarget
+    ? `${today.newToday}/${today.newToday + today.newCount} new`
+    : `${today.newToday} new · no new-word limit`;
+  const complete = today.reviewedToday > 0 && !today.dueCount && !today.newCount;
+  const parts = [`${complete ? "Done for today" : "Today"}: ${reviewsPart} · ${newPart}`];
+  if (today.newReduced) parts.push("fewer new words while the backlog is large");
+  return { text: parts.join(" · "), complete };
 }
 
 function renderStats() {
   if (elements.statStreak) elements.statStreak.textContent = state.stats.streak;
   if (elements.statToday) elements.statToday.textContent = state.stats.todayCount;
   if (elements.dailyProgress) {
-    const complete = state.dailyTarget && state.stats.todayCount >= state.dailyTarget;
-    elements.dailyProgress.textContent = state.dailyTarget
-      ? complete
-        ? `Daily target complete · ${state.dailyTarget} / ${state.dailyTarget} today`
-        : `${state.stats.todayCount} / ${state.dailyTarget} today`
-      : "Daily target off";
-    elements.dailyProgress.classList.toggle("is-complete", Boolean(complete));
+    const { text, complete } = describeDailyProgress(state.today);
+    elements.dailyProgress.textContent = text;
+    elements.dailyProgress.classList.toggle("is-complete", complete);
   }
   if (elements.statDue) elements.statDue.textContent = state.stats.dueCount;
   if (elements.statNew) elements.statNew.textContent = state.stats.newCount;
@@ -373,6 +369,7 @@ async function onDailyTargetChange(event) {
   const target = Number(event.target.value);
   state.dailyTarget = LodVaultStore.FLASHCARD_DAILY_TARGETS.includes(target) ? target : 0;
   await saveSettings();
+  computeStats();
   renderStats();
   if (state.filter === "today" && !state.sessionResults.length) rebuildDeck();
 }
@@ -399,10 +396,43 @@ async function handleStorageChange(changes, areaName) {
   // A finished session stays on its summary until the learner closes it.
   if (elements.summaryOverlay && !elements.summaryOverlay.classList.contains("is-hidden")) return;
   if (state.sessionActive) {
-    renderDeck();
+    await refreshSessionCards();
   } else {
     rebuildDeck({ preserveAudio: true });
   }
+}
+
+// Session cards are entry snapshots. After a storage change they take the
+// saved version of each word, and words deleted meanwhile leave the session.
+async function refreshSessionCards() {
+  const byId = new Map(state.entries.map((entry) => [entry.id, entry]));
+  const currentId = currentEntry()?.id;
+  const cards = [];
+  let index = state.sessionIndex;
+  state.sessionCards.forEach((card, position) => {
+    const fresh = byId.get(card.id);
+    if (fresh) cards.push(fresh);
+    else if (position < state.sessionIndex) index -= 1;
+  });
+  const removed = cards.length !== state.sessionCards.length;
+  state.sessionCards = cards;
+  state.sessionIndex = Math.max(0, index);
+  state.deck = cards;
+  state.index = state.sessionIndex;
+  if (currentEntry()?.id !== currentId) state.revealed = false;
+
+  if (state.sessionIndex >= cards.length) {
+    await clearSavedSession();
+    if (state.sessionResults.length) {
+      showSummary();
+    } else {
+      endSession();
+      rebuildDeck({ preserveAudio: true });
+    }
+    return;
+  }
+  if (removed) await saveSession();
+  renderDeck();
 }
 
 function toggleDirection() {
@@ -430,13 +460,18 @@ function onKeyDown(event) {
 
   const target = event.target;
   if (
-    target?.closest?.("button, a, summary")
-    || target?.tagName === "SELECT"
+    target?.tagName === "SELECT"
     || target?.tagName === "INPUT"
     || target?.tagName === "TEXTAREA"
     || target?.isContentEditable
   ) {
     return;
+  }
+  // A focused control keeps Space and Enter for itself, but study keys still
+  // work after clicking Reveal, a rating or the card's own buttons.
+  if (target?.closest?.("button, a, summary")) {
+    const inCard = elements.cardShell?.contains(target);
+    if (!inCard || event.key === " " || event.key === "Enter") return;
   }
 
   if (!state.deck.length) return;
@@ -448,7 +483,7 @@ function onKeyDown(event) {
   } else if (event.key === " " || event.key === "Enter") {
     event.preventDefault();
     toggleReveal();
-  } else if (state.mode === "mc" && event.key >= "1" && event.key <= "4") {
+  } else if (cardMode() === "mc" && event.key >= "1" && event.key <= "4") {
     elements.mcOptions?.querySelectorAll("button")[Number(event.key) - 1]?.click();
   } else if (event.key === "1") {
     rateCard(1);
@@ -461,6 +496,24 @@ function onKeyDown(event) {
   } else if (event.key === "r" || event.key === "R") {
     toggleDirection();
   }
+}
+
+// A card can only be asked the way its saved data allows. Without a saved
+// translation, reverse and multiple choice would show the answer on the front,
+// so such a word is asked as a regular forward card.
+function cardMode(entry = currentEntry()) {
+  if (state.mode === "mc" && entry && !hasMeaning(entry)) return "self";
+  return state.mode;
+}
+
+function cardDirection(entry = currentEntry()) {
+  if (state.mode === "listening") return "fwd";
+  if (state.direction === "rev" && entry && !hasMeaning(entry)) return "fwd";
+  return state.direction;
+}
+
+function hasMeaning(entry) {
+  return Boolean(mcAnswerText(entry));
 }
 
 function isDue(entry, now = new Date()) {
@@ -577,6 +630,9 @@ function renderDeck() {
   const entry = currentEntry();
   const count = state.deck.length;
   const listening = state.mode === "listening";
+  const mode = cardMode(entry);
+  const direction = cardDirection(entry);
+  const fallback = Boolean(entry) && (mode !== state.mode || direction !== state.direction) && !listening;
   elements.cardShell?.classList.toggle("is-listening", listening);
   // Keep listening instructions outside the icon-only front face.
   if (elements.cardHint) {
@@ -630,18 +686,10 @@ function renderDeck() {
   if (listening) {
     if (elements.cardWord) elements.cardWord.textContent = "";
     if (elements.cardType) elements.cardType.textContent = "";
-  } else if (state.direction === "rev") {
-    const meaning = typeof LodVaultStore.getPrimaryMeaning === "function"
-      ? LodVaultStore.getPrimaryMeaning(entry)
-      : null;
-    if (elements.cardWord) {
-      elements.cardWord.textContent = meaning ? meaning.value : entry.word;
-    }
-    if (elements.cardType) {
-      elements.cardType.textContent = meaning
-        ? `${meaning.label} · Recall the Luxembourgish word`
-        : "";
-    }
+  } else if (direction === "rev") {
+    const meaning = LodVaultStore.getPrimaryMeaning(entry);
+    if (elements.cardWord) elements.cardWord.textContent = meaning.value;
+    if (elements.cardType) elements.cardType.textContent = `${meaning.label} · Recall the Luxembourgish word`;
   } else {
     if (elements.cardWord) {
       elements.cardWord.textContent = entry.word;
@@ -666,16 +714,16 @@ function renderDeck() {
 
   if (elements.mcOptions) {
     // The session position is part of the key: a retried card can follow itself.
-    const mcKey = state.mode === "mc" ? `${entry.id}:${state.direction}:${state.sessionActive ? state.sessionIndex : ""}` : "";
+    const mcKey = mode === "mc" ? `${entry.id}:${direction}:${state.sessionActive ? state.sessionIndex : ""}` : "";
     if (state.mcKey !== mcKey) {
       state.mcKey = mcKey;
       state.mcLocked = false;
-      const options = state.mode === "mc" ? buildMcOptions(entry) : [];
+      const options = mode === "mc" ? buildMcOptions(entry) : [];
       LodVaultStore.setHtml(elements.mcOptions, options.map((option) =>
         `<button type="button" class="mc-option" data-correct="${option.correct ? "1" : "0"}">${LodVaultStore.escapeHtml(option.text)}</button>`
       ).join(""));
     }
-    elements.mcOptions.classList.toggle("is-hidden", state.mode !== "mc");
+    elements.mcOptions.classList.toggle("is-hidden", mode !== "mc");
   }
   elements.flashcard?.classList.toggle("is-revealed", state.revealed);
   for (const face of elements.flashcard?.querySelectorAll(".card-face") || []) {
@@ -685,14 +733,15 @@ function renderDeck() {
   }
   if (elements.flipCard) {
     elements.flipCard.textContent = state.revealed ? "Hide" : "Reveal";
-    elements.flipCard.classList.toggle("is-hidden", state.mode === "mc");
+    elements.flipCard.classList.toggle("is-hidden", mode === "mc");
   }
   if (elements.cardHint) {
     elements.cardHint.textContent = listening
       ? audioFailed
         ? "Audio unavailable. Try Play pronunciation again, reveal the answer, or skip this card."
         : "Listen, then Reveal to see the word and translation. Press P to replay."
-      : state.mode === "mc" ? "Choose the correct answer." : "Click Reveal to show the answer.";
+      : fallback ? "No saved translation for this word, so it is asked the usual way. Reveal to check."
+        : mode === "mc" ? "Choose the correct answer." : "Click Reveal to show the answer.";
   }
 
   if (elements.prevCard) elements.prevCard.disabled = !canNavigate();
@@ -706,9 +755,9 @@ function renderDeck() {
 
   if (elements.shortcutHint) {
     const shortcuts = [
-      state.mode === "mc" ? "1–4 choose" : "Space reveal",
+      mode === "mc" ? "1–4 choose" : "Space reveal",
       canNavigate() ? "← → navigate" : "",
-      state.mode === "mc" ? "" : "1 / 2 / 3 rate",
+      mode === "mc" ? "" : "1 / 2 / 3 rate",
       listening ? "P replay" : "R flip direction"
     ];
     elements.shortcutHint.textContent = shortcuts.filter(Boolean).join(" · ");
@@ -764,7 +813,8 @@ function buildMeaningMarkup(entry) {
 }
 
 function buildMcOptions(entry) {
-  const answerText = state.direction === "rev" ? entry.word : mcAnswerText(entry) || entry.word;
+  const direction = cardDirection(entry);
+  const answerText = direction === "rev" ? entry.word : mcAnswerText(entry);
   const options = [{ text: answerText, correct: true }];
   const seen = new Set([answerText]);
   const pool = state.deck.length >= 4
@@ -772,7 +822,7 @@ function buildMcOptions(entry) {
     : state.entries.filter((candidate) => candidate.id !== entry.id);
   for (const other of shuffle(pool)) {
     if (options.length >= 4) break;
-    const text = state.direction === "rev" ? other.word : mcAnswerText(other);
+    const text = direction === "rev" ? other.word : mcAnswerText(other);
     if (!text || seen.has(text)) continue;
     seen.add(text);
     options.push({ text, correct: false });
@@ -793,7 +843,7 @@ function buildAnswerMarkup(entry) {
     chips.push(`<span class="chip">Type: ${LodVaultStore.escapeHtml(entry.pos)}</span>`);
   }
 
-  const directionBadge = state.mode !== "listening" && state.direction === "rev"
+  const directionBadge = cardDirection(entry) === "rev"
     ? '<span class="chip">Reverse mode</span>'
     : "";
 
@@ -809,7 +859,7 @@ function buildAnswerMarkup(entry) {
 }
 
 function toggleReveal() {
-  if (state.mode === "mc" || !state.deck.length) return;
+  if (cardMode() === "mc" || !state.deck.length) return;
   state.revealed = !state.revealed;
   renderDeck();
 }
@@ -866,7 +916,7 @@ function onMcOptionClick(event) {
   const button = event.target.closest("[data-correct]");
   if (!button || state.mode !== "mc" || !state.deck.length || state.mcLocked) return;
   const entry = currentEntry();
-  if (!entry) return;
+  if (!entry || cardMode(entry) !== "mc") return;
 
   state.mcLocked = true;
   const correct = button.dataset.correct === "1";
@@ -890,6 +940,11 @@ async function rateCard(rating) {
   if (state.ratingInProgress || !state.revealed || !state.deck.length) return;
   const entry = currentEntry();
   if (!entry) return;
+  // A word deleted in another tab must not get review data for a missing entry.
+  if (!state.entries.some((saved) => saved.id === entry.id)) {
+    await refreshSessionCards();
+    return;
+  }
 
   state.ratingInProgress = true;
   try {
@@ -907,13 +962,13 @@ async function recordRating(entry, rating) {
   }
 
   if (typeof LodVaultStore.recordFlashcardReview === "function") {
-    await LodVaultStore.recordFlashcardReview(entry.id, rating, state.mode === "listening" ? "fwd" : state.direction);
+    await LodVaultStore.recordFlashcardReview(entry.id, rating, cardDirection(entry));
     await loadFlashcardMeta();
     computeStats();
     renderStats();
   }
 
-  state.sessionResults.push({ entryId: entry.id, rating, direction: state.mode === "listening" ? "fwd" : state.direction });
+  state.sessionResults.push({ entryId: entry.id, rating, direction: cardDirection(entry) });
 
   if (state.sessionActive) {
     // A missed word comes back once before the session ends.
@@ -937,11 +992,18 @@ async function recordRating(entry, rating) {
 
 function showSummary() {
   stopCardAudio();
-  const hard = state.sessionResults.filter((r) => r.rating === 1).length;
-  const good = state.sessionResults.filter((r) => r.rating === 2).length;
-  const easy = state.sessionResults.filter((r) => r.rating === 3).length;
+  // A missed card comes back in the session; the summary counts each card
+  // once, by how it went the first time.
+  const firstTry = new Map();
+  for (const result of state.sessionResults) {
+    if (!firstTry.has(result.entryId)) firstTry.set(result.entryId, result.rating);
+  }
+  const ratings = [...firstTry.values()];
+  const hard = ratings.filter((rating) => rating === 1).length;
+  const good = ratings.filter((rating) => rating === 2).length;
+  const easy = ratings.filter((rating) => rating === 3).length;
 
-  if (elements.summaryTotal) elements.summaryTotal.textContent = state.sessionResults.length;
+  if (elements.summaryTotal) elements.summaryTotal.textContent = firstTry.size;
   if (elements.summaryHard) elements.summaryHard.textContent = hard;
   if (elements.summaryGood) elements.summaryGood.textContent = good;
   if (elements.summaryEasy) elements.summaryEasy.textContent = easy;
