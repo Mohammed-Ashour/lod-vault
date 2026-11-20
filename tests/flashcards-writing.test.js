@@ -16,6 +16,37 @@ async function setup(cached = true, lemma = 'goen') {
   await tick();
   return { ...s, doc, ratings };
 }
+for (const [mode, answer, label] of [['plural', 'Haiser', 'Plural'], ['cloze', 'Haus', 'Fill the gap'], ['perfect', 'gaangen', 'Perfect'], ['gender', 'n', 'Gender']]) {
+  test(`${mode} mounts in a real session and records its answer once`, async () => {
+    const ratings = [];
+    const lexicon = { v: 1, fetchedAt: Date.now(), id: 'HAUS1', lemma: 'Haus', gender: 'n', noun: { plurals: ['Haiser'] }, verb: { aux: 'sinn', pp: ['gaangen'] }, senses: [{ n: 1, tr: { en: [['house']] }, ex: [{ t: 'Dat ass en Haus.', h: [[11, 15]] }] }] };
+    const s = await loadFlashcardsScript({
+      entries: [{ id: 'HAUS1', word: 'Haus', translations: { en: 'house' }, study: true }],
+      localStorage: { 'lodVault.lx.HAUS1': lexicon },
+      storeOverrides: { async recordFlashcardReview(...args) { ratings.push(args); return {}; } }
+    });
+    const doc = s.dom.window.document;
+    doc.getElementById('mode-select').value = mode;
+    doc.getElementById('mode-select').dispatchEvent(new s.dom.window.Event('change'));
+    await tick();
+    assert.ok(doc.querySelector('.exercise'), doc.body.textContent.slice(-1200));
+    assert.match(doc.querySelector('.exercise').textContent, new RegExp(label));
+    if (mode === 'perfect') doc.querySelector('[data-aux="sinn"]').click();
+    if (mode === 'gender') doc.querySelector('[data-gender="n"]').click();
+    else {
+      doc.querySelector('.ex-input').value = answer;
+      doc.querySelector('.ex-submit').click();
+    }
+    assert.match(doc.querySelector('.ex-feedback').textContent, /Correct/);
+    doc.querySelector('.ex-continue').click();
+    await tick();
+    assert.equal(ratings.length, 1);
+    assert.equal(ratings[0][0], 'HAUS1');
+    assert.equal(ratings[0][1], 3);
+    assert.equal(s.storageData['lodVault.flashcardSettings'].mode, mode);
+  });
+}
+
 test('writing mode mounts real exercise, checks submission and persists one grade', async () => {
   const s = await setup();
   const input = s.doc.querySelector('.ex-input');

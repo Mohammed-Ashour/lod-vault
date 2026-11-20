@@ -2731,7 +2731,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     retention: Object.freeze([0.85, 0.9, 0.95]),
     maxInterval: Object.freeze([365, 3650]),
     autoplay: Object.freeze(["front", "reveal", "off"]),
-    mode: Object.freeze(["self", "mc", "listening", "writing"])
+    mode: Object.freeze(["self", "mc", "listening", "writing", "plural", "perfect", "cloze", "gender"])
   });
   const FLASHCARD_DEFAULT_SETTINGS = Object.freeze({
     newPerDay: 10,

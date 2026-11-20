@@ -31,7 +31,9 @@ const FLASHCARD_SETTINGS_KEY = LodVaultStore.FLASHCARD_SETTINGS_KEY;
 const FLASHCARD_SESSION_KEY = "lodVault.flashcardSession";
 const DECK_FILTERS = new Set(["today", "due", "study", "favorites", "all"]);
 const ORDER_MODES = new Set(["smart", "shuffle", "sequential"]);
-const STUDY_MODES = new Set(["self", "mc", "listening", "writing"]);
+const WRITING_SKILLS = { writing: "rev", plural: "pl", perfect: "pp", cloze: "cz", gender: "g" };
+const isWritingMode = (mode = state.mode) => Object.hasOwn(WRITING_SKILLS, mode);
+const STUDY_MODES = new Set(["self", "mc", "listening", ...Object.keys(WRITING_SKILLS)]);
 let writingController = null;
 let writingKey = null;
 let writingGeneration = 0;
@@ -48,7 +50,7 @@ function clearWriting() {
 }
 
 function renderWriting(entry) {
-  const key = `${entry.id}:${state.sessionIndex}:${state.index}`;
+  const key = `${state.mode}:${entry.id}:${state.sessionIndex}:${state.index}`;
   if (key === writingKey) return;
   clearWriting();
   writingKey = key;
@@ -68,8 +70,11 @@ function renderWriting(entry) {
         void globalThis.LodVaultLexicon?.requestHydration(state.deck.slice(0, 20).map((item) => item.id));
         return;
       }
+      const requested = WRITING_SKILLS[state.mode];
+      const available = globalThis.LodVaultCards.SKILLS[requested].applies(lexicon);
+      const skill = available ? requested : "rev";
       writingController = globalThis.LodVaultExercises.render(document, root,
-        { id: entry.id, entryId: entry.id, skill: "rev", entry }, {
+        { id: entry.id, entryId: entry.id, skill, entry }, {
           lexicon, focus: state.flashcardMeta[entry.id]?.fs,
           onGrade(grade) {
             if (generation !== writingGeneration || state.reviewSaveFailed || state.ratingInProgress) return;
@@ -77,7 +82,13 @@ function renderWriting(entry) {
             void rateCard(grade);
           }
         });
-      root.querySelector("input")?.focus();
+      const note = document.createElement("p");
+      note.className = "muted";
+      note.textContent = available
+        ? "All question modes share this word’s review schedule."
+        : "LOD has no data for this question. Write the word instead. All modes share its review schedule.";
+      root.prepend(note);
+      root.querySelector("input, button")?.focus();
     } catch {
       if (generation === writingGeneration) root.textContent = "Dictionary details unavailable. Switch to Self review to continue.";
     }
@@ -647,12 +658,12 @@ function onKeyDown(event) {
     return;
   }
 
-  if (state.mode === "writing" && writingController?.handleKey(event)) {
+  if (isWritingMode() && writingController?.handleKey(event)) {
     event.preventDefault();
     return;
   }
   if (typing) return;
-  if (state.mode === "writing" && event.key !== "Escape") return;
+  if (isWritingMode() && event.key !== "Escape") return;
   if (event.key === "Escape" && state.sessionActive && !document.getElementById("session-menu")?.classList.contains("is-open")) {
     event.preventDefault();
     void endSessionEarly();
@@ -823,7 +834,7 @@ function onFlashcardClick(event) {
 
 function renderDeck() {
   const entry = currentEntry();
-  if (state.mode !== "writing" || !entry) clearWriting();
+  if (!isWritingMode() || !entry) clearWriting();
   const count = state.deck.length;
   const listening = state.mode === "listening";
   const mode = cardMode(entry);
@@ -960,7 +971,7 @@ function renderDeck() {
     ];
     elements.shortcutHint.textContent = shortcuts.filter(Boolean).join(" · ");
   }
-  if (mode === "writing") {
+  if (isWritingMode(mode)) {
     elements.flipCard?.classList.add("is-hidden");
     elements.ratingBar?.classList.add("is-hidden");
     if (elements.directionToggle) elements.directionToggle.disabled = true;
@@ -1113,7 +1124,7 @@ function buildAnswerMarkup(entry) {
 }
 
 function toggleReveal() {
-  if (state.mode === "writing") return;
+  if (isWritingMode()) return;
   if (cardMode() === "mc" || !state.deck.length) return;
   state.revealed = !state.revealed;
   renderDeck();
