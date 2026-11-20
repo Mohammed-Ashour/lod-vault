@@ -25,6 +25,17 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
 const { activity } = loadActivity();
 const TODAY = activity.toDayNumber(NOW);
 
+test("equal-clock rest masks and equal-streak anchors converge", () => {
+  const a = { w: [[TODAY, 1, 100]], b: [TODAY - 1, 10, 1, 2] };
+  const b = { w: [[TODAY, 2, 100]], b: [TODAY - 1, 10, 2, 1] };
+  const ab = plain(activity.mergeActivity(a, b));
+  assert.deepEqual(ab, plain(activity.mergeActivity(b, a)));
+  assert.deepEqual(ab, plain(activity.mergeActivity(ab, a)));
+  assert.deepEqual(ab, plain(activity.mergeActivity(ab, b)));
+  assert.equal(ab.w[0][1], 2);
+  assert.equal(ab.b[2], 2);
+});
+
 // Builds a record where the stricter rule applies to every listed day.
 function record(days, extra = {}) {
   return { d: days, s: TODAY - 1000, ...extra };
