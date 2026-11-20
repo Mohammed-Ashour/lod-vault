@@ -1532,7 +1532,7 @@ test("FSRS state travels to another device, and a 2.4.0 device still reads the s
   const [record] = laptop.syncStorageData[key];
   assert.deepEqual({ ...record }, {
     i: "HAUS1", n: 3, l: Date.parse("2026-06-10T09:00:00.000Z") / 1000, d: Date.parse("2026-07-03T00:00:00.000Z") / 1000, v: 23, g: 3, e: 1,
-    s: 2112, f: 43, t: 2, x: 2, u: 1, w: Date.parse("2026-06-11T09:00:00.000Z") / 1000, r: [Date.parse("2026-06-10T09:00:00.000Z") / 1000, 3, 0, 4]
+    s: 2112, f: 43, t: 2, x: 2, u: 1, w: Date.parse("2026-06-11T09:00:00.000Z") / 1000, wm: Date.parse("2026-06-11T09:00:00.000Z"), r: [Date.parse("2026-06-10T09:00:00.000Z") / 1000, 3, 0, 4, "r"]
   });
 
   const desktop = loadSyncScript({ sync: laptop.syncStorageData });

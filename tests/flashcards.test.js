@@ -800,6 +800,7 @@ test("practice decks log practice reviews and show no intervals for words that a
 // The page wired to the real store and scheduler, with in-memory storage.
 async function loadWithRealStore({ entries, url, localStorage, meta = {} } = {}) {
   const shared = loadSharedStore({ "lodVault.flashcardMeta": meta });
+  for (const entry of entries || []) await shared.store.addToList(entry, "study");
   const calls = [];
   const undos = [];
   const loaded = await loadFlashcardsScript({

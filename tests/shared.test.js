@@ -1341,6 +1341,7 @@ test("buildAnkiExport skips entries without a word", () => {
 test("scheduler: a new word takes two steps in the session, then falls due on a whole day", async () => {
   const { store } = loadSharedStore();
   const now = new Date(2026, 5, 10, 20, 30);
+  await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   const first = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: now.toISOString(), ms: 4200 });
   assert.equal(first.previous, null);
   assert.equal(first.record.srs, 1);
@@ -1370,6 +1371,7 @@ test("scheduler: Again on a review card relearns it and counts a lapse; Easy and
       }
     }
   });
+  await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   const missed = await store.recordFlashcardReview("HAUS1", 1, "fwd", { now: now.toISOString() });
   assert.equal(missed.record.st, 3);
   assert.equal(missed.record.lapses, 1);
@@ -1389,6 +1391,7 @@ test("scheduler: practising a word that isn't due leaves its schedule alone unle
     srs: 1, s: 12, d: 5, st: 2, step: 0, lapses: 0
   };
   const { store } = loadSharedStore({ "lodVault.flashcardMeta": { HAUS1: card } });
+  await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   const practised = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: now.toISOString(), kind: "p" });
   assert.equal(practised.record.dueAt, card.dueAt);
   assert.equal(practised.record.s, 12);
@@ -1413,10 +1416,12 @@ test("scheduler: intervals stop at the chosen cap", async () => {
     srs: 1, s: 300, d: 3, st: 2
   };
   const capped = loadSharedStore({ "lodVault.flashcardMeta": { HAUS1: card } });
+  await capped.store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   const cappedInterval = (await capped.store.recordFlashcardReview("HAUS1", 4, "fwd", { now: now.toISOString() })).record.interval;
   // Fuzz may only bring a capped interval in, never past the cap.
   assert.ok(cappedInterval <= 365 && cappedInterval >= 365 - 19, String(cappedInterval));
   const longer = loadSharedStore({ "lodVault.flashcardMeta": { HAUS1: card }, "lodVault.flashcardSettings": { maxInterval: 3650 } });
+  await longer.store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   assert.ok((await longer.store.recordFlashcardReview("HAUS1", 4, "fwd", { now: now.toISOString() })).record.interval > 365);
 });
 
@@ -1434,6 +1439,7 @@ test("scheduler: a card from an older build migrates on its next review and prev
   const preview = store.previewFlashcardIntervals(before.HAUS1, { now, cardId: "HAUS1" });
   assert.ok(preview[3].days > 5);
 
+  await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   const { record } = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: now.toISOString() });
   assert.equal(record.srs, 1);
   assert.equal(record.st, 2);
@@ -1443,6 +1449,7 @@ test("scheduler: a card from an older build migrates on its next review and prev
 test("undo restores a card exactly, but never over a newer review", async () => {
   const { store } = loadSharedStore();
   const now = new Date(2026, 5, 10, 9);
+  await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   const first = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: now.toISOString() });
   const second = await store.recordFlashcardReview("HAUS1", 1, "fwd", { now: new Date(now.getTime() + 60000).toISOString() });
   assert.deepEqual(second.previous, JSON.parse(JSON.stringify(first.record)));
@@ -1503,6 +1510,7 @@ test("repeated reviews in one sitting don't inflate the interval", async () => {
   const intervals = [];
   let record;
   for (let index = 0; index < 6; index += 1) {
+    await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
     ({ record } = await store.recordFlashcardReview("HAUS1", 3, "fwd", { now: new Date(now + index * 60000).toISOString() }));
     intervals.push(record.interval);
   }
@@ -1632,6 +1640,7 @@ test("baseCardId maps skill cards to their word", () => {
 
 test("synced progress: the latest review wins, totals and history survive, and re-applying is a no-op", async () => {
   const { store } = loadSharedStore();
+  await store.addToList({ id: "HAUS1", word: "Haus" }, "study");
   await store.recordFlashcardReview("HAUS1", 2, "fwd");
   const local = (await store.getFlashcardMeta()).HAUS1;
   const later = new Date(Date.parse(local.lastReviewedAt) + 3600e3).toISOString();

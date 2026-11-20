@@ -1295,7 +1295,9 @@
 
     // Pausing isn't a review, so it carries its own time and the later
     // change wins, whichever record holds the schedule.
-    const pauseSource = toWholeSeconds(remote.pausedAt) > toWholeSeconds(local.pausedAt) ? remote : local;
+    const pauseTime = (record) => Date.parse(record.pausedAt) || 0;
+    const pauseSource = pauseTime(remote) > pauseTime(local)
+      || (pauseTime(remote) === pauseTime(local) && !!remote.suspended > !!local.suspended) ? remote : local;
     const merged = { ...(remoteWins ? remote : local) };
     delete merged.suspended;
     delete merged.pausedAt;
@@ -2659,6 +2661,8 @@
   async function recordFlashcardReviewDirect(cardId, grade, direction, options = {}) {
     if (!cardId) throw new Error("Missing card id.");
     return runVaultIo(async () => {
+      const entries = await getEntries();
+      if (!entries.some((entry) => entry.id === baseCardId(cardId))) return { ok: false, reason: "missing-entry" };
       const g = [1, 2, 3, 4].includes(Number(grade)) ? Number(grade) : 3;
       const normalizedDirection = direction === "rev" ? "rev" : "fwd";
       const now = options?.now ? new Date(options.now) : new Date();
@@ -2738,8 +2742,13 @@
       const current = meta[cardId];
       const latest = current?.reviews?.[current.reviews.length - 1];
       if (!latest || latest.date !== reviewDate) return { ok: false };
-      if (previous && typeof previous === "object") {
-        meta[cardId] = normalizeFlashcardMeta(previous);
+      if ((previous && typeof previous === "object") || current.pausedAt) {
+        const restored = { ...(previous || {}) };
+        delete restored.suspended;
+        delete restored.pausedAt;
+        if (current.suspended) restored.suspended = true;
+        if (current.pausedAt) restored.pausedAt = current.pausedAt;
+        meta[cardId] = normalizeFlashcardMeta(restored);
       } else {
         delete meta[cardId];
       }

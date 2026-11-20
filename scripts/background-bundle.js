@@ -1738,7 +1738,9 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
     // Pausing isn't a review, so it carries its own time and the later
     // change wins, whichever record holds the schedule.
-    const pauseSource = toWholeSeconds(remote.pausedAt) > toWholeSeconds(local.pausedAt) ? remote : local;
+    const pauseTime = (record) => Date.parse(record.pausedAt) || 0;
+    const pauseSource = pauseTime(remote) > pauseTime(local)
+      || (pauseTime(remote) === pauseTime(local) && !!remote.suspended > !!local.suspended) ? remote : local;
     const merged = { ...(remoteWins ? remote : local) };
     delete merged.suspended;
     delete merged.pausedAt;
@@ -3102,6 +3104,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   async function recordFlashcardReviewDirect(cardId, grade, direction, options = {}) {
     if (!cardId) throw new Error("Missing card id.");
     return runVaultIo(async () => {
+      const entries = await getEntries();
+      if (!entries.some((entry) => entry.id === baseCardId(cardId))) return { ok: false, reason: "missing-entry" };
       const g = [1, 2, 3, 4].includes(Number(grade)) ? Number(grade) : 3;
       const normalizedDirection = direction === "rev" ? "rev" : "fwd";
       const now = options?.now ? new Date(options.now) : new Date();
@@ -3181,8 +3185,13 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       const current = meta[cardId];
       const latest = current?.reviews?.[current.reviews.length - 1];
       if (!latest || latest.date !== reviewDate) return { ok: false };
-      if (previous && typeof previous === "object") {
-        meta[cardId] = normalizeFlashcardMeta(previous);
+      if ((previous && typeof previous === "object") || current.pausedAt) {
+        const restored = { ...(previous || {}) };
+        delete restored.suspended;
+        delete restored.pausedAt;
+        if (current.suspended) restored.suspended = true;
+        if (current.pausedAt) restored.pausedAt = current.pausedAt;
+        meta[cardId] = normalizeFlashcardMeta(restored);
       } else {
         delete meta[cardId];
       }
@@ -4852,15 +4861,21 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       compact.f = Math.round(card.d * 10);
       compact.t = card.st;
       if (card.lapses) compact.x = card.lapses;
+      if (card.sr) compact.a = Date.parse(card.sr);
+      if (card.step) compact.b = card.step;
     }
     if (card.suspended) compact.u = 1;
-    if (card.pausedAt) compact.w = isoToUnix(card.pausedAt);
+    if (card.pausedAt) {
+      compact.w = isoToUnix(card.pausedAt);
+      compact.wm = Date.parse(card.pausedAt);
+    }
     // Only the latest review travels. That is enough for today's count and the
     // streak on other devices without spending quota on the whole log. Its
     // rating stays on the old 1..3 scale; the FSRS grade (1..4) is appended.
     if (lastReview) {
       compact.r = [isoToUnix(lastReview.date), lastReview.rating, lastReview.direction === "rev" ? 1 : 0];
-      if (lastReview.grade) compact.r.push(lastReview.grade);
+      if (lastReview.grade || lastReview.kind) compact.r.push(lastReview.grade || null);
+      if (lastReview.kind) compact.r.push(lastReview.kind);
     }
     return compact;
   }
@@ -4868,15 +4883,16 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
   function expandProgress(compact = {}) {
     const lastReviewedAt = unixToIso(compact.l);
     const review = Array.isArray(compact.r) && unixToIso(compact.r[0])
-      ? [{ date: unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd", grade: compact.r[3] }]
+      ? [{ date: unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd", grade: compact.r[3], kind: compact.r[4] }]
       : [];
     const srs = Number(compact.s) > 0 && Number(compact.f) > 0
-      ? { srs: 1, s: compact.s / 100, d: compact.f / 10, st: compact.t ?? 2, lapses: compact.x || 0 }
+      ? { srs: 1, s: compact.s / 100, d: compact.f / 10, st: compact.t ?? 2, lapses: compact.x || 0, step: compact.b || 0,
+          sr: Number.isFinite(compact.a) ? new Date(compact.a).toISOString() : lastReviewedAt }
       : {};
     return store.normalizeFlashcardMeta({
       ...srs,
       suspended: compact.u === 1,
-      pausedAt: unixToIso(compact.w),
+      pausedAt: Number.isFinite(compact.wm) ? new Date(compact.wm).toISOString() : unixToIso(compact.w),
       reviews: review,
       totalReviews: compact.n,
       hardCount: compact.h,

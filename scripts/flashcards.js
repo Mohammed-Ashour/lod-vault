@@ -1169,6 +1169,7 @@ async function recordRating(entry, grade) {
   let result = null;
   if (typeof LodVaultStore.recordFlashcardReview === "function") {
     result = await LodVaultStore.recordFlashcardReview(entry.id, grade, direction, { kind: reviewKind(entry), ms });
+    if (result?.ok === false) return;
     await loadFlashcardMeta();
     computeStats();
     renderStats();
