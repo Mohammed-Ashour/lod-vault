@@ -3579,7 +3579,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       const at = Number(item[2]);
       const entry = [day, toCount(item[1]) & 0x7f, Number.isFinite(at) && at > 0 ? at : 0];
       const current = byDay.get(day);
-      if (!current || entry[2] > current[2]) byDay.set(day, entry);
+      if (!current || entry[2] > current[2]
+        || (entry[2] === current[2] && entry[1] > current[1])) byDay.set(day, entry);
     }
     const list = [...byDay.values()].sort((left, right) => left[0] - right[0]).slice(-MAX_REST_DAY_CHANGES);
     return list.length ? list : null;
@@ -3649,7 +3650,11 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     if (!left) return right || null;
     if (!right) return left;
     if (left[0] !== right[0]) return left[0] < right[0] ? left : right;
-    return right[1] > left[1] ? right : left;
+    // Same-day anchors need a stable winner even when streak lengths tie.
+    for (let index = 1; index < left.length; index += 1) {
+      if (left[index] !== right[index]) return right[index] > left[index] ? right : left;
+    }
+    return left;
   }
 
   // Legacy d totals are floors. h is the pre-capture baseline; c holds
