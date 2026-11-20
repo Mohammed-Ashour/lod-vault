@@ -175,8 +175,10 @@ test("choosing a rest day on the stats page saves it with the activity", async (
   const monday = document.getElementById("rest-day-1");
   monday.checked = true;
   monday.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(storageData["lodVault.activity"].w[0], 2);
+  for (let tries = 0; tries < 200 && !storageData["lodVault.activity"]?.w; tries += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(storageData["lodVault.activity"].w.at(-1)[1], 2);
   const info = context.LodVaultActivity.computeStreak(storageData["lodVault.activity"]);
   assert.equal(info.restMask, 2);
 });

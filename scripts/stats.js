@@ -402,7 +402,7 @@
     const order = [1, 2, 3, 4, 5, 6, 0];
     const fieldset = el("fieldset", { className: "rest-days" }, [
       el("legend", { text: "Rest days" }),
-      el("p", { className: "section-note", text: "A rest day doesn't count towards your streak and doesn't break it." })
+      el("p", { className: "section-note", text: "A rest day doesn't count towards your streak and doesn't break it. Changes apply from today." })
     ]);
     const row = el("div", { className: "rest-day-row" });
     for (const weekday of order) {
