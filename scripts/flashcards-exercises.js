@@ -172,6 +172,7 @@
     root.append(box);
     actions.querySelector("button")?.focus();
     return {
+      destroy() { finished = true; },
       continue() {
         actions.querySelector(".ex-continue")?.click();
       }
@@ -205,9 +206,11 @@
   function controller(state, extraKeys = () => false) {
     return {
       handleKey(event) {
+        if (state.destroyed) return false;
         const key = String(event?.key || "");
         if (state.feedback) {
           if (key === "Enter" || key === " ") {
+            if (event?.target?.closest?.("button, a, input, textarea, select, [contenteditable]")) return false;
             state.feedback.continue();
             return true;
           }
@@ -217,6 +220,7 @@
       },
       destroy() {
         state.destroyed = true;
+        state.feedback?.destroy();
       },
       get answered() {
         return Boolean(state.feedback);
@@ -663,8 +667,27 @@
   // A dialog for a word that keeps slipping: write a mnemonic, see every
   // meaning and narrow the focus, or pause the word.
   function renderLeechPanel(doc, container, { entry, lexicon, lapses = 0, note = "", focus = [] }, actions = {}) {
+    container.querySelector(".leech-panel")?.destroy?.();
+    const previousFocus = doc.activeElement;
     container.replaceChildren();
     const dialog = el(doc, "section", "leech-panel");
+    let closed = false;
+    const finish = (callback, value) => {
+      if (closed) return;
+      closed = true;
+      observer.disconnect();
+      doc.removeEventListener("focusin", containFocus);
+      dialog.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
+      callback?.(value);
+    };
+    const containFocus = (event) => {
+      if (!closed && !dialog.contains(event.target)) noteBox.focus();
+    };
+    dialog.destroy = () => finish();
+    const observer = new doc.defaultView.MutationObserver(() => {
+      if (!dialog.isConnected) finish();
+    });
     dialog.setAttribute("role", "dialog");
     dialog.setAttribute("aria-modal", "true");
     dialog.setAttribute("aria-labelledby", "leech-title");
@@ -700,19 +723,27 @@
     const save = button(doc, "btn-primary", "Save", () => {
       const picked = [...fieldset.querySelectorAll("input:checked")].map((box) => Number(box.value));
       const all = (lexicon?.senses || []).length;
-      actions.onSave?.({ note: noteBox.value.trim(), focus: picked.length === all ? [] : picked });
+      if (!closed) actions.onSave?.({ note: noteBox.value.trim(), focus: picked.length === all ? [] : picked });
     });
-    const suspend = button(doc, "btn-ghost leech-suspend", "Pause this word", () => actions.onSuspend?.());
-    const close = button(doc, "btn-ghost", "Close", () => actions.onClose?.());
+    const suspend = button(doc, "btn-ghost leech-suspend", "Pause this word", () => { if (!closed) actions.onSuspend?.(); });
+    const close = button(doc, "btn-ghost", "Close", () => finish(actions.onClose));
     row.append(save, suspend, close);
     dialog.append(row);
     dialog.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        actions.onClose?.();
+        finish(actions.onClose);
+      } else if (event.key === "Tab") {
+        const controls = [...dialog.querySelectorAll("button, input, textarea")].filter(node => !node.disabled);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && doc.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && doc.activeElement === last) { event.preventDefault(); first.focus(); }
       }
     });
+    doc.addEventListener("focusin", containFocus);
     container.append(dialog);
+    observer.observe(doc.body, { childList: true, subtree: true });
     noteBox.focus();
     return dialog;
   }

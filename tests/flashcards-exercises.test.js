@@ -406,3 +406,50 @@ test("which meaning keeps all options in the learner's language when it can", ()
     assert.ok(texts.every((text) => english.includes(text)), texts.join(" | "));
   }
 });
+
+test("destroy blocks keys and retained feedback buttons", () => {
+  const env = play("g", "HAUS1");
+  env.key("3");
+  const buttons = env.$$(".ex-feedback button");
+  env.controller.destroy();
+  assert.equal(env.key("Enter"), false);
+  for (const button of buttons) button.click();
+  assert.equal(env.graded.length, 0);
+});
+
+for (const key of ["Enter", " "]) test(`feedback ${key} leaves every focused action to native activation`, () => {
+  for (const selector of [".ex-continue", ".ex-easy", ".ex-override", ".ex-wrong"]) {
+    const env = selector === ".ex-wrong" ? play("pl", "HAUS1") : play("g", "HAUS1");
+    if (selector === ".ex-wrong") { env.type("Haiseq"); env.submit(); }
+    else env.key(selector === ".ex-override" ? "1" : "3");
+    const target = env.$(selector);
+    assert.ok(target, selector);
+    assert.equal(env.controller.handleKey({ key, target }), false);
+    assert.equal(env.graded.length, 0);
+    target.click();
+    assert.equal(env.graded.length, 1);
+    const expected = { ".ex-continue": 3, ".ex-easy": 4, ".ex-override": 3, ".ex-wrong": 1 };
+    assert.equal(env.graded[0].grade, expected[selector]);
+  }
+});
+
+test("leech panel contains focus, restores it and ignores retained controls", () => {
+  const env = setup();
+  const opener = env.document.createElement("button");
+  env.document.body.append(opener);
+  opener.focus();
+  let calls = 0;
+  const panel = env.api.renderLeechPanel(env.document, env.stage, { lexicon: env.lexicon("HAUS1") }, { onClose: () => calls++ });
+  const controls = panel.querySelectorAll("textarea, input, button");
+  const first = controls[0], last = controls[controls.length - 1];
+  first.dispatchEvent(new env.window.KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }));
+  assert.equal(env.document.activeElement, last);
+  last.dispatchEvent(new env.window.KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+  assert.equal(env.document.activeElement, first);
+  opener.focus();
+  assert.equal(env.document.activeElement, first);
+  last.click();
+  assert.equal(env.document.activeElement, opener);
+  last.click();
+  assert.equal(calls, 1);
+});
