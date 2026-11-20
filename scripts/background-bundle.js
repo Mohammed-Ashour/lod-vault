@@ -4117,7 +4117,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     let text = "";
     for (const part of asArray(parts)) {
       if (!part || typeof part !== "object") continue;
-      if (Array.isArray(part.parts)) {
+      if (!["text", "word", "inflectedHeadword"].includes(part.type)) continue;
+      if (part.type === "text" && Array.isArray(part.parts)) {
         const nested = lexiconTokens(part.parts, spans ? [] : null);
         if (!nested.text) continue;
         const offset = text ? text.length + 1 : 0;
@@ -4791,12 +4792,13 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     };
   }
 
-  function saveLexicon(record) {
+  function saveLexicon(record, canCommit = () => true) {
     return runLexiconIo(async () => {
       const area = storageArea();
       const normalized = normalizeLexiconRecord(record);
       if (!area || !normalized) return false;
       const index = await readIndex(area);
+      if (!await canCommit()) return false;
       index[normalized.id] = [normalized.fetchedAt, recordBytes(normalized.id, normalized)];
       await area.set({ [lexiconKey(normalized.id)]: normalized, [INDEX_KEY]: index });
       return true;
@@ -4913,6 +4915,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     const queued = new Set();
     const running = new Set();
     const responses = new Map();
+    const generations = new Map();
     let failures = 0;
     let pausedUntil = 0;
     let wakeTimer = null;
@@ -4995,6 +4998,11 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     }
 
     async function hydrateOne(id) {
+      const generation = generations.get(id) || 0;
+      const canCommit = async () => {
+        const map = typeof getEntryMap === "function" ? await getEntryMap() : null;
+        return generation === (generations.get(id) || 0) && (!map || isSavedEntry(map[id]));
+      };
       const entryMap = typeof getEntryMap === "function" ? await getEntryMap() : null;
       const entry = entryMap ? entryMap[id] : null;
       if (entryMap && !isSavedEntry(entry)) return "skipped";
@@ -5034,7 +5042,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       if (!fits && !entry?.study) return "over-budget";
 
       try {
-        await saveLexicon(record);
+        if (!await saveLexicon(record, canCommit)) return "skipped";
       } catch (error) {
         if (/quota/i.test(String(error?.message || error))) return "over-budget";
         throw error;
@@ -5100,6 +5108,13 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       const after = newMap && typeof newMap === "object" ? newMap : {};
       const removed = Object.keys(before).filter((id) => !after[id]);
       const added = Object.keys(after).filter((id) => isSavedEntry(after[id]) && !isSavedEntry(before[id]));
+      for (const id of removed) {
+        generations.set(id, (generations.get(id) || 0) + 1);
+        responses.delete(id);
+        queued.delete(id);
+        const position = queue.indexOf(id);
+        if (position !== -1) queue.splice(position, 1);
+      }
       if (removed.length) await removeLexicons(removed);
       if (added.length) {
         const existing = await getLexicons(added);

@@ -319,7 +319,8 @@
     let text = "";
     for (const part of asArray(parts)) {
       if (!part || typeof part !== "object") continue;
-      if (Array.isArray(part.parts)) {
+      if (!["text", "word", "inflectedHeadword"].includes(part.type)) continue;
+      if (part.type === "text" && Array.isArray(part.parts)) {
         const nested = lexiconTokens(part.parts, spans ? [] : null);
         if (!nested.text) continue;
         const offset = text ? text.length + 1 : 0;
