@@ -315,6 +315,7 @@
       d: isoToUnix(card.dueAt),
       v: card.interval
     };
+    if (Date.parse(card.lastReviewedAt) % 1000) compact.lm = Date.parse(card.lastReviewedAt);
     if (card.hardCount) compact.h = card.hardCount;
     if (card.goodCount) compact.g = card.goodCount;
     if (card.easyCount) compact.e = card.easyCount;
@@ -341,14 +342,16 @@
       compact.r = [isoToUnix(lastReview.date), lastReview.rating, lastReview.direction === "rev" ? 1 : 0];
       if (lastReview.grade || lastReview.kind) compact.r.push(lastReview.grade || null);
       if (lastReview.kind) compact.r.push(lastReview.kind);
+      if (Date.parse(lastReview.date) % 1000) compact.rm = Date.parse(lastReview.date);
+      if (lastReview.ms) compact.rt = lastReview.ms;
     }
     return compact;
   }
 
   function expandProgress(compact = {}) {
-    const lastReviewedAt = unixToIso(compact.l);
+    const lastReviewedAt = Number.isFinite(compact.lm) ? new Date(compact.lm).toISOString() : unixToIso(compact.l);
     const review = Array.isArray(compact.r) && unixToIso(compact.r[0])
-      ? [{ date: unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd", grade: compact.r[3], kind: compact.r[4] }]
+      ? [{ date: Number.isFinite(compact.rm) ? new Date(compact.rm).toISOString() : unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd", grade: compact.r[3], kind: compact.r[4], ms: compact.rt }]
       : [];
     const srs = Number(compact.s) > 0 && Number(compact.f) > 0
       ? { srs: 1, s: compact.s / 100, d: compact.f / 10, st: compact.t ?? 2, lapses: compact.x || 0, step: compact.b || 0,

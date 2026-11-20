@@ -377,13 +377,8 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
           memory = { d: initDifficulty(grade), s: initStability(grade) };
         } else {
           const elapsed = elapsedDays(previous, time);
-          const r = forgettingCurve(elapsed, memory.s);
-          if (grade === GRADES.AGAIN) {
-            lapses += 1;
-            memory = { d: nextDifficulty(memory.d, grade), s: lapseStability(memory.d, memory.s, r) };
-          } else {
-            memory = { d: nextDifficulty(memory.d, grade), s: nextRecallStability(memory.d, memory.s, r, grade) };
-          }
+          if (grade === GRADES.AGAIN) lapses += 1;
+          memory = nextMemory(memory, elapsed, grade);
         }
         previous = time;
       }
@@ -1722,37 +1717,42 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
     return toWholeSeconds(incoming.lastReviewedAt) > toWholeSeconds(existing.lastReviewedAt) ? incoming : existing;
   }
 
-  // Two live devices are different: the latest review decides the schedule, and
-  // the review log and total combine. Sync carries timestamps in whole seconds,
-  // so they are compared at that precision: the same review read back from sync
-  // must not look like news, and merging the same data again changes nothing.
+  // Schedule, event history and pause are independent replicated state.
   function mergeSyncedFlashcardRecord(local, remote) {
     if (!local) return remote;
-    const localTime = toWholeSeconds(local.lastReviewedAt);
-    const remoteTime = toWholeSeconds(remote.lastReviewedAt);
-    const remoteWins = remoteTime > localTime
-      || (remoteTime === localTime && remote.totalReviews > local.totalReviews);
-
-    const known = new Set(local.reviews.map((review) => `${toWholeSeconds(review.date)}:${review.rating}`));
-    const added = remote.reviews.filter((review) => !known.has(`${toWholeSeconds(review.date)}:${review.rating}`));
-
-    // Pausing isn't a review, so it carries its own time and the later
-    // change wins, whichever record holds the schedule.
-    const pauseTime = (record) => Date.parse(record.pausedAt) || 0;
-    const pauseSource = pauseTime(remote) > pauseTime(local)
-      || (pauseTime(remote) === pauseTime(local) && !!remote.suspended > !!local.suspended) ? remote : local;
-    const merged = { ...(remoteWins ? remote : local) };
+    const time = (value) => Date.parse(value) || 0;
+    const scheduleKeys = ["srs", "s", "d", "st", "step", "lapses", "sr", "dueAt", "interval"];
+    const scheduleValue = (record) => JSON.stringify(scheduleKeys.map((key) => record[key] ?? null));
+    const choose = (left, right, clock, tie) => clock(right) > clock(left)
+      || (clock(right) === clock(left) && tie(right) > tie(left)) ? right : left;
+    const schedule = choose(local, remote, (r) => time(r.sr || r.lastReviewedAt), scheduleValue);
+    const history = choose(local, remote, (r) => time(r.lastReviewedAt),
+      (r) => JSON.stringify([r.totalReviews, r.hardCount, r.goodCount, r.easyCount]));
+    const pause = choose(local, remote, (r) => time(r.pausedAt), (r) => Number(!!r.suspended));
+    const merged = { ...history };
+    for (const key of scheduleKeys) {
+      delete merged[key];
+      if (schedule[key] !== undefined) merged[key] = schedule[key];
+    }
     delete merged.suspended;
     delete merged.pausedAt;
-    if (pauseSource.suspended) merged.suspended = true;
-    if (pauseSource.pausedAt) merged.pausedAt = pauseSource.pausedAt;
-    return {
-      ...merged,
-      reviews: [...local.reviews, ...added]
-        .sort((left, right) => Date.parse(left.date) - Date.parse(right.date))
-        .slice(-100),
-      totalReviews: Math.max(local.totalReviews, remote.totalReviews)
-    };
+    if (pause.suspended) merged.suspended = true;
+    if (pause.pausedAt) merged.pausedAt = pause.pausedAt;
+    const signature = (r) => JSON.stringify([r.rating, r.direction, r.grade || null, r.kind || null, r.ms || null]);
+    const all = [...local.reviews, ...remote.reviews];
+    const events = new Map();
+    for (const event of all) {
+      // A seconds-only legacy echo cannot identify which precise event it was.
+      if (time(event.date) % 1000 === 0 && all.some((other) =>
+        time(other.date) % 1000 !== 0 && toWholeSeconds(other.date) === toWholeSeconds(event.date)
+        && other.rating === event.rating && other.direction === event.direction
+        && (!event.grade || other.grade === event.grade) && (!event.kind || other.kind === event.kind))) continue;
+      events.set(`${time(event.date)}:${signature(event)}`, event);
+    }
+    merged.reviews = [...events.values()].sort((a, b) => time(a.date) - time(b.date)
+      || signature(a).localeCompare(signature(b))).slice(-100);
+    merged.totalReviews = Math.max(local.totalReviews, remote.totalReviews);
+    return normalizeFlashcardMeta(merged);
   }
 
   function mergeFlashcardMetaMaps(currentMap, incomingMap) {
@@ -4850,6 +4850,7 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       d: isoToUnix(card.dueAt),
       v: card.interval
     };
+    if (Date.parse(card.lastReviewedAt) % 1000) compact.lm = Date.parse(card.lastReviewedAt);
     if (card.hardCount) compact.h = card.hardCount;
     if (card.goodCount) compact.g = card.goodCount;
     if (card.easyCount) compact.e = card.easyCount;
@@ -4876,14 +4877,16 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
       compact.r = [isoToUnix(lastReview.date), lastReview.rating, lastReview.direction === "rev" ? 1 : 0];
       if (lastReview.grade || lastReview.kind) compact.r.push(lastReview.grade || null);
       if (lastReview.kind) compact.r.push(lastReview.kind);
+      if (Date.parse(lastReview.date) % 1000) compact.rm = Date.parse(lastReview.date);
+      if (lastReview.ms) compact.rt = lastReview.ms;
     }
     return compact;
   }
 
   function expandProgress(compact = {}) {
-    const lastReviewedAt = unixToIso(compact.l);
+    const lastReviewedAt = Number.isFinite(compact.lm) ? new Date(compact.lm).toISOString() : unixToIso(compact.l);
     const review = Array.isArray(compact.r) && unixToIso(compact.r[0])
-      ? [{ date: unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd", grade: compact.r[3], kind: compact.r[4] }]
+      ? [{ date: Number.isFinite(compact.rm) ? new Date(compact.rm).toISOString() : unixToIso(compact.r[0]), rating: compact.r[1], direction: compact.r[2] ? "rev" : "fwd", grade: compact.r[3], kind: compact.r[4], ms: compact.rt }]
       : [];
     const srs = Number(compact.s) > 0 && Number(compact.f) > 0
       ? { srs: 1, s: compact.s / 100, d: compact.f / 10, st: compact.t ?? 2, lapses: compact.x || 0, step: compact.b || 0,

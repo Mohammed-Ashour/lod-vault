@@ -1756,3 +1756,32 @@ test("pausing a word keeps its progress, takes it out of Today and syncs as the 
   assert.equal(merged.pausedAt, later);
   assert.equal(merged.totalReviews, 3);
 });
+
+for (const mode of ["practice", "precision", "tie"]) {
+  test(`progress convergence regression: ${mode}`, async () => {
+    const make = (time, s, sr, kind = "r") => ({srs: 1, s, d: 5, st: 2, step: 0, lapses: 0, sr,
+      reviews: [{date: time, rating: 2, grade: 3, direction: "fwd", kind}],
+      totalReviews: 2, goodCount: 2, lastReviewedAt: time, interval: s, dueAt: "2026-07-01T00:00:00.000Z"});
+    const early = "2026-06-10T11:00:00.100Z", late = "2026-06-10T11:00:00.900Z";
+    const a = {...make(early, 30, early), st: 1, step: 1};
+    const b = mode === "practice" ? make("2026-06-10T12:00:00.000Z", 10, "2026-06-09T11:00:00.000Z", "p")
+      : make(mode === "tie" ? early : late, 40, mode === "tie" ? early : late);
+    b.suspended = true;
+    b.pausedAt = "2026-06-10T13:00:00.123Z";
+    const results = [];
+    for (const [left, right] of [[a,b], [b,a]]) {
+      const {store} = loadSharedStore({"lodVault.flashcardMeta": {HAUS1: left}});
+      await store.applyRemoteFlashcardMeta({HAUS1: right}, {});
+      const result = (await store.getFlashcardMeta()).HAUS1;
+      assert.equal(result.s, mode === "practice" ? 30 : 40);
+      assert.equal(result.step, mode === "practice" ? 1 : 0);
+      assert.equal(result.suspended, true);
+      assert.equal(result.reviews.length, mode === "tie" ? 1 : 2);
+      assert.equal(result.pausedAt, b.pausedAt);
+      if (mode === "practice") assert.ok(result.reviews.some(r => r.kind === "p"));
+      assert.equal((await store.applyRemoteFlashcardMeta({HAUS1: right}, {})).changed, false);
+      results.push(JSON.stringify(result));
+    }
+    assert.equal(results[0], results[1]);
+  });
+}

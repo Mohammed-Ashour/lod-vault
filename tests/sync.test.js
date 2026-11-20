@@ -1578,3 +1578,25 @@ test("progress from a 2.4.0 device arrives as a legacy card and is scheduled by 
   assert.equal(reviewed.srs, 1);
   assert.equal(reviewed.totalReviews, 4);
 });
+
+test("precise progress timestamps survive repeated push and pull", async () => {
+  const date = "2026-06-10T09:00:00.900Z";
+  const source = loadSyncScript({
+    "lodVault.entries": {HAUS1: makeLocalEntry()},
+    "lodVault.flashcardMeta": {HAUS1: fsrsCard({lastReviewedAt: date, sr: date,
+      reviews: [{date, rating: 3, grade: 4, kind: "p", direction: "fwd"}]})}
+  });
+  await source.sync.SyncAdapter.pushAll();
+  let payload = source.syncStorageData;
+  for (let i = 0; i < 3; i++) {
+    const device = loadSyncScript({sync: payload});
+    await device.sync.SyncAdapter.init();
+    const card = (await device.store.getFlashcardMeta()).HAUS1;
+    assert.equal(card.lastReviewedAt, date);
+    assert.equal(card.sr, date);
+    assert.equal(card.reviews[0].date, date);
+    assert.equal(card.reviews[0].kind, "p");
+    await device.sync.SyncAdapter.pushAll();
+    payload = device.syncStorageData;
+  }
+});
