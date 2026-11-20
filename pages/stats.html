@@ -49,12 +49,32 @@
         <p class="section-note">A day counts when you clear the Today queue or do at least 10 reviews. Every 7 counted days earn a freeze (up to 2), which covers a missed day automatically. Your streak and these totals sync between devices.</p>
         <div id="stats-rest-days"></div>
       </section>
+
+      <section id="reminder-settings" class="stats-card" aria-labelledby="reminder-heading">
+        <h2 id="reminder-heading">Reminders</h2>
+        <div class="setting-row">
+          <label class="switch-label" for="reminder-enabled">
+            <input type="checkbox" id="reminder-enabled">
+            Remind me to study every day at
+          </label>
+          <input type="time" id="reminder-time" class="time-input" value="19:00" aria-label="Reminder time" disabled>
+        </div>
+        <p id="reminder-status" class="section-note" aria-live="polite">Reminders are off.</p>
+        <p class="section-note">The reminder says how many words are due and roughly how long they take. It stays quiet when nothing is due or you've already studied today. Turning it on asks for permission to show notifications.</p>
+        <div class="setting-row">
+          <label class="switch-label" for="badge-includes-new">
+            <input type="checkbox" id="badge-includes-new">
+            Count today's new words on the toolbar badge, not just due words
+          </label>
+        </div>
+      </section>
     </div>
   </main>
   <script src="../scripts/store-core.js"></script>
   <script src="../scripts/entry-presenter.js"></script>
   <script src="../scripts/shared.js"></script>
   <script src="../scripts/activity.js"></script>
+  <script src="../scripts/reminders.js"></script>
   <script src="../scripts/theme.js"></script>
   <script src="../scripts/stats.js"></script>
 </body>

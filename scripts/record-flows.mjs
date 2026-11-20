@@ -157,5 +157,45 @@ export const flows = {
     async run(page) {
       await page.shot("stats-light-full.png");
     }
+  },
+  // PR 3: turning the reminder on, first refusing then allowing the prompt.
+  // Headless Chromium can't show the browser's own permission prompt, so the
+  // stub answers it after a pause while the page shows its waiting state.
+  "reminders-opt-in": {
+    page: "pages/stats.html",
+    width: 1000,
+    height: 560,
+    seed: () => studySeed(),
+    stubOptions: { permission: "deny", permissionDelayMs: 1600 },
+    gif: "reminders-opt-in.gif",
+    async run(page) {
+      await page.eval(`window.scrollTo(0, document.body.scrollHeight)`);
+      await page.sleep(900);
+      await page.shot("reminders-off.png", "#reminder-settings");
+      await page.click("#reminder-enabled", 500);
+      await page.shot("reminders-waiting.png", "#reminder-settings");
+      await page.sleep(1600);
+      await page.shot("reminders-denied.png", "#reminder-settings");
+      await page.sleep(800);
+      await page.eval(`window.__recorder.options = { permission: "allow", permissionDelayMs: 1600 }`);
+      await page.click("#reminder-enabled", 2200);
+      await page.eval(`(() => { const t = document.getElementById("reminder-time"); t.value = "08:30"; t.dispatchEvent(new Event("change", { bubbles: true })); window.__markClick(t); })()`);
+      await page.sleep(1200);
+      await page.click("#badge-includes-new", 1200);
+      await page.shot("reminders-on.png", "#reminder-settings");
+      await page.sleep(600);
+    }
+  },
+  "reminders-light": {
+    page: "pages/stats.html",
+    width: 1000,
+    height: 560,
+    seed: () => ({ ...studySeed(), local: { ...studySeed().local, "lodVault.reminders": { enabled: true, time: "19:30", badgeIncludesNew: true } } }),
+    stubOptions: { theme: "light" },
+    async run(page) {
+      await page.eval(`window.scrollTo(0, document.body.scrollHeight)`);
+      await page.sleep(600);
+      await page.shot("reminders-on-light.png", "#reminder-settings");
+    }
   }
 };

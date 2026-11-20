@@ -73,6 +73,8 @@ If you want a portable backup before uninstalling, use **Backup JSON** from the 
 | `https://lod.lu/api/*` | Retrieves dictionary search results and complete entries for Search LOD and LOD Lens |
 | `https://lod.lu/uploads/*` | Plays dictionary pronunciation audio when requested |
 | `history` (optional) | Only when you click **Import history**; reads `lod.lu/artikel/*` visits to add missing words (add-only, non-destructive) |
+| `notifications` (optional) | Only when you turn on study reminders on the Progress page; shows one local reminder a day with your due-word count. Nothing is sent anywhere, and reminder settings stay on this device |
+| `alarms` | Updates the toolbar badge at midnight and, if you turn them on, schedules the daily study reminder |
 
 ---
 

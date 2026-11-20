@@ -466,6 +466,7 @@
   }
 
   function start() {
+    globalThis.LodVaultReminders?.bindSettingsForm?.(document.getElementById("reminder-settings"));
     document.getElementById("stats-rest-days")?.addEventListener("change", (event) => {
       onRestDayChange(event).catch(() => {});
     });

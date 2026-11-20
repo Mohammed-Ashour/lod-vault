@@ -173,6 +173,8 @@ The **LODVault** icon will appear in your browser toolbar.
 - Reviews due over the next 30 days, retention on mature reviews (21+ days since the previous review) against your target, and **words you know**: words you'd recall with at least 90% probability now. Until a word has the new scheduler's memory data, this is estimated from its review interval, and the page says so
 - Average time per card once reviews record it, and your words by part of speech and, once LOD word details are downloaded, by *Schwätzt Dir Lëtzebuergesch?* level
 - Pick optional **rest days** that neither count towards nor break your streak. They apply from the day you choose them
+- Turn on a daily **reminder** at a time you choose ("12 due · 3 new · about 3 min"). It asks for notification permission when you turn it on, stays quiet when nothing is due or you've already studied that day, and opens Today when you click it. Reminders are set per device
+- Optionally let the toolbar badge count today's new words as well as due ones
 
 ### Use LOD Lens on other sites
 - Select a Luxembourgish word or short phrase on a supported page
