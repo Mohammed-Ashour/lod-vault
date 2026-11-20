@@ -89,7 +89,8 @@
   }
 
   // Recall on reviews of the last 30 days that came at least 21 days after the
-  // previous review of the same word, the usual "mature" pass rate. Practice
+  // previous review of the same word. This is a long-gap recall proxy, not
+  // retention selected by pre-review stability. Practice
   // reviews (kind "p") don't count. Again is a fail; anything else a pass.
   function computeRetention(meta = {}, now = new Date()) {
     const since = now.getTime() - RETENTION_WINDOW_DAYS * DAY_MS;
@@ -284,11 +285,11 @@
       },
       {
         value: percent(retention.matureRate),
-        label: "retention",
+        label: "long-gap recall proxy",
         detail: retention.mature
-          ? `${retention.maturePassed}/${retention.mature} mature reviews · target ${percent(data.targetRetention)}`
+          ? `${retention.maturePassed}/${retention.mature} reviews after 21+ day gaps · target ${percent(data.targetRetention)}`
           : retention.all
-            ? `All reviews: ${percent(retention.allRate)} · no mature reviews yet`
+            ? `All reviews: ${percent(retention.allRate)} · no 21+ day gaps yet`
             : "No reviews in the last 30 days"
       },
       {

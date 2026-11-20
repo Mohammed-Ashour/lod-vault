@@ -13,6 +13,16 @@ async function wait(ms = 0) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Background work is asynchronous and the suite runs files in parallel, so
+// poll for the outcome instead of guessing how long it takes.
+async function until(check, timeoutMs = 3000) {
+  const start = Date.now();
+  while (!check()) {
+    if (Date.now() - start > timeoutMs) return;
+    await wait(10);
+  }
+}
+
 test("background serializes store mutations through a shared queue", async () => {
   const background = loadBackgroundScript();
   const order = [];
@@ -153,7 +163,7 @@ test("background pushes relevant local storage changes into sync storage", async
     }
   });
 
-  await wait(50);
+  await until(() => Array.isArray(background.syncStorageData["lodVault.e.0"]) && background.syncStorageData["lodVault.e.0"][0]?.t?.e);
 
   assert.ok(background.syncStorageData["lodVault.m"]);
   assert.ok(Array.isArray(background.syncStorageData["lodVault.e.0"]));
@@ -179,7 +189,7 @@ test("background pulls relevant sync storage changes into local storage", async 
     ]
   });
 
-  await wait(50);
+  await until(() => background.storageData["lodVault.entries"]?.HAUS1);
 
   assert.equal(background.storageData["lodVault.entries"].HAUS1.word, "Haus");
   assert.deepEqual(background.storageData["lodVault.entries"].HAUS1.translations, { en: "house", fr: "maison" });

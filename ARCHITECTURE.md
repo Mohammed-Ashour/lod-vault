@@ -103,6 +103,20 @@ Keep storage schemas, permissions, dictionary privacy and review scheduling unch
 
 Run `npm test`, `npm run test:ui`, `npm run test:popup` and `npm run lint` for changes to these UI contracts. The browser check uses an isolated profile and fixtures, not real vault data.
 
+## Tags and saved decks
+
+`scripts/decks.js` owns local `lodVault.tags` and compact synced `lodVault.t`. The versioned record holds per-tag word lists and saved filters, each with a last-write timestamp and deletion tombstones. Concurrent edits to the same tag use last-write-wins, not per-word merging. Saved decks currently live in this record rather than settings. Each synced item is capped below 8 KB; excess tags remain local.
+
+Activity and tags register small-record handlers in `LodVaultSyncRecords`. Sync and the background coordinator read those handlers for replication and capacity accounting. JSON backup includes tags and decks. `vault-tags.js` adds live tag controls to the Vault iframe and a saved-filter dialog to its parent page. Flashcards loads this module through narrow deck-selection hooks; scheduling is unchanged. Optional lexicon records supply level and gender filters. Missing lexicon data produces no level matches, rather than network requests.
+
+## Tag write coordination and overflow
+
+`scripts/decks.js` holds the origin-scoped `lodVault.tags.mutation` Web Lock across the complete local read-modify-write, including remote sync merges. All extension pages and the background worker must use this helper. Without Web Locks, mutations reject without writing; read-only access remains available. A per-context promise queue is not a safe fallback.
+
+The 7,000-byte tag/deck sync payload may omit records. `syncStatus` reports omitted live tags, decks and tombstones using the same payload builder. The Vault and deck manager keep a visible warning while records remain local-only, explicitly identifying deferred deletions that can remain visible on another device. Local data and backup sections retain all records. This status describes payload eligibility, not confirmation that browser sync is enabled or delivered.
+
+Distribution dependency: standalone activity PR #67 must receive the Phase 1 safe mutation-routing fix before landing. An ambiguous port-close after a committed worker mutation must never replay locally. This tags change does not modify `store-core.js` or fix that blocker. Import, Lens contexts, popup tags/topics and drills remain unimplemented; combined Phase 1/2 integration is not verified here.
+
 ## Future clarifications
 
 Phase 2 supplies standalone parser, registry, grader and exercise components, not an integrated Flashcards session. Remaining work includes session loading and lexicon prefetch, skill settings persistence and per-skill grades/queue wiring, live sibling burial, retries/resume/undo, focus and suspend mutations, `fs` preservation and sync, core meaning/MC rendering, and core-before-skill sync priority. Phase 1 and Phase 3 remediation require separate combined integration verification. The Phase 2 recorder is `scripts/record-phase2-flow.mjs`, distinct from Phase 1 capture tooling.

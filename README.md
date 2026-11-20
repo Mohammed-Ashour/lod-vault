@@ -38,6 +38,8 @@ A banner is injected directly under the article heading on every `lod.lu/artikel
 
 ### Vault
 
+Add tags with **+ Tag** on each word. The **Decks** button saves filters for tag, part of speech, gender, level, Favorites/Study, leech status and due date. Flashcards lists saved filters under **My decks**. Level filters require downloaded lexicon details; they do not download category word lists. Tags and saved decks sync together within a 7,000-byte payload budget; overflow stays local. A persistent Vault warning counts omitted tags, decks and deferred deletions. Deferred deletions may still appear on other devices. JSON backups retain all records. Editing requires a browser with Web Locks; unsupported browsers refuse writes rather than risk losing another page's changes.
+
 <img src="docs/screenshots/vault-blue-night.png" width="780" alt="LODVault vault — Blue Night redesign" /> <img src="docs/screenshots/vault-blue-night-light.png" width="780" alt="LODVault vault — Blue Night light mode" />
 
 The vault renders your saved words as an editorial document — serif entries, hairlines, translations and examples — with search, language filter and sort. Exports are grouped behind a single **Export ▾** menu (HTML / Anki), and the page theme follows the same ☀/☾ toggle.
@@ -170,7 +172,7 @@ The **LODVault** icon will appear in your browser toolbar.
 ### Track your progress
 - Click **Progress** in the popup or the Flashcards header to open the stats page
 - A year of study as a heatmap (❄ marks a day a streak freeze covered), your streak, best streak and freezes
-- Reviews due over the next 30 days, retention on mature reviews (21+ days since the previous review) against your target, and **words you know**: words you'd recall with at least 90% probability now. Until a word has the new scheduler's memory data, this is estimated from its review interval, and the page says so
+- Reviews due over the next 30 days, a long-gap recall proxy (21+ days since the previous review) alongside your target, not retention measured by pre-review stability, and **words you know**: words you'd recall with at least 90% probability now. Until a word has the new scheduler's memory data, this is estimated from its review interval, and the page says so
 - Average time per card once reviews record it, and your words by part of speech and, once LOD word details are downloaded, by *Schwätzt Dir Lëtzebuergesch?* level
 - Pick optional **rest days** that neither count towards nor break your streak. They apply from the day you choose them
 - Turn on a daily **reminder** at a time you choose ("12 due · 3 new · about 3 min"). It asks for notification permission when you turn it on, stays quiet when nothing is due or you've already studied that day, and opens Today when you click it. Reminders are set per device

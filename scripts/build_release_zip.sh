@@ -43,6 +43,7 @@ cp \
   scripts/background-bundle.js \
   scripts/compress.js \
   scripts/content.js \
+  scripts/decks.js \
   scripts/entry-presenter.js \
   scripts/flashcards.js \
   scripts/lens-lookup.js \
@@ -75,6 +76,7 @@ cp \
   scripts/sync.js \
   scripts/theme-init.js \
   scripts/theme.js \
+  scripts/vault-tags.js \
   "$STAGE_DIR/scripts/"
 
 (
