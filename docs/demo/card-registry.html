@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Card registry demo</title>
+  <script src="../../scripts/theme-init.js"></script>
+  <link rel="stylesheet" href="../../styles/blue-night.css">
+  <link rel="stylesheet" href="demo.css">
+</head>
+<body class="demo">
+  <!-- Development demo of scripts/card-registry.js; not shipped. -->
+  <main class="demo-main">
+    <h1 class="demo-title">Today with skill cards</h1>
+    <p class="demo-sub">Words from the LOD test fixtures, parsed with <code>parseLexicon</code>; schedules made up for the example. Default skill settings (gender, plural, perfect, cloze on; which-meaning and produce off), 5 new skill cards a day.</p>
+    <section class="demo-card"><table class="demo-table" id="words"><thead><tr><th>Word</th><th>Core card</th><th>Skills that apply</th><th>Today</th></tr></thead><tbody></tbody></table></section>
+    <section class="demo-card"><h2 class="demo-h2">Queue order</h2><ol class="demo-queue" id="queue"></ol></section>
+  </main>
+  <script src="../../scripts/store-core.js"></script>
+  <script src="../../scripts/lens-lookup.js"></script>
+  <script src="../../scripts/card-registry.js"></script>
+  <script src="card-registry-demo.js"></script>
+</body>
+</html>
