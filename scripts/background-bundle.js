@@ -3423,10 +3423,12 @@ globalThis.__LOD_VAULT_DIRECT_STORE__ = true;
 
     enabled.addEventListener("change", async () => {
       if (enabled.checked) {
-        // Must be the first await: the permission prompt needs the click.
+        // The request must be the first call: the permission prompt needs the click.
         let granted = false;
         try {
-          granted = Boolean(await permissions?.request?.({ permissions: ["notifications"] }));
+          const pending = permissions?.request?.({ permissions: ["notifications"] });
+          setStatus("Allow notifications in the browser prompt to turn reminders on…");
+          granted = Boolean(await pending);
         } catch {
           granted = false;
         }

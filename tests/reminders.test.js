@@ -238,6 +238,14 @@ test("turning reminders on asks for the notifications permission first", async (
   await until(() => granted.storageData["lodVault.reminders"]?.time === "08:15");
   assert.equal(granted.storageData["lodVault.reminders"].time, "08:15");
 
+  // While the browser prompt is open, the page says what it's waiting for.
+  const waiting = await loadStatsPage({}, { permissionGranted: new Promise(() => {}) });
+  const waitingToggle = waiting.dom.window.document.getElementById("reminder-enabled");
+  waitingToggle.checked = true;
+  waitingToggle.dispatchEvent(new waiting.dom.window.Event("change", { bubbles: true }));
+  await wait();
+  assert.match(waiting.dom.window.document.getElementById("reminder-status").textContent, /Allow notifications in the browser prompt/);
+
   const denied = await loadStatsPage({}, { permissionGranted: false });
   const deniedToggle = denied.dom.window.document.getElementById("reminder-enabled");
   deniedToggle.checked = true;
