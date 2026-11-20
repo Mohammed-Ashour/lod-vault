@@ -89,7 +89,7 @@
   }
 
   // Recall on reviews of the last 30 days that came at least 21 days after the
-  // previous review of the same word. This is a long-gap recall proxy, not
+  // previous review of the same word. This is a estimated long-gap recall, not
   // retention selected by pre-review stability. Practice
   // reviews (kind "p") don't count. Again is a fail; anything else a pass.
   function computeRetention(meta = {}, now = new Date()) {
@@ -271,7 +271,7 @@
     const retention = data.retention;
     const avg = data.averageTime;
     const tiles = [
-      { value: info.streak, label: "day streak", detail: info.todayDone ? "Today counts" : "Today still open" },
+      { value: info.streak, label: "day streak", detail: info.todayDone ? "Today counts" : "Study today to keep your streak" },
       { value: info.best, label: "best streak" },
       { value: `${"❄".repeat(info.freezes) || "0"}`, label: "streak freezes", detail: `${info.towardsFreeze}/7 days to the next` },
       {
@@ -285,7 +285,7 @@
       },
       {
         value: percent(retention.matureRate),
-        label: "long-gap recall proxy",
+        label: "estimated long-gap recall",
         detail: retention.mature
           ? `${retention.maturePassed}/${retention.mature} reviews after 21+ day gaps · target ${percent(data.targetRetention)}`
           : retention.all

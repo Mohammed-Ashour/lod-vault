@@ -32,7 +32,7 @@
       : (textarea) => textarea?.isConnected ?? true;
     const getIdleMessage = typeof options.getIdleMessage === "function"
       ? options.getIdleMessage
-      : ({ savedValue }) => savedValue ? "Saved with this word." : "Add a short note — it saves automatically.";
+      : ({ savedValue }) => savedValue ? "Saved with this word." : "Add a note. It saves automatically.";
     const getSavingMessage = typeof options.getSavingMessage === "function"
       ? options.getSavingMessage
       : () => "Saving note…";

@@ -53,7 +53,7 @@ function playCardAudio(button = elements.cardAudio) {
     // Listening promises replay, rather than the shared controller's play/pause toggle.
     audioController?.stopAll();
     if (elements.cardHint) {
-      elements.cardHint.textContent = "Listen, then Reveal to see the word and translation. Press P to replay.";
+      elements.cardHint.textContent = "Listen, then select Reveal to see the word and translation. Press P to replay.";
     }
   }
   LodVaultStore.playLodAudio?.(entry, { controller: audioController, button });
@@ -873,7 +873,7 @@ function renderDeck() {
     elements.cardHint.textContent = listening
       ? audioFailed
         ? "Audio unavailable. Try Play pronunciation again, reveal the answer, or skip this card."
-        : "Listen, then Reveal to see the word and translation. Press P to replay."
+        : "Listen, then select Reveal to see the word and translation. Press P to replay."
       : fallback ? "No saved translation for this word, so it is asked the usual way. Reveal to check."
         : mode === "mc" ? "Choose the correct answer." : "Click Reveal to show the answer.";
   }

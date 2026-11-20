@@ -567,7 +567,7 @@ function attachPreviewNoteEditors(doc) {
         noteStatus.className = "preview-note-status";
         noteStatus.textContent = entry.note
           ? "Saved with this word."
-          : "Add a short note — it saves automatically.";
+          : "Add a note. It saves automatically.";
 
         noteBody.append(noteLabel, noteInput, noteStatus);
         noteSection.appendChild(noteBody);

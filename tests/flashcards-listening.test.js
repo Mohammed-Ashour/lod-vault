@@ -126,7 +126,7 @@ test("unavailable or blocked audio leaves reveal and skip usable without exposin
   s.doc.getElementById("flip-card").click();
   assert.match(s.doc.getElementById("card-answer").textContent, /house/);
   s.doc.getElementById("next-card").click();
-  assert.match(s.doc.getElementById("card-hint").textContent, /Listen, then Reveal/);
+  assert.match(s.doc.getElementById("card-hint").textContent, /Listen, then select Reveal/);
 
   const missing = await setup({ storeOverrides: { getAudioUrl() { return null; } } });
   missing.mode("listening");
@@ -166,7 +166,7 @@ test("listening replay restarts actual active audio and clears a previous failur
   s.doc.getElementById("card-audio").click();
   assert.equal(audios.length, 3);
   assert.equal(audios[2].paused, false);
-  assert.match(s.doc.getElementById("card-hint").textContent, /Listen, then Reveal/);
+  assert.match(s.doc.getElementById("card-hint").textContent, /Listen, then select Reveal/);
   assert.equal(s.doc.getElementById("card-audio").classList.contains("is-error"), false);
   s.dom.window.dispatchEvent(new s.dom.window.Event("pagehide"));
 });

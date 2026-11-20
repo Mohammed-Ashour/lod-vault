@@ -144,7 +144,7 @@ test("plural: asks 'eng Fra → zwou ___', accepts the n-rule form, and grades a
   const mann = play("pl", "MANN1");
   mann.type("Manner");
   mann.submit();
-  assert.match(mann.feedbackText(), /Correct, almost.*Watch the accents/);
+  assert.match(mann.feedbackText(), /Correct, check the spelling.*Watch the accents/);
   assert.ok(mann.$(".answer-diff-missing"));
   mann.key("Enter");
   assert.equal(mann.graded[0].grade, 2);
