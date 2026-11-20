@@ -55,8 +55,8 @@
     if (!raw || typeof raw !== "object") return filter;
     const tag = cleanTag(raw.tag);
     if (tag) filter.tag = tag;
-    if (POS_LABELS[raw.pos]) filter.pos = raw.pos;
-    if (GENDER_LABELS[raw.gender]) filter.gender = raw.gender;
+    if (Object.hasOwn(POS_LABELS, raw.pos)) filter.pos = raw.pos;
+    if (Object.hasOwn(GENDER_LABELS, raw.gender)) filter.gender = raw.gender;
     if (LEVELS.includes(raw.level)) filter.level = raw.level;
     if (raw.list === "favorites" || raw.list === "study") filter.list = raw.list;
     if (raw.leech === true) filter.leech = true;
@@ -72,7 +72,7 @@
   }
 
   function normalizeOrg(raw) {
-    const org = { v: 1, t: {}, k: {} };
+    const org = { v: 1, t: Object.create(null), k: Object.create(null) };
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return org;
     for (const [rawTag, value] of Object.entries(raw.t && typeof raw.t === "object" ? raw.t : {})) {
       const tag = cleanTag(rawTag);
@@ -87,15 +87,22 @@
     return org;
   }
 
+  // Equal clock timestamps still need one winner on every device. Normalized
+  // records have a fixed field order, so their JSON is a stable tie-breaker.
+  function recordWins(incoming, current) {
+    return !current || incoming[1] > current[1]
+      || (incoming[1] === current[1] && JSON.stringify(incoming[0]) > JSON.stringify(current[0]));
+  }
+
   function mergeOrg(localRaw, remoteRaw) {
     const local = normalizeOrg(localRaw);
     const remote = normalizeOrg(remoteRaw);
-    const merged = { v: 1, t: { ...local.t }, k: { ...local.k } };
+    const merged = normalizeOrg(local);
     for (const [tag, value] of Object.entries(remote.t)) {
-      if (!merged.t[tag] || value[1] > merged.t[tag][1]) merged.t[tag] = value;
+      if (recordWins(value, merged.t[tag])) merged.t[tag] = value;
     }
     for (const [id, value] of Object.entries(remote.k)) {
-      if (!merged.k[id] || value[1] > merged.k[id][1]) merged.k[id] = value;
+      if (recordWins(value, merged.k[id])) merged.k[id] = value;
     }
     return merged;
   }
@@ -106,7 +113,7 @@
 
   function pruneTombstones(org, now = Date.now()) {
     const cutoff = now - TOMBSTONE_DAYS * 86400000;
-    const result = { v: 1, t: {}, k: {} };
+    const result = normalizeOrg(null);
     for (const [tag, value] of Object.entries(org.t)) {
       if (value[0].length || value[1] >= cutoff) result.t[tag] = value;
     }
@@ -125,7 +132,7 @@
     const org = pruneTombstones(normalizeOrg(raw), now);
     if (!Object.keys(org.t).length && !Object.keys(org.k).length) return null;
     if (byteLength(org) <= maxBytes) return org;
-    const result = { v: 1, t: {}, k: {} };
+    const result = normalizeOrg(null);
     const items = [
       ...Object.entries(org.k).map(([key, value]) => ["k", key, value]),
       ...Object.entries(org.t).sort((left, right) => right[1][1] - left[1][1]).map(([key, value]) => ["t", key, value])
@@ -159,7 +166,7 @@
   async function updateOrg(mutate) {
     return enqueue(async () => {
       const previous = await readOrg();
-      const next = normalizeOrg(mutate(JSON.parse(JSON.stringify(previous))) || previous);
+      const next = normalizeOrg(mutate(normalizeOrg(previous)) || previous);
       if (sameOrg(previous, next)) return { changed: false, org: previous };
       await chrome.storage.local.set({ [TAGS_KEY]: next });
       return { changed: true, org: next };
@@ -172,7 +179,7 @@
 
   // ── Tags ──────────────────────────────────────────────────
   function tagsById(org) {
-    const map = {};
+    const map = Object.create(null);
     for (const [tag, [ids]] of Object.entries(normalizeOrg(org).t)) {
       for (const id of ids) (map[id] = map[id] || []).push(tag);
     }
