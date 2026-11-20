@@ -40,6 +40,31 @@ test("tags merge per tag and decks per deck, the later write winning", () => {
   assert.equal(decks.listDecks(merged).length, 1);
 });
 
+test("reserved property names are safe tags and entry IDs", async () => {
+  const { decks } = loadDecks();
+  for (const tag of ["constructor", "__proto__", "toString"]) {
+    await decks.setEntryTags("constructor", [tag], 100);
+    await decks.addTagToEntries(tag, ["__proto__"], 101);
+    const org = await decks.readOrg();
+    assert.deepEqual(plain(org.t[tag][0]), ["__proto__", "constructor"]);
+    assert.ok(decks.tagsById(org).__proto__.includes(tag));
+    assert.ok(decks.buildSyncValue(org).t[tag]);
+    await decks.deleteTag(tag, 102);
+    assert.deepEqual(plain((await decks.readOrg()).t[tag][0]), []);
+  }
+});
+
+test("equal-timestamp tag and deck conflicts converge in either merge order", () => {
+  const { decks } = loadDecks();
+  const a = { t: { home: [["HAUS1"], 100] }, k: { d1: [{ name: "Home", f: {} }, 100] } };
+  const b = { t: { home: [[], 100] }, k: { d1: [null, 100] } };
+  const ab = decks.mergeOrg(a, b);
+  const ba = decks.mergeOrg(b, a);
+  assert.deepEqual(plain(ab), plain(ba));
+  assert.deepEqual(plain(decks.mergeOrg(ab, a)), plain(ab));
+  assert.deepEqual(plain(decks.mergeOrg(ab, b)), plain(ab));
+});
+
 test("tag names are cleaned and tagging is per word", async () => {
   const { decks, storageData } = loadDecks();
   await decks.setEntryTags("HAUS1", ["  home ", "home", "A1\u0007"]);
