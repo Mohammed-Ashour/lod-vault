@@ -237,7 +237,9 @@ test("the background worker records activity when review progress changes", asyn
       W1: { totalReviews: 1, reviews: [{ date: reviewedAt, rating: 2 }], lastReviewedAt: reviewedAt, dueAt: new Date(Date.now() + 2 * 86400e3).toISOString(), interval: 1 }
     }
   });
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  for (let tries = 0; tries < 200 && !background.storageData["lodVault.activity"]; tries += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
   const stored = background.storageData["lodVault.activity"];
   assert.ok(stored, "activity written");
   const today = background.context.LodVaultActivity.toDayNumber(new Date());
