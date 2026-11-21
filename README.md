@@ -18,6 +18,12 @@
 
 ---
 
+## Current version
+
+The source version is **2.5.0**. It adds typed answers, plural and participle questions, gap-fill exercises and gender practice to Flashcards. All question modes share each word's review schedule. See the [2.5.0 release notes](docs/releases/2.5.0.md).
+
+The Chrome Web Store version may lag behind this repository while an update is under review.
+
 ### Popup
 
 <img src="docs/screenshots/popup-blue-night.png" width="380" alt="LODVault popup — Blue Night redesign" /> <img src="docs/screenshots/popup-blue-night-light.png" width="380" alt="LODVault popup — Blue Night light mode" />
@@ -44,15 +50,44 @@ Add tags with **+ Tag** on each word. The **Decks** button saves filters for tag
 
 The Vault lists your saved words with translations, examples and notes. Search, filter by language or change the sort order. Use **Export ▾** to download HTML or Anki files.
 
+<img src="https://raw.githubusercontent.com/Mohammed-Ashour/lod-vault/b06c8460ab214516b9f776d78056914ed9de4fbd/webstore-250/05-tags-and-decks-1280x800.png" width="780" alt="Create a saved deck filtered by an Everyday tag in the Vault" />
+
 ---
 
 ### Flashcards
 
 <img src="docs/screenshots/flashcards-blue-night.png" width="780" alt="LODVault flashcards — Blue Night redesign" /> <img src="docs/screenshots/flashcards-blue-night-light.png" width="780" alt="LODVault flashcards — Blue Night light mode" />
 
-Choose **Session → Mode → Write the word** to type the Luxembourgish word from a cached LOD meaning. Check the answer, then continue with the suggested grade or use an explicit override. Accent slips receive Hard. Nouns ask for the article. Writing uses the core word's schedule, retries and undo, not a separate skill schedule. The same Mode menu offers **Write the plural**, **Hunn/sinn + participle**, **Fill the gap** and **Choose the gender**, using cached LOD forms and examples. All question modes share the word's schedule. If the selected exercise lacks dictionary data, it explicitly falls back to writing the word. Progress sync reserves space for core schedules before optional skill schedules. Missing dictionary details show a message and request a bounded download; switch modes and try again after it completes.
+Open **Session → Mode** to choose how to practise:
 
-Open **Session ▾** to choose a deck, study mode and daily limits. Reveal an answer, then choose Again, Good or Easy. Each button shows when the word will return. You can enable Hard in the session settings, undo your last grade and resume a session after closing the tab.
+| Mode | What you do |
+|---|---|
+| Self-graded | Reveal the meaning and grade your recall |
+| Multiple choice | Pick the answer from the available choices |
+| Listening | Listen to the pronunciation, then reveal and grade |
+| Write the word | Type the Luxembourgish word from a cached LOD meaning, including its article for nouns |
+| Write the plural | Type a noun's plural |
+| Hunn/sinn + participle | Choose the auxiliary and type the past participle |
+| Fill the gap | Complete a LOD example sentence |
+| Choose the gender | Choose deen, déi or dat |
+
+Typed answers get spelling and accent feedback. Accent slips suggest Hard. Check the answer, then choose **Continue** to save the suggested grade or use an explicit override.
+
+All modes share the word's review schedule, retries and undo. They do not create separate skill schedules. Questions use cached LOD forms and examples. If a word lacks data for the selected exercise, the page explains the fallback to word writing. If dictionary details have not been cached, the page requests a bounded download and suggests Self-graded mode. Switch modes and try again after the download completes.
+
+In Self-graded mode, reveal the answer and choose Again, Good or Easy. Each button shows when the word will return. Enable Hard in the session settings, undo your last grade or resume a session after closing the tab.
+
+<img src="https://raw.githubusercontent.com/Mohammed-Ashour/lod-vault/b06c8460ab214516b9f776d78056914ed9de4fbd/webstore-250/01-fill-the-gap-1280x800.png" width="780" alt="Fill the gap in a LOD example sentence, with a typed answer and correct feedback" />
+
+<img src="https://raw.githubusercontent.com/Mohammed-Ashour/lod-vault/b06c8460ab214516b9f776d78056914ed9de4fbd/webstore-250/02-write-the-plural-1280x800.png" width="380" alt="Write the plural question in Flashcards" /> <img src="https://raw.githubusercontent.com/Mohammed-Ashour/lod-vault/b06c8460ab214516b9f776d78056914ed9de4fbd/webstore-250/03-gender-feedback-1280x800.png" width="380" alt="Gender practice showing the correct article for Fra" />
+
+### Progress
+
+Open **Progress** from the popup or Flashcards to see study history, streaks, upcoming reviews and an estimate of the words you know. Set rest days, optional daily reminders and whether the toolbar badge includes new words.
+
+<img src="https://raw.githubusercontent.com/Mohammed-Ashour/lod-vault/b06c8460ab214516b9f776d78056914ed9de4fbd/webstore-250/04-progress-1280x800.png" width="780" alt="Progress page with a study heatmap, streak and upcoming review counts" />
+
+Screenshots use sample vocabulary and study history.
 
 ---
 
@@ -68,20 +103,23 @@ Open **Session ▾** to choose a deck, study mode and daily limits. Reveal an an
 
 | | |
 |---|---|
-| 📌 **Save words** | Favorite or add to Study directly from any LOD article page |
-| 🤖 **Auto mode** | Automatically record every visited LOD article into Study and History |
-| 🔊 **Pronunciation audio** | Play LOD pronunciation audio from the popup and saved-word list |
-| 📝 **Notes** | Write your own note for each saved word (auto-saved) |
-| 🔎 **LOD Lens** | Select Luxembourgish text on supported pages to translate it in a floating overlay, then save it straight to your vault |
-| 🔍 **Search** | Switch between My vault and Search LOD in the popup. Look up Luxembourgish, English, French, German, Portuguese, or Dutch words and save the Luxembourgish entry to Favorites or Study |
-| 🃏 **Flashcards** | Review a daily queue of due words plus new Study words up to your new-word limit. Missed words come back once in the same session |
-| 🔔 **Due badge** | See how many words are due on the toolbar icon (reviews only, not new words), updated at local midnight |
-| 👁 **Preview** | Browse your full word list in a clean page — no download needed |
-| 📤 **Export HTML / Anki** | Download standalone HTML or Anki-ready text export |
-| 📦 **Backup / Restore JSON** | Back up and restore your vocabulary, flashcard review progress, and supported settings with a portable file |
-| 🕘 **Optional browser history import** | On demand, import missing `lod.lu/artikel/*` words from history (add-only), with selectable date range and import report |
-| ☁️ **Optional browser sync** | Sync a compact copy of your words and review progress across Chrome profiles with configurable language selection, capacity indicator, and manual **Sync now** (helpful, but not an uninstall-safe backup) |
-| 🔒 **Local-first** | `chrome.storage.local` stays authoritative; sync is only a compact replica |
+| **Save words** | Favorite or add to Study directly from any LOD article page |
+| **Auto mode** | Automatically record every visited LOD article into Study and History |
+| **Pronunciation audio** | Play LOD pronunciation audio from the popup and saved-word list |
+| **Notes** | Write your own note for each saved word (auto-saved) |
+| **LOD Lens** | Select Luxembourgish text on supported pages to translate it in a floating overlay, then save it straight to your vault |
+| **Search** | Switch between My vault and Search LOD in the popup. Look up Luxembourgish, English, French, German, Portuguese, or Dutch words and save the Luxembourgish entry to Favorites or Study |
+| **Flashcards** | Review due and new words with daily limits, interval previews, retries, undo and resumable sessions |
+| **Question modes** | Self-graded, multiple choice, listening, word writing, plurals, participles, gap-fill and gender practice, all on the word's shared schedule |
+| **Tags and decks** | Tag saved words and save filtered decks for review |
+| **Progress** | Study heatmap, streaks, review forecast, rest days and optional reminders |
+| **Due badge** | See how many words are due on the toolbar icon (reviews only, not new words), updated at local midnight |
+| **Vault** | Browse your full word list in a clean page — no download needed |
+| **Export HTML / Anki** | Download standalone HTML or Anki-ready text export |
+| **Backup / Restore JSON** | Back up and restore your vocabulary, flashcard review progress, and supported settings with a portable file |
+| **Optional browser history import** | On demand, import missing `lod.lu/artikel/*` words from history (add-only), with selectable date range and import report |
+| **Optional browser sync** | Sync a compact copy of your words and review progress through your browser account with configurable language selection, capacity indicator, and manual **Sync now** (helpful, but not an uninstall-safe backup) |
+| **Local-first** | `chrome.storage.local` stays authoritative; sync is only a compact replica |
 
 <h2 id="install">Install</h2>
 
@@ -154,6 +192,8 @@ The **LODVault** icon will appear in your browser toolbar.
 - **Search LOD** searches all supported languages by default, or a selected language. Favorite and Study are available on each result and fetch the full entry before saving. Expand a result for translations, an example and notes
 - Dictionary searches send only the query text to LOD. Switching back to My vault keeps your local search
 - Play pronunciation audio, add notes, toggle lists, or delete saved words from there
+- Open **Vault** to add tags with **+ Tag**. Use **Decks** to name and save a filter, then select it under **Session → Deck → My decks** in Flashcards
+- Tags and decks have a separate sync budget. If the Vault warns that records were omitted, keep a JSON backup and check other devices before relying on a deletion
 
 ### Study with flashcards
 - Click **Start review** or **Flashcards** in the popup to open **Today**: learning cards first, then due reviews ordered by recall strength with new Study words interleaved up to your new-word limit (none, 5, 10, 15 or 20 a day, or no limit; default 10). An optional review limit (50, 100 or 200 a day) caps how many due words Today offers. Due reviews never use up new-word slots; when the backlog is more than twice a usual day, Today halves the new words until it is under control
@@ -167,6 +207,7 @@ The **LODVault** icon will appear in your browser toolbar.
 - Press U or Ctrl+Z to undo a review. End session or Escape opens an early summary with distinct cards, first-try accuracy, active time, missed words and tomorrow's forecast
 - Practising a word that isn't due (Study list, Favorites, All saved) is logged but doesn't move its schedule. Missing it brings it back tomorrow at the latest
 - Words reviewed with an older version switch to the new scheduler the next time you review them; their due dates don't change until then
+- Choose a question type under **Session → Mode**. [See the mode table](#flashcards) for typed answers, plurals, auxiliary/participle practice, gap-fill and gender questions. These use cached LOD details and share the word's existing schedule
 - Choose **Session → Mode → Listening** to hear the pronunciation without seeing the answer. Click **Reveal** (or press Space) to see the Luxembourgish word and translations, then rate it as usual
 - **Streak:** a day counts when you clear the Today queue or do at least 10 reviews. Each 7 counted days earn a streak freeze (up to 2), which covers a missed day automatically. Days before you updated to this version count whenever you reviewed anything. Daily totals sync, so the streak is the same on every device
 - Listening plays automatically when a card appears. Click the speaker or press **P** to replay. If browser autoplay is blocked or LOD audio is unavailable, try the speaker again, reveal the answer, or skip the card. Listening uses LOD audio and needs a network connection; reverse direction is disabled in this mode
@@ -190,15 +231,15 @@ The **LODVault** icon will appear in your browser toolbar.
 - **Preview** — opens a live, searchable page of your saved words in a new tab
 - **HTML** — downloads a standalone HTML file you can keep or share
 - **Anki** — downloads a tab-separated text file ready for Anki import
-- **Backup JSON** — downloads a full portable backup of your saved words, flashcard review progress, and extension settings; use this before uninstalling or switching versions. Tick **Include dictionary details** to add the locally cached LOD details (genders, plurals, senses, examples) as well; they are otherwise fetched again from LOD after a restore
-- **Restore JSON** — restores or merges a previous backup, including supported settings and flashcard review progress
+- **Backup JSON** downloads a portable backup of saved words, notes, tags, decks, flashcard progress and supported settings; use this before uninstalling or switching versions. Tick **Include dictionary details** to add the locally cached LOD details (genders, plurals, senses, examples) as well; they are otherwise fetched again from LOD after a restore
+- **Restore JSON** restores or merges a previous backup, including supported settings and flashcard review progress
 - **Import history** — optionally requests browser History permission and adds missing `lod.lu/artikel/*` words into your vault (does not delete or overwrite existing words)
 
 ---
 
 ## Testing
 
-LODVault includes a small automated test suite to keep the core behavior stable.
+LODVault has automated tests for storage, scheduling, session behavior and UI integration. Browser checks cover layout, keyboard interaction and the extension action popup.
 
 ### Run the tests
 
@@ -241,16 +282,20 @@ Builds the release zips and runs `web-ext lint` on the Firefox artifact (`dist/l
 - compact sync serialization, merge behavior, sharding, and quota fallback logic
 - review scheduling, the Today queue, the due badge, and review-progress sync
 - daily activity totals, streak rules and freezes, and their sync and backup
+- real-page word-writing, plural, participle, gap-fill and gender grading, persisted mode selection and missing-data guidance
+- core-first sync retention when review progress exceeds its quota
+- tags, saved decks and their sync and backup
 
 ---
 
 ## Privacy
 
-- LODVault does **not** collect, transmit, or share data with any external service
-- Everything you save lives in your browser via `chrome.storage.local`
-- If browser sync is enabled, a compact replica is stored in `chrome.storage.sync`
+- LODVault collects no analytics and requires no separate account. It operates no backend server for your vocabulary
+- Saved vocabulary, notes, cached dictionary details and study data live in your browser via `chrome.storage.local`
+- Dictionary searches and lookups send the requested text or word identifier to lod.lu. Fetching dictionary details and playing pronunciation audio also contact LOD
+- If browser sync is enabled, supported data is also stored through your browser provider's `chrome.storage.sync` service. Capacity depends on the data size and browser quotas, not a fixed word limit. Core word schedules take priority over optional skill records when review progress reaches its sync budget
 - In Chrome, uninstalling the extension may remove both local data and its extension sync data, so use **Backup JSON** if you want a portable backup before uninstalling
-- No analytics or tracking. Dictionary search and LOD Lens send only the text you choose to look up to the LOD API; they do not send page contents or personal notes
+- LOD Lens does not upload full page contents to LOD. Personal notes are not sent to the dictionary service
 
 ---
 
